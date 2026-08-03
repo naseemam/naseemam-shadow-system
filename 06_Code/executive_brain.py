@@ -1042,7 +1042,19 @@ class ExecutiveBrain:
         result["progress"] = progress
         self._update_step(progress, "analyze_request", "succeeded", "تم تحديد نوع التنفيذ المطلوب")
 
-        should_capture_memory = bool((query or "").strip()) and not any(token in query_lower for token in ["مرحبا", "اهلا", "أهلا", "hello", "hi", "hey"])
+        # Only auto-save when the user explicitly asks to save/remember something.
+        # We use whole-word matching to avoid false positives like "سجلتها" → "سجل".
+        # plan.should_remember may be set by classifier heuristics that can fire on
+        # substring matches; the token check here guards against that.
+        _query_words = set(re.findall(r"\w+", query_lower))
+        _explicit_save_tokens = {"تذكر", "احفظ", "remember", "save"}
+        has_explicit_save_request = bool(_query_words & _explicit_save_tokens)
+        should_capture_memory = (
+            plan is not None
+            and bool(getattr(plan, "should_remember", False))
+            and has_explicit_save_request
+            and bool((query or "").strip())
+        )
         if should_capture_memory:
             self._update_step(progress, "persist_request_memory", "running", "جارٍ حفظ سجل الطلب")
             fact = self._extract_memory_fact(query, plan) or f"محادثة: {(query or '').strip()[:80]}"
@@ -1138,10 +1150,18 @@ class ExecutiveBrain:
             else:
                 result["summary"] = "تم إعداد خطة تنفيذ."
 
-            self._update_step(progress, "persist_execution_outcome", "running", "جارٍ حفظ نتيجة التنفيذ")
-            outcome_memory = self._persist_execution_outcome(query, result, workspace_root=workspace_root)
-            result["outcome_memory"] = outcome_memory
-            self._update_step(progress, "persist_execution_outcome", "succeeded" if outcome_memory.get("saved") else "failed", outcome_memory.get("reason", ""))
+            # Only persist execution outcome for concrete actions (file creation, page
+            # deployment, explicit memory write).  Generic plan-creation steps are
+            # internal bookkeeping and should not be written to the user's memory store.
+            _outcome_worthy_tools = {"file.create", "workspace.page.create", "memory.save"}
+            has_outcome_worthy_action = any(
+                a.get("tool") in _outcome_worthy_tools for a in result["actions"]
+            )
+            if has_outcome_worthy_action:
+                self._update_step(progress, "persist_execution_outcome", "running", "جارٍ حفظ نتيجة التنفيذ")
+                outcome_memory = self._persist_execution_outcome(query, result, workspace_root=workspace_root)
+                result["outcome_memory"] = outcome_memory
+                self._update_step(progress, "persist_execution_outcome", "succeeded" if outcome_memory.get("saved") else "failed", outcome_memory.get("reason", ""))
 
         return result
 
@@ -1219,14 +1239,17 @@ class ExecutiveBrain:
 
         results = orchestrator_result.get("results") or []
         if results:
-            top = results[0]
-            path = top.get("path", "مصدر غير محدد")
-            excerpt = (top.get("excerpt") or "").strip()
-            return (
-                f"{plan.executive_message}\n\n"
-                f"المصدر الأهم: {path}\n"
-                f"{excerpt[:260]}"
-            ).strip()
+            # Only show excerpts that look like real document content, not raw internal
+            # memory-log entries (lines starting with "- YYYY-MM-DD —" as stored in
+            # Preferences.md / User Notes) and not single-line fragments shorter than
+            # 60 characters which carry no useful information for the user.
+            _log_pattern = re.compile(
+                r"^-\s+\d{4}-\d{2}-\d{2}\s+[—\-]\s+(?:محادثة:|Execution Outcome:|حفظ:)",
+            )
+            for r in results:
+                excerpt = (r.get("excerpt") or "").strip()
+                if excerpt and len(excerpt) >= 60 and not _log_pattern.match(excerpt):
+                    return excerpt[:260]
 
         return plan.executive_message or "تمت معالجة الطلب دون تفاصيل إضافية."
 
@@ -1249,17 +1272,35 @@ class ExecutiveBrain:
             reply = self._compose_local_reply(query, plan, orchestrator_result)
             return reply, "executive_brain_local"
 
-        if plan and getattr(plan, "request_type", None) in {"execution", "memory", "planning"}:
+        # For actual file/page execution, surface the concrete result before calling the LLM.
+        # (The LLM cannot report "file created successfully" if it didn't do the creation.)
+        execution_engine = execution_result or {}
+        has_real_execution = (
+            (execution_engine.get("file") or {}).get("status") in {"created", "updated"}
+            or (execution_engine.get("execution") or {}).get("status") == "completed"
+        )
+        if plan and getattr(plan, "request_type", None) == "execution" and has_real_execution:
             execution_summary = self._build_execution_summary(query, plan, execution_result)
             if execution_summary:
                 return execution_summary, "executive_brain_execution"
 
+        # For all other requests (including planning and memory reads) try the LLM first
+        # so the user gets a real, synthesised answer — not a generic internal summary.
         provider_reply = self._call_provider(
             query,
             plan=plan,
         )
         if provider_reply:
             return provider_reply, "executive_brain_provider"
+
+        # LLM unavailable — fall back to execution summary only for concrete execution actions
+        # (file created, page deployed, explicit memory write).  Planning queries fall
+        # through to _compose_local_reply so they can surface real document excerpts
+        # instead of generic internal process steps.
+        if plan and getattr(plan, "request_type", None) in {"execution", "memory"}:
+            execution_summary = self._build_execution_summary(query, plan, execution_result)
+            if execution_summary:
+                return execution_summary, "executive_brain_execution"
 
         reply = self._compose_local_reply(query, plan, orchestrator_result)
         return reply, "executive_brain_local"
