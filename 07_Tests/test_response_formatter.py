@@ -71,6 +71,41 @@ class ResponseFormatterTests(unittest.TestCase):
             "أنا أمير، شريكك التنفيذي الذكي لدعم إدارة المشاريع وتنظيم المعرفة واتخاذ القرارات.",
         )
 
+    def test_format_text_blocks_json_like_internal_payload(self):
+        formatter = ResponseFormatter()
+        raw = '{"selected_agent":"identity_agent","execution_engine":{"tool_calls":["file.create"]}}'
+        result = formatter.format_text(raw)
+        self.assertEqual(result, "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني.")
+
+    def test_format_text_drops_source_file_and_prompt_labels(self):
+        formatter = ResponseFormatter()
+        raw = (
+            "Source: 04_Memory/Founder.md\n"
+            "File: /home/runner/work/app.py\n"
+            "Prompt: internal template\n"
+            "الرد للمستخدم: نسيم هي المؤسسة."
+        )
+        result = formatter.format_text(raw)
+        self.assertEqual(result, "الرد للمستخدم: نسيم هي المؤسسة.")
+
+    def test_format_payload_always_returns_public_contract_only(self):
+        formatter = ResponseFormatter()
+        payload = {
+            "reply": "مرحبا",
+            "routing": {"agent": "identity_agent"},
+            "execution_engine": {"tool_calls": ["file.create"]},
+            "debug_trace": {"step": "router"},
+            "selected_agent": "identity_agent",
+        }
+        result = formatter.format_payload(payload)
+        self.assertEqual(set(result.keys()), {"reply", "message", "assistant"})
+
+    def test_format_payload_non_dict_keeps_public_contract(self):
+        formatter = ResponseFormatter()
+        result = formatter.format_payload(None)
+        self.assertEqual(set(result.keys()), {"reply", "message", "assistant"})
+        self.assertEqual(result["assistant"], "أمير")
+
 
 if __name__ == "__main__":
     unittest.main()

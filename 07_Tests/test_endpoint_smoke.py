@@ -101,6 +101,9 @@ class AskEndpointSmokeTests(unittest.TestCase):
         self.assertNotIn("agent_brain_payload", data)
         self.assertNotIn("execution_engine", data)
         self.assertNotIn("debug_trace", data)
+        self.assertNotIn("_agent", data["reply"].lower())
+        self.assertNotIn(".md", data["reply"].lower())
+        self.assertNotIn("prompt", data["reply"].lower())
 
 
 if __name__ == "__main__":

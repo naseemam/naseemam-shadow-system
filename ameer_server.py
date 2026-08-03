@@ -261,44 +261,22 @@ async def ask(request: Request):
         execution_result=execution_result,
     )
 
-    orchestrator_result["reply"] = final_reply
-    orchestrator_result["execution_engine"] = execution_result
-    orchestrator_result["tool_calls"] = execution_result.get("tool_calls", [])
-    orchestrator_result["reply_meta"] = {
-        "generated_by": reply_source,
-        "single_brain_mode": bool(getattr(EXECUTIVE_BRAIN, "_single_brain_mode", False)),
-        "build_id": BUILD_ID,
-    }
-    orchestrator_result.pop("draft_reply", None)
-    orchestrator_result.pop("reply_owner", None)
+    if not RESPONSE_FORMATTER:
+        raise HTTPException(status_code=500, detail="Response Composer is unavailable")
 
-    results = orchestrator_result.get("results", [])
-    source_paths = [item.get("path") for item in results if item.get("path")]
-    source_excerpts = [
-        {"path": item.get("path"), "excerpt": item.get("excerpt", "")[:180]}
-        for item in results if item.get("path")
-    ]
-
-    if project_manager:
-        orchestrator_result["project_manager"] = project_manager
-    orchestrator_result["executive_brain"] = brain_plan
-    orchestrator_result["sources_used"] = source_paths
-    orchestrator_result["source_excerpts"] = source_excerpts
-    orchestrator_result["context"] = {
-        "resolved_project": orchestrator_result.get("orchestrator", {}).get("resolved_project"),
+    composer_payload = {
+        "reply": final_reply,
+        "message": final_reply,
         "intent": orchestrator_result.get("intent"),
-        "request_type": brain_plan.get("request_type") if brain_plan else None,
-        "selected_agent": brain_plan.get("selected_agent") if brain_plan else None,
+        "agent_result": orchestrator_result.get("agent_result"),
+        "agent_brain_payload": orchestrator_result.get("agent_brain_payload"),
     }
-    if autonomy_plan:
-        orchestrator_result["autonomy_plan"] = autonomy_plan
     if DEBUG_MODE:
         trace_steps = orchestrator_result.get("orchestrator", {}).get("trace", [])
-        orchestrator_generated_by = orchestrator_result.get("reply_meta", {}).get("generated_by")
         routing = orchestrator_result.get("routing") or {}
         orchestrator_agent = orchestrator_result.get("selected_agent")
         executive_agent = brain_plan.get("selected_agent") if brain_plan else None
-        orchestrator_result["debug_trace"] = {
+        debug_trace = {
             "router": {
                 "intent": routing.get("intent"),
                 "agent": routing.get("agent"),
@@ -312,12 +290,25 @@ async def ask(request: Request):
             },
             "executive": {
                 "selected_agent": executive_agent,
-                "reply_generated_by": orchestrator_generated_by,
+                "reply_generated_by": reply_source,
+                "single_brain_mode": bool(getattr(EXECUTIVE_BRAIN, "_single_brain_mode", False)),
             },
         }
-    if RESPONSE_FORMATTER:
-        orchestrator_result = RESPONSE_FORMATTER.format_payload(orchestrator_result)
-    return utf8_json_response(orchestrator_result)
+        print(f"[Ameer Ask Debug] {json.dumps(debug_trace, ensure_ascii=False)}")
+        if project_manager:
+            print(f"[Ameer Ask Debug] project_manager={json.dumps(project_manager, ensure_ascii=False)}")
+        if autonomy_plan:
+            print(f"[Ameer Ask Debug] autonomy_plan={json.dumps(autonomy_plan, ensure_ascii=False)}")
+
+    try:
+        user_payload = RESPONSE_FORMATTER.format_payload(composer_payload)
+    except Exception:
+        user_payload = {
+            "reply": "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني.",
+            "message": "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني.",
+            "assistant": "أمير",
+        }
+    return utf8_json_response(user_payload)
 
 @app.get('/docs')
 async def docs():

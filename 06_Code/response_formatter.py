@@ -11,6 +11,8 @@ class ResponseFormatter:
             re.compile(r"^\s*(طلب المستخدم|السياق|التعليمات)\s*[:\-]", re.IGNORECASE),
             re.compile(r"^\s*(agent|selected_agent|routing|debug|trace|metadata|tool calls?)\s*[:\-]", re.IGNORECASE),
             re.compile(r"^\s*(الوكيل|التوجيه|التصحيح|التتبع|بيانات داخلية|الأدوات)\s*[:\-]", re.IGNORECASE),
+            re.compile(r"^\s*(source|sources|file|path|prompt|execution|runtime|trace)\s*[:\-]", re.IGNORECASE),
+            re.compile(r"^\s*(المصدر|المصادر|ملف|المسار|الموجه|التنفيذ|وقت التشغيل)\s*[:\-]", re.IGNORECASE),
         ]
         self._prefix_cleanup_patterns = [
             re.compile(r"^\s*(the answer is|final answer|assistant answer|answer)\s*[:\-]?\s*", re.IGNORECASE),
@@ -19,6 +21,8 @@ class ResponseFormatter:
         self._internal_phrase_patterns = [
             re.compile(r"\b(user request|context|system prompt|internal prompt|chain of thought)\b", re.IGNORECASE),
             re.compile(r"\b(selected_agent|debug|trace|tool[_\s-]?calls?|execution plan)\b", re.IGNORECASE),
+            re.compile(r"\b(reply_meta|agent_brain_payload|agent_result|orchestrator|executive_brain)\b", re.IGNORECASE),
+            re.compile(r"\b(raw output|internal output|runtime payload|prompt template)\b", re.IGNORECASE),
         ]
         self._agent_pattern = re.compile(
             r"\b([a-z]+_agent|identity agent|project agent|research agent|memory agent|greeting agent|recovery agent)\b",
@@ -33,7 +37,11 @@ class ResponseFormatter:
             re.IGNORECASE,
         )
         self._internal_word_pattern = re.compile(
-            r"\b(debug|trace|routing|selected_agent|agent|prompt|instruction|execution|tool calls?|metadata)\b",
+            r"\b(debug|trace|routing|selected_agent|agent|prompt|instruction|execution|tool calls?|metadata|source|file|path|runtime|payload)\b",
+            re.IGNORECASE,
+        )
+        self._json_like_internal_pattern = re.compile(
+            r"(selected_agent|agent_result|agent_brain_payload|execution_engine|debug_trace|reply_meta|tool_calls)",
             re.IGNORECASE,
         )
 
@@ -61,6 +69,8 @@ class ResponseFormatter:
 
         cleaned = text.replace("\u200f", "")
         cleaned = re.sub(r"```(?:\w+)?", "", cleaned)
+        if self._json_like_internal_pattern.search(cleaned):
+            return self._FALLBACK_REPLY
         lines = [self._sanitize_line(line) for line in cleaned.splitlines()]
         lines = [line for line in lines if line]
         formatted = " ".join(lines).strip()
@@ -70,7 +80,11 @@ class ResponseFormatter:
 
     def format_payload(self, payload: dict) -> dict:
         if not isinstance(payload, dict):
-            return {"reply": self._FALLBACK_REPLY}
+            return {
+                "reply": self._FALLBACK_REPLY,
+                "message": self._FALLBACK_REPLY,
+                "assistant": "أمير",
+            }
 
         response_data = self._extract_response_data(payload)
         composed = self._compose_from_structured_data(response_data)
