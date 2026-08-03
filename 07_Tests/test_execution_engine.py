@@ -114,8 +114,9 @@ class ExecutionEngineTests(unittest.TestCase):
         plan = self._plan(["create file"])
 
         with tempfile.TemporaryDirectory() as tmpdir:
+            os.makedirs(os.path.join(tmpdir, "04_Memory"), exist_ok=True)
             result = brain._execute_plan(
-                "أنشئ ملفًا باسم notes.md يحتوي على مرحبا",
+                "أنشئ ملفًا باسم 04_Memory/notes.md يحتوي على مرحبا",
                 plan,
                 workspace_root=tmpdir,
             )
@@ -156,6 +157,43 @@ class ExecutionEngineTests(unittest.TestCase):
             self.assertIn('data-action="ask-page"', module_content)
             self.assertIn('AmeerWorkspaceShell.sendPrompt', module_content)
             self.assertIn("AmeerWorkspaceShell.openPage", module_content)
+
+    def test_path_traversal_is_blocked(self):
+        brain = ExecutiveBrain(normalize_fn=lambda x: x)
+        plan = self._plan(["create file"])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = brain._execute_plan(
+                "أنشئ ملفًا باسم ../../etc/passwd يحتوي على evil",
+                plan,
+                workspace_root=tmpdir,
+            )
+            # Either blocked outright or the file must remain inside tmpdir.
+            if result.get("file"):
+                file_status = result["file"].get("status", "")
+                if file_status == "blocked":
+                    self.assertEqual(file_status, "blocked")
+                else:
+                    # If a path was resolved, it must be inside tmpdir.
+                    file_path = result["file"].get("path", "")
+                    self.assertTrue(
+                        os.path.abspath(file_path).startswith(os.path.abspath(tmpdir)),
+                        f"Path escapes workspace: {file_path}",
+                    )
+
+    def test_write_outside_allowed_dirs_is_blocked(self):
+        brain = ExecutiveBrain(normalize_fn=lambda x: x)
+        plan = self._plan(["create file"])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = brain._execute_plan(
+                "أنشئ ملفًا باسم secret.md يحتوي على data",
+                plan,
+                workspace_root=tmpdir,
+            )
+            self.assertIsNotNone(result.get("file"))
+            self.assertEqual(result["file"]["status"], "blocked",
+                             "Writing to workspace root should be blocked by governance policy")
 
 
 if __name__ == "__main__":

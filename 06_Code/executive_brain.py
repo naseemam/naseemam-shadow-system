@@ -21,13 +21,18 @@ from __future__ import annotations
 
 import os
 import re
-import urllib.request
-import urllib.error
 import json
 from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+
+try:
+    from adapters.inference_provider import InferenceProvider, OpenAIProvider, OllamaProvider
+except Exception:  # pragma: no cover - fallback when run without package context
+    InferenceProvider = None  # type: ignore[assignment,misc]
+    OpenAIProvider = None  # type: ignore[assignment]
+    OllamaProvider = None  # type: ignore[assignment]
 
 try:
     from openai import OpenAI
@@ -183,6 +188,18 @@ class ExecutiveBrain:
         self._model_name = os.getenv("AMEER_MODEL", "gpt-4o-mini")
         self._ollama_host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
         self._ollama_model = os.getenv("OLLAMA_MODEL", "smollm:135m")
+
+        # Build ordered provider chain via the formal abstraction when available.
+        self._providers: List[object] = []
+        if OpenAIProvider is not None:
+            api_key = os.getenv("OPENAI_API_KEY")
+            if api_key:
+                self._providers.append(OpenAIProvider(api_key=api_key, model=self._model_name))
+        if OllamaProvider is not None and os.getenv("OLLAMA_ENABLED", "1").lower() in {"1", "true", "yes", "on"}:
+            self._providers.append(OllamaProvider(host=self._ollama_host, model=self._ollama_model))
+
+        # Legacy direct openai client kept for backwards compat with tests that
+        # patch _openai_client directly.
         if OpenAI is not None:
             api_key = os.getenv("OPENAI_API_KEY")
             if api_key:
@@ -343,7 +360,21 @@ class ExecutiveBrain:
     def _call_provider(self, prompt: str, plan: ExecutivePlan | None = None) -> Optional[str]:
         system_prompt, user_prompt = self._build_provider_prompt(prompt, plan)
 
-        if self._openai_client:
+        # Try providers via the formal abstraction first.
+        for provider in self._providers:
+            try:
+                content = provider.complete(system_prompt, user_prompt)
+                if content:
+                    sanitized = self._sanitize_provider_reply(content)
+                    if sanitized:
+                        return sanitized
+            except Exception:
+                continue
+
+        # Legacy fallback: direct openai client (used when provider abstraction
+        # is unavailable, e.g. in isolated test environments that patch
+        # _openai_client directly).
+        if self._openai_client and not self._providers:
             try:
                 completion = self._openai_client.chat.completions.create(
                     model=self._model_name,
@@ -357,33 +388,6 @@ class ExecutiveBrain:
                 sanitized = self._sanitize_provider_reply(content)
                 if sanitized:
                     return sanitized
-            except Exception:
-                pass
-
-        if os.getenv("OLLAMA_ENABLED", "1").lower() in {"1", "true", "yes", "on"}:
-            try:
-                payload = json.dumps({
-                    "model": self._ollama_model,
-                    "stream": False,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                }).encode("utf-8")
-                req = urllib.request.Request(
-                    f"{self._ollama_host.rstrip('/')}/api/chat",
-                    data=payload,
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=15) as response:
-                    data = json.loads(response.read().decode("utf-8"))
-                    message = data.get("message") or {}
-                    content = message.get("content") or ""
-                    if isinstance(content, str) and content.strip():
-                        sanitized = self._sanitize_provider_reply(content)
-                        if sanitized:
-                            return sanitized
             except Exception:
                 pass
 
@@ -694,6 +698,8 @@ class ExecutiveBrain:
         root = workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         memory_dir = os.path.join(root, "04_Memory")
         memory_file = os.path.join(memory_dir, "Preferences.md")
+        if not self._check_write_allowed(memory_file, root):
+            return {"saved": False, "file": "04_Memory/Preferences.md", "fact": fact, "reason": "write_not_permitted"}
         os.makedirs(memory_dir, exist_ok=True)
 
         for attempt in range(2):
@@ -787,9 +793,38 @@ class ExecutiveBrain:
             content = "تم إنشاء هذا الملف عبر Ameer."
         return filename, content, operation
 
+    # Directories (relative to workspace root) that file-write operations may target.
+    # Any path outside these prefixes is rejected to prevent path-traversal attacks.
+    _ALLOWED_WRITE_PREFIXES: tuple[str, ...] = (
+        "04_Memory",
+        "09_Assets/web/modules",
+        ".ameer",
+    )
+
+    def _check_write_allowed(self, target_path: str, root: str) -> bool:
+        """Return True only if *target_path* sits inside an allowed write prefix."""
+        abs_root = os.path.abspath(root)
+        abs_target = os.path.abspath(target_path)
+        # Ensure the target is inside the workspace at all.
+        try:
+            rel = os.path.relpath(abs_target, abs_root).replace("\\", "/")
+        except ValueError:
+            return False
+        if rel.startswith(".."):
+            return False
+        return any(rel == prefix or rel.startswith(prefix + "/") for prefix in self._ALLOWED_WRITE_PREFIXES)
+
     def _create_file(self, filename: str, content: str, workspace_root: str | None = None) -> dict:
         root = workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         target_path = os.path.abspath(os.path.join(root, filename))
+        if not self._check_write_allowed(target_path, root):
+            return {
+                "status": "blocked",
+                "path": target_path,
+                "relative_path": os.path.relpath(target_path, root).replace("\\", "/"),
+                "content_preview": content[:120],
+                "reason": "write_not_permitted_outside_allowed_paths",
+            }
         for attempt in range(2):
             try:
                 os.makedirs(os.path.dirname(target_path), exist_ok=True)
@@ -819,6 +854,14 @@ class ExecutiveBrain:
     def _append_to_existing_file(self, filename: str, content: str, workspace_root: str | None = None) -> dict:
         root = workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         target_path = Path(os.path.abspath(os.path.join(root, filename)))
+        if not self._check_write_allowed(str(target_path), root):
+            return {
+                "status": "blocked",
+                "path": str(target_path),
+                "relative_path": os.path.relpath(target_path, root).replace("\\", "/"),
+                "content_preview": content[:120],
+                "reason": "write_not_permitted_outside_allowed_paths",
+            }
         try:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             if target_path.exists():

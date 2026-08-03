@@ -76,7 +76,6 @@ def runtime_headers(workspace_root: str | Path | None = None) -> dict[str, str]:
         "X-Ameer-Build-ID": str(meta["build_id"]),
         "X-Ameer-Commit": str(meta["commit"]),
         "X-Ameer-Port": str(meta["port"]),
-        "X-Ameer-Workspace": str(meta["workspace"]),
     }
 
 

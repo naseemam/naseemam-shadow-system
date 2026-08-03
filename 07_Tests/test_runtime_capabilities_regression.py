@@ -10,7 +10,7 @@ class RuntimeCapabilitiesRegressionTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(ameer_server.app)
         self.workspace_root = Path(ameer_server.ROOT)
-        self.target = self.workspace_root / "runtime_edit_test.md"
+        self.target = self.workspace_root / "04_Memory" / "runtime_edit_test.md"
         self.original = self.target.read_text(encoding="utf-8") if self.target.exists() else None
 
     def tearDown(self):
@@ -23,7 +23,7 @@ class RuntimeCapabilitiesRegressionTests(unittest.TestCase):
         self.target.write_text("السطر الأول\n", encoding="utf-8")
         response = self.client.post(
             "/ask",
-            json={"query": 'أضف سطرًا جديدًا في runtime_edit_test.md يقول "السطر الثاني"'},
+            json={"query": 'أضف سطرًا جديدًا في 04_Memory/runtime_edit_test.md يقول "السطر الثاني"'},
         )
         self.assertEqual(response.status_code, 200)
         payload = response.json()

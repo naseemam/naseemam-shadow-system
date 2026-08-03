@@ -66,12 +66,12 @@ class RuntimeCapabilitiesTests(unittest.TestCase):
         self.assertTrue(any(item["path"].endswith("Preferences.md") for item in results))
 
     def test_execution_engine_appends_to_existing_file(self):
-        target = self.workspace_root / "runtime_edit_test.md"
+        target = self.workspace_root / "04_Memory" / "runtime_edit_test.md"
         target.write_text("السطر الأول\n", encoding="utf-8")
         try:
             plan = type("Plan", (), {"steps": ["append file line"], "executive_message": "append", "memory_note": None})()
             result = ameer_server.EXECUTIVE_BRAIN._execute_plan(
-                'أضف سطرًا جديدًا في runtime_edit_test.md يقول "السطر الثاني"',
+                'أضف سطرًا جديدًا في 04_Memory/runtime_edit_test.md يقول "السطر الثاني"',
                 plan,
                 workspace_root=str(self.workspace_root),
             )

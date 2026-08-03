@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import re
 import sys
@@ -479,7 +479,7 @@ class AmeerOrchestrator:
         with open(memory_file, "r", encoding="utf-8") as handle:
             content = handle.read()
 
-        note = f"- {datetime.utcnow().strftime('%Y-%m-%d')} — {fact}"
+        note = f"- {datetime.now(timezone.utc).strftime('%Y-%m-%d')} — {fact}"
         if note in content:
             return {"saved": True, "file": "04_Memory/Preferences.md", "fact": fact, "reason": "already_present"}
 

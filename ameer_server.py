@@ -4,11 +4,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import glob
 import json
+import logging
 import os
 import re
 import sys
+import uuid
 import importlib.util
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ameer_runtime import (
     public_runtime_identity,
@@ -23,6 +25,28 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
+
+# ─── Structured logger ────────────────────────────────────────────────────────
+
+_log_handler = logging.StreamHandler(sys.stdout)
+_log_handler.setFormatter(logging.Formatter("%(message)s"))
+_logger = logging.getLogger("ameer")
+_logger.setLevel(logging.INFO)
+_logger.propagate = False
+if not _logger.handlers:
+    _logger.addHandler(_log_handler)
+
+
+def _log(event: str, level: str = "info", request_id: str | None = None, **kwargs) -> None:
+    record = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "level": level,
+        "event": event,
+    }
+    if request_id:
+        record["request_id"] = request_id
+    record.update(kwargs)
+    getattr(_logger, level, _logger.info)(json.dumps(record, ensure_ascii=False))
 
 
 def load_orchestrator_class():
@@ -76,12 +100,33 @@ DEBUG_MODE = os.getenv("AMEER_DEBUG", "0").lower() in {"1", "true", "yes", "on"}
 RUNTIME_METADATA = runtime_metadata(workspace_root=ROOT)
 
 def load_documents():
+    # Paths (relative to ROOT) that must be excluded from the knowledge corpus.
+    # Backups may contain outdated or conflicting information; root junk files are not
+    # official documents.
+    _EXCLUDED_PREFIXES = (
+        "08_Backups/",
+        "08_DevTools/",
+        "__pycache__/",
+    )
+    _EXCLUDED_ROOT_FILES = {
+        "hello.txt",
+        "test_from_browser.txt",
+        "meeting.md",
+        "demo_notes.md",
+    }
     docs = []
     for path in glob.glob(MD_GLOB, recursive=True):
         try:
+            rel = os.path.relpath(path, ROOT).replace("\\", "/")
+            # Skip excluded prefixes
+            if any(rel.startswith(prefix) for prefix in _EXCLUDED_PREFIXES):
+                continue
+            # Skip root-level junk files
+            if rel in _EXCLUDED_ROOT_FILES:
+                continue
             with open(path, "r", encoding="utf-8") as f:
                 text = f.read()
-            docs.append({"path": os.path.relpath(path, ROOT).replace('\\', '/'), "text": text})
+            docs.append({"path": rel, "text": text})
         except Exception:
             continue
     return docs
@@ -172,7 +217,7 @@ def _manage_project_context(query: str) -> dict | None:
             name = "موقع جديد"
         existing = [p for p in projects if p.get("name", "").lower() == name.lower()]
         if not existing:
-            projects.append({"name": name, "description": text, "created_at": datetime.utcnow().isoformat()})
+            projects.append({"name": name, "description": text, "created_at": datetime.now(timezone.utc).isoformat()})
             _save_project_store(projects)
         return {"mode": "created", "project": name}
 
@@ -196,6 +241,7 @@ RESPONSE_FORMATTER = ResponseFormatterClass() if ResponseFormatterClass else Non
 
 @app.post('/ask')
 async def ask(request: Request):
+    request_id = str(uuid.uuid4())
     raw = await request.body()
     if not raw:
         raise HTTPException(status_code=400, detail="Empty body")
@@ -210,12 +256,10 @@ async def ask(request: Request):
 
     req = AskRequest(**payload)
     q = req.query.strip() if isinstance(req.query, str) else ''
-    if q:
-        print('ASK_QUERY_RAW=' + repr(q))
     if not q:
         raise HTTPException(status_code=400, detail="Empty query")
 
-    print(f"[Ameer Ask] build_id={RUNTIME_METADATA['build_id']} query={q}")
+    _log("ask_received", request_id=request_id, build_id=RUNTIME_METADATA["build_id"])
     autonomy_plan = None
     autonomy_keywords = ["plan", "planning", "memory", "autonom", "workspace", "document", "tool", "improve", "self", "reason"]
     if any(keyword in q.lower() for keyword in autonomy_keywords):
@@ -299,11 +343,11 @@ async def ask(request: Request):
                 "single_brain_mode": bool(getattr(EXECUTIVE_BRAIN, "_single_brain_mode", False)),
             },
         }
-        print(f"[Ameer Ask Debug] {json.dumps(debug_trace, ensure_ascii=False)}")
+        _log("ask_debug_trace", request_id=request_id, trace=debug_trace)
         if project_manager:
-            print(f"[Ameer Ask Debug] project_manager={json.dumps(project_manager, ensure_ascii=False)}")
+            _log("ask_project_manager", request_id=request_id, project_manager=project_manager)
         if autonomy_plan:
-            print(f"[Ameer Ask Debug] autonomy_plan={json.dumps(autonomy_plan, ensure_ascii=False)}")
+            _log("ask_autonomy_plan", request_id=request_id, autonomy_plan=autonomy_plan)
 
     try:
         user_payload = RESPONSE_FORMATTER.format_payload(composer_payload)
@@ -314,6 +358,8 @@ async def ask(request: Request):
             "assistant": "أمير",
         }
     user_payload.update(public_runtime_identity(workspace_root=ROOT))
+    user_payload["request_id"] = request_id
+    _log("ask_completed", request_id=request_id)
     return utf8_json_response(user_payload, headers=runtime_headers(workspace_root=ROOT))
 
 @app.get('/docs')
@@ -389,7 +435,7 @@ def _record_autonomy_plan(query: str, goal: str | None = None) -> dict:
     plan = {
         "query": query.strip(),
         "goal": normalized_goal,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "steps": _derive_autonomy_steps(query),
     }
     plans = _load_plan_store()
@@ -409,8 +455,17 @@ async def store_autonomy_plan(payload: AutonomyPlanRequest):
 
 @app.get('/health')
 async def health():
-    payload = runtime_metadata(workspace_root=ROOT)
-    payload.update({
+    meta = runtime_metadata(workspace_root=ROOT)
+    payload = {
+        "status": meta["status"],
+        "build": meta["build"],
+        "build_id": meta["build_id"],
+        "commit": meta["commit"],
+        "host": meta["host"],
+        "port": meta["port"],
+        "started_at": meta["started_at"],
+        "pid": meta["pid"],
+        "entrypoint": meta["entrypoint"],
         "documents": len(DOCUMENTS),
         "ameer_status": {
             "Server": "Online",
@@ -419,7 +474,7 @@ async def health():
             "Memory": "Ready",
             "Projects": "Ready",
         },
-    })
+    }
     return utf8_json_response(payload, headers=runtime_headers(workspace_root=ROOT))
 
 
@@ -450,7 +505,7 @@ async def save_memory(payload: MemoryRequest):
             handle.write("# Preferences\n\n")
     with open(memory_file, "r", encoding="utf-8") as handle:
         content = handle.read()
-    note = f"- {datetime.utcnow().strftime('%Y-%m-%d')} — {text}"
+    note = f"- {datetime.now(timezone.utc).strftime('%Y-%m-%d')} — {text}"
     if note in content:
         return {"saved": True, "updated": False, "note": note, "file": "04_Memory/Preferences.md"}
     if "## User Notes" not in content:
@@ -478,7 +533,7 @@ async def create_project(payload: ProjectRequest):
     existing = [p for p in projects if p.get("name", "").lower() == name.lower()]
     if existing:
         return {"created": False, "projects": projects}
-    projects.append({"name": name, "description": payload.description or "", "created_at": datetime.utcnow().isoformat()})
+    projects.append({"name": name, "description": payload.description or "", "created_at": datetime.now(timezone.utc).isoformat()})
     _save_project_store(projects)
     return {"created": True, "projects": projects}
 
@@ -494,7 +549,17 @@ async def home():
 
 @app.on_event("startup")
 async def log_runtime_banner():
-    print_runtime_banner(workspace_root=ROOT)
+    meta = runtime_metadata(workspace_root=ROOT)
+    _log(
+        "runtime_started",
+        build=meta["build"],
+        commit=meta["commit"],
+        host=meta["host"],
+        port=meta["port"],
+        pid=meta["pid"],
+        started_at=meta["started_at"],
+        documents=len(DOCUMENTS),
+    )
 
 if __name__ == '__main__':
     import uvicorn
