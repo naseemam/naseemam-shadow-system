@@ -28,6 +28,24 @@ class BaseAgent:
     capabilities: List[str] = []
     primary_sources: List[str] = []
 
+    def __init__(self):
+        self.initialized: bool = False
+        self.namespace: Dict = {}
+
+    def init(self) -> None:
+        """Initialize the agent and prepare its namespace."""
+        self.initialized = True
+        self.namespace = {}
+
+    def destroy(self) -> None:
+        """Tear down the agent and clear its namespace."""
+        self.initialized = False
+        self.namespace = {}
+
+    def render(self, context: AgentContext) -> AgentOutput:
+        """Render a response for the given context (delegates to execute)."""
+        return self.execute(context)
+
     def execute(self, context: AgentContext) -> AgentOutput:
         raise NotImplementedError
 

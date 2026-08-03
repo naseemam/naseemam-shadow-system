@@ -1162,7 +1162,7 @@ class ExecutiveBrain:
         if plan.clarification_needed and plan.clarification_question:
             return f"سؤالك يحتاج توضيح بسيط قبل المتابعة: {plan.clarification_question}"
 
-        if (plan.request_type == "memory") and (orchestrator_result.get("intent") == "memory"):
+        if (getattr(plan, "request_type", None) == "memory") and (orchestrator_result.get("intent") == "memory"):
             memory_text = ""
             try:
                 root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
