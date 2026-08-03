@@ -46,6 +46,7 @@ REQUIRED_FIELDS = [
     "sources",
     "actions",
     "message",
+    "response_data",
 ]
 
 
@@ -77,6 +78,7 @@ class AgentContractRegressionTests(unittest.TestCase):
                 self.assertIsInstance(result.sources, list)
                 self.assertIsInstance(result.actions, list)
                 self.assertIsInstance(result.message, str)
+                self.assertIsInstance(result.response_data, dict)
 
 
 if __name__ == "__main__":

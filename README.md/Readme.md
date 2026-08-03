@@ -26,13 +26,13 @@ cd C:\Users\DELL\Desktop\Ameer
 
 $env:AMEER_DEBUG="1"
 
-.\.venv\Scripts\python.exe -m uvicorn ameer_server:app --host 127.0.0.1 --port 8016
+.\.venv\Scripts\python.exe .\start_ameer.py
 ```
 
 Open the browser:
 
 ```text
-http://127.0.0.1:8016
+http://127.0.0.1:8011
 ```
 
 Quick API test runner:
@@ -43,10 +43,10 @@ Quick API test runner:
 
 The script will:
 
-- Start the local server in debug mode if it is not already running.
+- Start the local server through `start_ameer.py` if it is not already running.
 - Wait for `/health`.
 - Send identity, project, and greeting test queries.
-- Print `intent`, `agent`, `confidence`, `selected_agent`, `reply_generated_by`, and final `reply`.
+- Print the shared runtime `build_id`, `commit`, `port`, and final `reply`.
 - Stop the server if the script started it.
 
 ## Arabic Support / دعم اللغة العربية

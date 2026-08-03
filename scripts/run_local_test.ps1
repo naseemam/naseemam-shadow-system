@@ -1,6 +1,6 @@
 Param(
     [string]$HostAddress = "127.0.0.1",
-    [int]$Port = 8016,
+    [int]$Port = 8011,
     [string]$PythonExe = ".\.venv\Scripts\python.exe",
     [int]$HealthTimeoutSeconds = 30
 )
@@ -36,11 +36,10 @@ $greetingQuery = -join @([char]0x0645, [char]0x0631, [char]0x062D, [char]0x0628,
 
 if (-not (Test-HealthEndpoint -Url $healthUrl)) {
     $env:AMEER_DEBUG = "1"
-    $serverArgs = @(
-        "-m", "uvicorn", "ameer_server:app",
-        "--host", $HostAddress,
-        "--port", "$Port"
-    )
+    $env:AMEER_HOST = $HostAddress
+    $env:AMEER_PORT = "$Port"
+
+    $serverArgs = @("start_ameer.py")
 
     Write-Host "[INFO] Starting local server in debug mode..."
     $serverProcess = Start-Process -FilePath $PythonExe -ArgumentList $serverArgs -PassThru
@@ -86,20 +85,16 @@ foreach ($test in $tests) {
         -ContentType "application/json; charset=utf-8" `
         -Body $body
 
-    $intent = $response.intent
-    $agent = $response.routing.agent
-    $confidence = $response.routing.confidence
-    $selectedAgent = if ($response.selected_agent) { $response.selected_agent } else { $response.executive_brain.selected_agent }
-    $replyGeneratedBy = $response.reply_meta.generated_by
+    $buildId = $response.build_id
+    $commit = $response.commit
+    $responsePort = $response.port
     $finalReply = $response.reply
 
     Write-Host ""
     Write-Host "===== $($test.Name) ====="
-    Write-Host "intent: $intent"
-    Write-Host "agent: $agent"
-    Write-Host "confidence: $confidence"
-    Write-Host "selected_agent: $selectedAgent"
-    Write-Host "reply_generated_by: $replyGeneratedBy"
+    Write-Host "build_id: $buildId"
+    Write-Host "commit: $commit"
+    Write-Host "port: $responsePort"
     Write-Host "final reply: $finalReply"
 }
 

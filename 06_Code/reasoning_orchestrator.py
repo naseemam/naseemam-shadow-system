@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import re
 import sys
@@ -10,19 +10,35 @@ CODE_ROOT = os.path.dirname(__file__)
 if CODE_ROOT not in sys.path:
     sys.path.insert(0, CODE_ROOT)
 
-from agents.base import AgentContext
+from agents.base import AgentContext, AgentOutput
 from agents.registry import AGENTS, AGENT_CAPABILITIES
 from adapters.agent_brain_adapter import AgentBrainAdapter
 
 
 ROUTE_AGENT_MAP = {
     "greeting": "greeting_agent",
-    "identity": "identity_agent",
+    "identity": "ameer_core",
     "project": "project_agent",
     "memory": "memory_agent",
     "onboarding": "memory_agent",
     "execution": "project_agent",
     "knowledge_lookup": "research_agent",
+}
+
+CORE_ROUTE_CAPABILITIES = {
+    "ameer_core": {
+        "description": "Ameer Core handles identity, executive framing, and direct founder-facing replies.",
+        "primary_sources": [
+            "01_docs/ameer_constitution_v0.1.md",
+            "01_docs/vision.md",
+            "04_memory/founder.md",
+        ],
+        "capabilities": [
+            "الهوية الأساسية",
+            "الرد التنفيذي المباشر",
+            "توضيح دور أمير وعلاقته بالمؤسس",
+        ],
+    }
 }
 
 
@@ -99,6 +115,7 @@ class AmeerOrchestrator:
             "sources",
             "actions",
             "message",
+            "response_data",
         ]
 
     def _validate_agent_output(self, agent_output) -> Dict[str, List[str] | bool]:
@@ -184,8 +201,97 @@ class AmeerOrchestrator:
             "what are your limits",
             "how do you work",
             "who is your founder",
+            "هل تفهمني",
+            "هل تعرفني",
+            "هل انت معي",
+            "هل أنت معي",
+            "do you understand me",
+            "do you know me",
         ]]
         return any(term in q for term in normalized_terms)
+
+    def _capabilities_for_executor(self, executor: str) -> Dict:
+        if executor in CORE_ROUTE_CAPABILITIES:
+            return CORE_ROUTE_CAPABILITIES[executor]
+        return AGENT_CAPABILITIES.get(executor, {})
+
+    def _build_core_identity_payload(self, query: str) -> AgentOutput:
+        qn = self.normalize_fn(query.lower())
+        founder_question = any(term in qn for term in [self.normalize_fn(term.lower()) for term in [
+            "من هي نسيم",
+            "من هو نسيم",
+            "who is naseem",
+            "المؤسس",
+            "founder",
+            "نسيم",
+        ]])
+
+        if founder_question:
+            reply = "نسيم هي المؤسسة وصاحبة القرار النهائي، وأمير يعمل تحت سلطتها التنفيذية المباشرة."
+            facts = {
+                "subject": "founder",
+                "name": "Naseem",
+                "role": "Founder",
+                "authority": "Final decision maker",
+            }
+        elif any(term in qn for term in [self.normalize_fn(term.lower()) for term in [
+            "هل تفهمني",
+            "هل تعرفني",
+            "do you understand me",
+            "do you know me",
+        ]]):
+            reply = "نعم، أفهمك ضمن ما تشاركينه معي، ودوري أن أستوعب هدفك ثم أقرر إن كنت أجيب مباشرة أو أستعين بوكيل متخصص تحت إشرافي."
+            facts = {
+                "subject": "ameer",
+                "name": "Ameer",
+                "role": "Primary Executive Agent",
+                "purpose": "Direct understanding, executive coordination, and supervised delegation",
+            }
+        elif any(term in qn for term in [self.normalize_fn(term.lower()) for term in [
+            "ماذا تستطيع",
+            "what can you do",
+        ]]):
+            reply = "أنا أمير، الوكيل التنفيذي الأساسي للنظام. أفهم الهدف، أحدد المسار، أختار الوكلاء المتخصصين عند الحاجة، ثم أراجع النتائج وأصوغ الرد النهائي باسمي."
+            facts = {
+                "subject": "ameer",
+                "name": "Ameer",
+                "role": "Primary Executive Agent",
+                "purpose": "Executive coordination, planning, and final response ownership",
+            }
+        elif any(term in qn for term in [self.normalize_fn(term.lower()) for term in [
+            "حدود",
+            "limits",
+            "كيف تعمل",
+            "how do you work",
+        ]]):
+            reply = "أعمل كعقل تنفيذي للنظام تحت سلطة المؤسس. أستطيع التحليل والتخطيط والتنسيق، لكن القرارات النهائية والإجراءات المؤثرة تبقى ضمن حدود الدستور وموافقة المؤسس عند الحاجة."
+            facts = {
+                "subject": "ameer",
+                "name": "Ameer",
+                "role": "Primary Executive Agent",
+                "purpose": "Constitution-bound executive reasoning",
+            }
+        else:
+            reply = "أنا أمير، الوكيل التنفيذي الأساسي والعقل الإداري للنظام. المستخدم يتفاعل معي مباشرة، وأنا أقرر متى أجيب بنفسي ومتى أستخدم وكلاء متخصصين تحت إشرافي ثم أقدّم الرد النهائي باسمي."
+            facts = {
+                "subject": "ameer",
+                "name": "Ameer",
+                "role": "Primary Executive Agent",
+                "purpose": "Executive reasoning, supervised delegation, and final response ownership",
+            }
+
+        return AgentOutput(
+            agent="ameer_core",
+            confidence=0.96,
+            reply_draft=reply,
+            sources=CORE_ROUTE_CAPABILITIES["ameer_core"]["primary_sources"],
+            actions=["answer_core_identity"],
+            message="تمت الإجابة من Ameer Core دون تشغيل وكيل متخصص.",
+            response_data={
+                "intent": "identity",
+                "facts": facts,
+            },
+        )
 
     def classify_intent(self, query: str) -> str:
         return self.route_query(query)["intent"]
@@ -373,7 +479,7 @@ class AmeerOrchestrator:
         with open(memory_file, "r", encoding="utf-8") as handle:
             content = handle.read()
 
-        note = f"- {datetime.utcnow().strftime('%Y-%m-%d')} — {fact}"
+        note = f"- {datetime.now(timezone.utc).strftime('%Y-%m-%d')} — {fact}"
         if note in content:
             return {"saved": True, "file": "04_Memory/Preferences.md", "fact": fact, "reason": "already_present"}
 
@@ -395,12 +501,27 @@ class AmeerOrchestrator:
         if semantic_route is not None:
             intent = str(semantic_route["intent"])
             agent = ROUTE_AGENT_MAP.get(intent, "research_agent")
-            capabilities = AGENT_CAPABILITIES.get(agent, {})
+            capabilities = self._capabilities_for_executor(agent)
             return {
                 "intent": intent,
                 "agent": agent,
                 "confidence": float(semantic_route["confidence"]),
                 "reason": str(semantic_route["reason"]),
+                "identity_layer": False,
+                "agent_capabilities": capabilities,
+            }
+
+        # Detect messages that are ONLY the assistant's name (a name-call, not a search query)
+        assistant_name_forms = ["أمير", "امير", "ameer"]
+        q_words_only = re.sub(r"[^\u0621-\u064Aa-zA-Z0-9]", "", q).strip()
+        if q_words_only in [self.normalize_fn(n.lower()) for n in assistant_name_forms]:
+            agent = ROUTE_AGENT_MAP.get("greeting", "greeting_agent")
+            capabilities = self._capabilities_for_executor(agent)
+            return {
+                "intent": "greeting",
+                "agent": agent,
+                "confidence": 0.99,
+                "reason": "matched assistant name call — treating as a call to the assistant, not a search",
                 "identity_layer": False,
                 "agent_capabilities": capabilities,
             }
@@ -469,7 +590,7 @@ class AmeerOrchestrator:
             intent = "knowledge_lookup"
 
         agent = ROUTE_AGENT_MAP.get(intent, "research_agent")
-        capabilities = AGENT_CAPABILITIES.get(agent, {})
+        capabilities = self._capabilities_for_executor(agent)
 
         return {
             "intent": intent,
@@ -831,7 +952,6 @@ class AmeerOrchestrator:
         execution_plan = self._build_execution_plan(query, intent, results)
 
         selected_agent = str(route.get("agent", "research_agent"))
-        agent = self.agents.get(selected_agent, self.agents["research_agent"])
         recovery_used = False
         recovery_reason = None
         context = AgentContext(
@@ -844,12 +964,16 @@ class AmeerOrchestrator:
             active_goal=active_goal,
         )
 
-        try:
-            agent_output = agent.execute(context)
-        except Exception as exc:
-            recovery_used = True
-            recovery_reason = f"agent_execute_failure:{exc}"
-            agent_output = self.agents["recovery_agent"].execute(context)
+        if selected_agent == "ameer_core":
+            agent_output = self._build_core_identity_payload(query)
+        else:
+            agent = self.agents.get(selected_agent, self.agents["research_agent"])
+            try:
+                agent_output = agent.execute(context)
+            except Exception as exc:
+                recovery_used = True
+                recovery_reason = f"agent_execute_failure:{exc}"
+                agent_output = self.agents["recovery_agent"].execute(context)
 
         output_validation = self._validate_agent_output(agent_output)
 
@@ -875,6 +999,9 @@ class AmeerOrchestrator:
             confidence = float(brain_payload.get("confidence", 0.0))
             sources = list(brain_payload.get("sources", []))
             actions = list(brain_payload.get("actions", []))
+            response_data = brain_payload.get("response_data", {})
+            if not isinstance(response_data, dict):
+                response_data = {}
         else:
             draft_reply = "لا توجد نتائج كافية، يلزم توليد رد توضيحي من Executive Brain."
             message = (
@@ -885,6 +1012,7 @@ class AmeerOrchestrator:
             confidence = 0.0
             sources = []
             actions = []
+            response_data = {}
             brain_payload = {
                 "agent": selected_agent_name,
                 "confidence": confidence,
@@ -892,6 +1020,7 @@ class AmeerOrchestrator:
                 "sources": sources,
                 "actions": actions,
                 "message": message,
+                "response_data": response_data,
             }
 
         agent_result = {
@@ -900,6 +1029,7 @@ class AmeerOrchestrator:
             "reply_draft": draft_reply,
             "sources": sources,
             "actions": actions,
+            "response_data": response_data,
         }
 
         response = {
@@ -939,7 +1069,7 @@ class AmeerOrchestrator:
                     {"step": "document_retrieval", "output": len(results)},
                     {"step": "register", "output": {"registry_size": len(self.agents)}},
                     {"step": "select", "output": selected_agent},
-                    {"step": "execute", "output": "ok"},
+                    {"step": "execute", "output": "core_direct" if selected_agent == "ameer_core" else "ok"},
                     {"step": "validate", "output": output_validation},
                     {"step": "send_to_executive_brain", "output": "ready"},
                 ],

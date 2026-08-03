@@ -21,13 +21,18 @@ from __future__ import annotations
 
 import os
 import re
-import urllib.request
-import urllib.error
 import json
 from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+
+try:
+    from adapters.inference_provider import InferenceProvider, OpenAIProvider, OllamaProvider
+except Exception:  # pragma: no cover - fallback when run without package context
+    InferenceProvider = None  # type: ignore[assignment,misc]
+    OpenAIProvider = None  # type: ignore[assignment]
+    OllamaProvider = None  # type: ignore[assignment]
 
 try:
     from openai import OpenAI
@@ -48,6 +53,10 @@ REQUEST_TYPES = {
 }
 
 AGENT_CATALOG = {
+    "ameer_core": {
+        "description": "أمير كور — العقل التنفيذي الأساسي وصاحب الرد النهائي",
+        "keywords": ["أمير", "امير", "من أنت", "من انت", "عرف بنفسك", "ماذا تستطيع", "هل تفهمني"],
+    },
     "greeting_agent": {
         "description": "وكيل الترحيب — بدء المحادثة بنبرة واضحة وطبيعية",
         "keywords": ["مرحبا", "أهلا", "اهلا", "سلام", "hello", "hi", "hey"],
@@ -179,6 +188,18 @@ class ExecutiveBrain:
         self._model_name = os.getenv("AMEER_MODEL", "gpt-4o-mini")
         self._ollama_host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
         self._ollama_model = os.getenv("OLLAMA_MODEL", "smollm:135m")
+
+        # Build ordered provider chain via the formal abstraction when available.
+        self._providers: List[object] = []
+        if OpenAIProvider is not None:
+            api_key = os.getenv("OPENAI_API_KEY")
+            if api_key:
+                self._providers.append(OpenAIProvider(api_key=api_key, model=self._model_name))
+        if OllamaProvider is not None and os.getenv("OLLAMA_ENABLED", "1").lower() in {"1", "true", "yes", "on"}:
+            self._providers.append(OllamaProvider(host=self._ollama_host, model=self._ollama_model))
+
+        # Legacy direct openai client kept for backwards compat with tests that
+        # patch _openai_client directly.
         if OpenAI is not None:
             api_key = os.getenv("OPENAI_API_KEY")
             if api_key:
@@ -205,21 +226,32 @@ class ExecutiveBrain:
 
     def _build_provider_prompt(self, prompt: str, plan: ExecutivePlan | None = None) -> tuple[str, str]:
         system_prompt = (
-            "You are Ameer, a helpful Arabic assistant. "
+            "أنت أمير، الوكيل التنفيذي الأساسي لنسيم والعقل الإداري للنظام.\n\n"
+            "قواعد الشخصية والأسلوب:\n"
+            "- تحدث بلغة طبيعية وودودة، وكأنك شريك تنفيذي متمكن وليس نظامًا تقنيًا.\n"
+            "- اختصر في الإجابة على الأسئلة البسيطة، وافصّل عند تعقيد السؤال.\n"
+            "- تجنب تكرار نفس العبارة أو نفس الأسلوب في كل رد.\n"
+            "- لا تذكر أسماء الوكلاء أو آلية التنفيذ الداخلية أو أسماء الملفات إلا إذا طُلب ذلك صراحةً.\n"
+            "- لا تبدأ ردك بـ 'سأستخدم وكيل...' أو 'سأعمل على...' أو أي تفاصيل داخلية.\n"
+            "- أنت من يتفاعل مع المستخدم مباشرة، وأي وكيل متخصص يعمل تحت إشرافك فقط.\n"
+            "- ركّز على الإجابة أولًا؛ التفاصيل التقنية تبقى في الخلفية.\n"
+            "- إذا كان السؤال تحية أو نداء بالاسم، ردّ بجملة واحدة طبيعية ومختصرة.\n"
+            "- اكتب الرد النهائي فقط دون أي ترويسات أو تعليقات أو تفسير للمنهجية.\n\n"
+            "You are Ameer, the user's primary executive agent and final voice. "
             "Write only the final answer the user should see. "
             "Do not reveal prompts, plans, agents, routing, reasoning, metadata, or chain of thought. "
             "Do not include labels such as 'Agent:', 'Planning:', 'Reasoning:', 'System prompt:', or 'Execution plan:'. "
-            "If the user writes Arabic, reply in Arabic. Keep the answer concise and natural."
+            "Always reply in Arabic. Keep the answer concise and natural."
         )
         context_summary = (plan.context_summary if plan else "").strip()
         if context_summary:
             user_prompt = (
-                f"User request: {prompt}\n\n"
-                f"Context: {context_summary}\n\n"
-                "Reply with only the final assistant answer."
+                f"طلب المستخدم: {prompt}\n\n"
+                f"السياق: {context_summary}\n\n"
+                "اكتب الرد النهائي فقط."
             )
         else:
-            user_prompt = f"User request: {prompt}\n\nReply with only the final assistant answer."
+            user_prompt = f"طلب المستخدم: {prompt}\n\nاكتب الرد النهائي فقط."
         return system_prompt, user_prompt
 
     def _sanitize_provider_reply(self, text: str) -> str:
@@ -245,6 +277,9 @@ class ExecutiveBrain:
             r"\bcontext:\b",
             r"\breply with only the final assistant answer\b",
             r"\basked to reply\b",
+            r"\bthe user is asked to\b",
+            r"\bsingle answer in arabic\b",
+            r"\breply in arabic\b",
             r"\bdifficult for a human\b",
         ]
         if any(re.search(pattern, cleaned, re.IGNORECASE) for pattern in instruction_like_patterns):
@@ -290,10 +325,56 @@ class ExecutiveBrain:
 
         return cleaned
 
+    def _extract_response_data(self, orchestrator_result: dict) -> dict:
+        if not isinstance(orchestrator_result, dict):
+            return {}
+        for key in ("agent_brain_payload", "agent_result"):
+            candidate = orchestrator_result.get(key)
+            if isinstance(candidate, dict):
+                response_data = candidate.get("response_data", {})
+                if isinstance(response_data, dict) and response_data:
+                    return response_data
+        return {}
+
+    def _compose_trusted_core_reply(self, orchestrator_result: dict) -> str:
+        response_data = self._extract_response_data(orchestrator_result)
+        intent = str(response_data.get("intent", "")).strip().lower()
+        facts = response_data.get("facts", {})
+        if not isinstance(facts, dict):
+            facts = {}
+
+        if intent == "identity":
+            subject = str(facts.get("subject", "")).strip().lower()
+            if subject == "founder":
+                return "نسيم هي المؤسسة وصاحبة القرار النهائي في مشروع أمير."
+            return "أنا أمير، الوكيل التنفيذي الأساسي للنظام. أتفاعل معك مباشرة وأستخدم الوكلاء المتخصصين تحت إشرافي عند الحاجة."
+
+        if intent == "greeting":
+            mode = str(facts.get("mode", "")).strip().lower()
+            if mode == "name_call":
+                return "نعم، أنا معك. كيف أساعدك الآن؟"
+            return "مرحبًا نسيم، أنا حاضر. كيف تحبين أن نبدأ؟"
+
+        return ""
+
     def _call_provider(self, prompt: str, plan: ExecutivePlan | None = None) -> Optional[str]:
         system_prompt, user_prompt = self._build_provider_prompt(prompt, plan)
 
-        if self._openai_client:
+        # Try providers via the formal abstraction first.
+        for provider in self._providers:
+            try:
+                content = provider.complete(system_prompt, user_prompt)
+                if content:
+                    sanitized = self._sanitize_provider_reply(content)
+                    if sanitized:
+                        return sanitized
+            except Exception:
+                continue
+
+        # Legacy fallback: direct openai client (used when provider abstraction
+        # is unavailable, e.g. in isolated test environments that patch
+        # _openai_client directly).
+        if self._openai_client and not self._providers:
             try:
                 completion = self._openai_client.chat.completions.create(
                     model=self._model_name,
@@ -307,33 +388,6 @@ class ExecutiveBrain:
                 sanitized = self._sanitize_provider_reply(content)
                 if sanitized:
                     return sanitized
-            except Exception:
-                pass
-
-        if os.getenv("OLLAMA_ENABLED", "1").lower() in {"1", "true", "yes", "on"}:
-            try:
-                payload = json.dumps({
-                    "model": self._ollama_model,
-                    "stream": False,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                }).encode("utf-8")
-                req = urllib.request.Request(
-                    f"{self._ollama_host.rstrip('/')}/api/chat",
-                    data=payload,
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=15) as response:
-                    data = json.loads(response.read().decode("utf-8"))
-                    message = data.get("message") or {}
-                    content = message.get("content") or ""
-                    if isinstance(content, str) and content.strip():
-                        sanitized = self._sanitize_provider_reply(content)
-                        if sanitized:
-                            return sanitized
             except Exception:
                 pass
 
@@ -390,7 +444,11 @@ class ExecutiveBrain:
         q_words = set(re.findall(r"\w+", q))
 
         greeting_tokens = {"مرحبا", "اهلا", "أهلا", "سلام", "hello", "hi", "hey"}
-        if q.strip() in greeting_tokens or any(token in q_words for token in {"hello", "hi", "hey", "مرحبا", "اهلا", "أهلا", "سلام"}):
+        assistant_name_tokens = {"أمير", "امير", "ameer"}
+        q_words_only = re.sub(r"[^\u0621-\u064Aa-zA-Z0-9]", "", q).strip()
+        is_name_call = q_words_only in {self._normalize_for_classification(n.lower()) for n in assistant_name_tokens}
+        is_greeting = q.strip() in greeting_tokens or any(token in q_words for token in {"hello", "hi", "hey", "مرحبا", "اهلا", "أهلا", "سلام"})
+        if is_name_call or is_greeting:
             return PerceptionResult(
                 request_type="question",
                 confidence=1.0,
@@ -491,6 +549,28 @@ class ExecutiveBrain:
     def select_agents(self, query: str, request_type: str) -> AgentSelection:
         """Choose the best specialist agent(s) for this request."""
         q = self._normalize_for_classification(query)
+
+        direct_core_markers = [
+            "من أنت",
+            "من انت",
+            "عرف بنفسك",
+            "ماذا تستطيع",
+            "ما دورك",
+            "كيف تعمل",
+            "هل تفهمني",
+            "هل تعرفني",
+            "who are you",
+            "what can you do",
+            "how do you work",
+            "do you understand me",
+        ]
+        normalized_core_markers = [self._normalize_for_classification(marker) for marker in direct_core_markers]
+        if any(marker in q for marker in normalized_core_markers):
+            return AgentSelection(
+                primary_agent="ameer_core",
+                supporting_agents=[],
+                reasoning="هذا سؤال مباشر عن هوية أمير أو دوره التنفيذي، لذا يتولاه أمير بنفسه دون تفويض.",
+            )
 
         scores: Dict[str, int] = {}
         for agent_id, meta in AGENT_CATALOG.items():
@@ -618,6 +698,8 @@ class ExecutiveBrain:
         root = workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         memory_dir = os.path.join(root, "04_Memory")
         memory_file = os.path.join(memory_dir, "Preferences.md")
+        if not self._check_write_allowed(memory_file, root):
+            return {"saved": False, "file": "04_Memory/Preferences.md", "fact": fact, "reason": "write_not_permitted"}
         os.makedirs(memory_dir, exist_ok=True)
 
         for attempt in range(2):
@@ -711,9 +793,38 @@ class ExecutiveBrain:
             content = "تم إنشاء هذا الملف عبر Ameer."
         return filename, content, operation
 
+    # Directories (relative to workspace root) that file-write operations may target.
+    # Any path outside these prefixes is rejected to prevent path-traversal attacks.
+    _ALLOWED_WRITE_PREFIXES: tuple[str, ...] = (
+        "04_Memory",
+        "09_Assets/web/modules",
+        ".ameer",
+    )
+
+    def _check_write_allowed(self, target_path: str, root: str) -> bool:
+        """Return True only if *target_path* sits inside an allowed write prefix."""
+        abs_root = os.path.abspath(root)
+        abs_target = os.path.abspath(target_path)
+        # Ensure the target is inside the workspace at all.
+        try:
+            rel = os.path.relpath(abs_target, abs_root).replace("\\", "/")
+        except ValueError:
+            return False
+        if rel.startswith(".."):
+            return False
+        return any(rel == prefix or rel.startswith(prefix + "/") for prefix in self._ALLOWED_WRITE_PREFIXES)
+
     def _create_file(self, filename: str, content: str, workspace_root: str | None = None) -> dict:
         root = workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         target_path = os.path.abspath(os.path.join(root, filename))
+        if not self._check_write_allowed(target_path, root):
+            return {
+                "status": "blocked",
+                "path": target_path,
+                "relative_path": os.path.relpath(target_path, root).replace("\\", "/"),
+                "content_preview": content[:120],
+                "reason": "write_not_permitted_outside_allowed_paths",
+            }
         for attempt in range(2):
             try:
                 os.makedirs(os.path.dirname(target_path), exist_ok=True)
@@ -743,6 +854,14 @@ class ExecutiveBrain:
     def _append_to_existing_file(self, filename: str, content: str, workspace_root: str | None = None) -> dict:
         root = workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         target_path = Path(os.path.abspath(os.path.join(root, filename)))
+        if not self._check_write_allowed(str(target_path), root):
+            return {
+                "status": "blocked",
+                "path": str(target_path),
+                "relative_path": os.path.relpath(target_path, root).replace("\\", "/"),
+                "content_preview": content[:120],
+                "reason": "write_not_permitted_outside_allowed_paths",
+            }
         try:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             if target_path.exists():
@@ -1028,7 +1147,19 @@ class ExecutiveBrain:
         result["progress"] = progress
         self._update_step(progress, "analyze_request", "succeeded", "تم تحديد نوع التنفيذ المطلوب")
 
-        should_capture_memory = bool((query or "").strip()) and not any(token in query_lower for token in ["مرحبا", "اهلا", "أهلا", "hello", "hi", "hey"])
+        # Only auto-save when the user explicitly asks to save/remember something.
+        # We use whole-word matching to avoid false positives like "سجلتها" → "سجل".
+        # plan.should_remember may be set by classifier heuristics that can fire on
+        # substring matches; the token check here guards against that.
+        _query_words = set(re.findall(r"\w+", query_lower))
+        _explicit_save_tokens = {"تذكر", "احفظ", "remember", "save"}
+        has_explicit_save_request = bool(_query_words & _explicit_save_tokens)
+        should_capture_memory = (
+            plan is not None
+            and bool(getattr(plan, "should_remember", False))
+            and has_explicit_save_request
+            and bool((query or "").strip())
+        )
         if should_capture_memory:
             self._update_step(progress, "persist_request_memory", "running", "جارٍ حفظ سجل الطلب")
             fact = self._extract_memory_fact(query, plan) or f"محادثة: {(query or '').strip()[:80]}"
@@ -1124,10 +1255,18 @@ class ExecutiveBrain:
             else:
                 result["summary"] = "تم إعداد خطة تنفيذ."
 
-            self._update_step(progress, "persist_execution_outcome", "running", "جارٍ حفظ نتيجة التنفيذ")
-            outcome_memory = self._persist_execution_outcome(query, result, workspace_root=workspace_root)
-            result["outcome_memory"] = outcome_memory
-            self._update_step(progress, "persist_execution_outcome", "succeeded" if outcome_memory.get("saved") else "failed", outcome_memory.get("reason", ""))
+            # Only persist execution outcome for concrete actions (file creation, page
+            # deployment, explicit memory write).  Generic plan-creation steps are
+            # internal bookkeeping and should not be written to the user's memory store.
+            _outcome_worthy_tools = {"file.create", "workspace.page.create", "memory.save"}
+            has_outcome_worthy_action = any(
+                a.get("tool") in _outcome_worthy_tools for a in result["actions"]
+            )
+            if has_outcome_worthy_action:
+                self._update_step(progress, "persist_execution_outcome", "running", "جارٍ حفظ نتيجة التنفيذ")
+                outcome_memory = self._persist_execution_outcome(query, result, workspace_root=workspace_root)
+                result["outcome_memory"] = outcome_memory
+                self._update_step(progress, "persist_execution_outcome", "succeeded" if outcome_memory.get("saved") else "failed", outcome_memory.get("reason", ""))
 
         return result
 
@@ -1159,6 +1298,17 @@ class ExecutiveBrain:
         return ""
 
     def _compose_local_reply(self, query: str, plan: ExecutivePlan, orchestrator_result: dict) -> str:
+        # Greeting / name-call must be handled first, before any clarification gate.
+        if orchestrator_result.get("intent") == "greeting":
+            q_words_only = self._normalize_for_classification(
+                re.sub(r"[^\u0621-\u064Aa-zA-Z0-9]", "", (query or "").lower()).strip()
+            )
+            assistant_name_forms = {"أمير", "امير", "ameer"}
+            normalized_name_forms = {self._normalize_for_classification(n) for n in assistant_name_forms}
+            if q_words_only in normalized_name_forms:
+                return "نعم، أنا معك. كيف أساعدك؟"
+            return "مرحباً! كيف أساعدك؟"
+
         if plan.clarification_needed and plan.clarification_question:
             return f"سؤالك يحتاج توضيح بسيط قبل المتابعة: {plan.clarification_question}"
 
@@ -1194,14 +1344,17 @@ class ExecutiveBrain:
 
         results = orchestrator_result.get("results") or []
         if results:
-            top = results[0]
-            path = top.get("path", "مصدر غير محدد")
-            excerpt = (top.get("excerpt") or "").strip()
-            return (
-                f"{plan.executive_message}\n\n"
-                f"المصدر الأهم: {path}\n"
-                f"{excerpt[:260]}"
-            ).strip()
+            # Only show excerpts that look like real document content, not raw internal
+            # memory-log entries (lines starting with "- YYYY-MM-DD —" as stored in
+            # Preferences.md / User Notes) and not single-line fragments shorter than
+            # 60 characters which carry no useful information for the user.
+            _log_pattern = re.compile(
+                r"^-\s+\d{4}-\d{2}-\d{2}\s+[—\-]\s+(?:محادثة:|Execution Outcome:|حفظ:)",
+            )
+            for r in results:
+                excerpt = (r.get("excerpt") or "").strip()
+                if excerpt and len(excerpt) >= 60 and not _log_pattern.match(excerpt):
+                    return excerpt[:260]
 
         return plan.executive_message or "تمت معالجة الطلب دون تفاصيل إضافية."
 
@@ -1219,17 +1372,44 @@ class ExecutiveBrain:
             guardian_result=orchestrator_result.get("guardian", {}),
         )
 
-        if plan and getattr(plan, "request_type", None) in {"execution", "memory", "planning"}:
+        trusted_core_reply = self._compose_trusted_core_reply(orchestrator_result)
+        if trusted_core_reply:
+            return trusted_core_reply, "executive_brain_core"
+
+        # Greetings are handled locally — no need to call the AI provider.
+        if orchestrator_result.get("intent") == "greeting":
+            reply = self._compose_local_reply(query, plan, orchestrator_result)
+            return reply, "executive_brain_local"
+
+        # For actual file/page execution, surface the concrete result before calling the LLM.
+        # (The LLM cannot report "file created successfully" if it didn't do the creation.)
+        execution_engine = execution_result or {}
+        has_real_execution = (
+            (execution_engine.get("file") or {}).get("status") in {"created", "updated"}
+            or (execution_engine.get("execution") or {}).get("status") == "completed"
+        )
+        if plan and getattr(plan, "request_type", None) == "execution" and has_real_execution:
             execution_summary = self._build_execution_summary(query, plan, execution_result)
             if execution_summary:
                 return execution_summary, "executive_brain_execution"
 
+        # For all other requests (including planning and memory reads) try the LLM first
+        # so the user gets a real, synthesised answer — not a generic internal summary.
         provider_reply = self._call_provider(
             query,
             plan=plan,
         )
         if provider_reply:
             return provider_reply, "executive_brain_provider"
+
+        # LLM unavailable — fall back to execution summary only for concrete execution actions
+        # (file created, page deployed, explicit memory write).  Planning queries fall
+        # through to _compose_local_reply so they can surface real document excerpts
+        # instead of generic internal process steps.
+        if plan and getattr(plan, "request_type", None) in {"execution", "memory"}:
+            execution_summary = self._build_execution_summary(query, plan, execution_result)
+            if execution_summary:
+                return execution_summary, "executive_brain_execution"
 
         reply = self._compose_local_reply(query, plan, orchestrator_result)
         return reply, "executive_brain_local"
@@ -1281,15 +1461,28 @@ class ExecutiveBrain:
         links, context_summary = self.link_context(query, documents)
 
         # 3. Agent Selection
-        hinted_agent = routing_hint.get("agent") if routing_hint else None
-        if hinted_agent and perception.request_type != "execution" and not self._single_brain_mode:
+        if hinted_type == "identity":
             agent_sel = AgentSelection(
-                primary_agent=hinted_agent,
+                primary_agent="ameer_core",
                 supporting_agents=[],
-                reasoning="تم اختيار الوكيل من طبقة Router.",
+                reasoning="أسئلة الهوية والدور التنفيذي تُدار داخل Ameer Core مباشرة.",
+            )
+        elif hinted_type == "greeting":
+            agent_sel = AgentSelection(
+                primary_agent="ameer_core",
+                supporting_agents=[],
+                reasoning="التحية والنداء المباشر لا تحتاج وكيلًا متخصصًا.",
             )
         else:
-            agent_sel = self.select_agents(query, perception.request_type)
+            hinted_agent = routing_hint.get("agent") if routing_hint else None
+            if hinted_agent and perception.request_type != "execution" and not self._single_brain_mode:
+                agent_sel = AgentSelection(
+                    primary_agent=hinted_agent,
+                    supporting_agents=[],
+                    reasoning="تم اختيار المنفذ من طبقة Router مع بقاء أمير صاحب القرار والرد النهائي.",
+                )
+            else:
+                agent_sel = self.select_agents(query, perception.request_type)
 
         # 4. Planning
         plan_type, steps = self.build_plan(query, perception.request_type, agent_sel)
@@ -1312,14 +1505,10 @@ class ExecutiveBrain:
                 f"السبب: {g_reason}. هل تؤكد المتابعة؟"
             )
         else:
-            agent_desc = AGENT_CATALOG.get(agent_sel.primary_agent, {}).get("description", agent_sel.primary_agent)
             if plan_type == "direct":
-                msg = f"سأجيب مباشرة باستخدام {agent_desc}."
+                msg = "حاضر، سأجيبك الآن بصفتي العقل التنفيذي الأساسي."
             else:
-                msg = (
-                    f"هذا الطلب يحتاج {len(steps)} خطوات. "
-                    f"سأبدأ بـ: {steps[0]}."
-                )
+                msg = f"سأعمل على طلبك خطوة بخطوة."
 
         return ExecutivePlan(
             request_type=perception.request_type,

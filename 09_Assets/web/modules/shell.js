@@ -290,58 +290,18 @@
     const results = document.getElementById('results');
     const trace = document.getElementById('trace');
     if (!j) {
-      summary.innerHTML = 'سيظهر ملخص الخطة والنتيجة هنا.';
-      executionResult.innerHTML = 'ستظهر نتيجة التنفيذ الفعلية هنا.';
+      summary.innerHTML = 'سيظهر رد أمير هنا.';
+      executionResult.innerHTML = '';
       executionProgress.innerHTML = '';
-      results.innerHTML = 'لن تظهر المصادر حتى تتم معالجة سؤال.';
+      results.innerHTML = '';
       trace.innerHTML = '';
       return;
     }
-    const brain = j.executive_brain || {};
-    const buildMeta = j.reply_meta || {};
-    const execution = j.execution_engine || {};
-    summary.innerHTML = [
-      brain.executive_message ? `<div>${escapeHtml(brain.executive_message)}</div>` : '',
-      brain.selected_agent ? `<div><b>الوكيل:</b> ${escapeHtml(brain.selected_agent)}</div>` : '',
-      brain.plan_type ? `<div><b>الخطة:</b> ${escapeHtml(brain.plan_type)}</div>` : '',
-      j.intent ? `<div><b>النية:</b> ${escapeHtml(j.intent)}</div>` : '',
-      buildMeta.build_id ? `<div><b>Build ID:</b> ${escapeHtml(buildMeta.build_id)}</div>` : ''
-    ].filter(Boolean).join('') || '<div class="empty-state">لا توجد خطة بعد.</div>';
-
-    const progressItems = Array.isArray(execution.progress) ? execution.progress : [];
-    const verificationItems = Array.isArray(execution.verification) ? execution.verification : [];
-    executionResult.innerHTML = [
-      execution.summary ? `<div><b>النتيجة:</b> ${escapeHtml(execution.summary)}</div>` : '',
-      execution.status ? `<div><b>الحالة:</b> ${escapeHtml(execution.status)}</div>` : '',
-      execution.execution && execution.execution.page_key ? `<div><b>الصفحة:</b> ${escapeHtml(execution.execution.page_key)}</div>` : '',
-      Array.isArray(j.tool_calls) && j.tool_calls.length ? `<div><b>الأدوات:</b> ${escapeHtml(j.tool_calls.join(' , '))}</div>` : ''
-    ].filter(Boolean).join('') || '<div class="empty-state">لا يوجد تنفيذ بعد.</div>';
-
-    executionProgress.innerHTML = [
-      progressItems.length ? `<div><b>التقدّم:</b></div>${progressItems.map(step => `<div style="margin-top:6px;">${escapeHtml(step.status || '-')} · ${escapeHtml(step.name || '-')} ${step.detail ? `- ${escapeHtml(step.detail)}` : ''}</div>`).join('')}` : '',
-      verificationItems.length ? `<div style="margin-top:10px;"><b>التحقق:</b></div>${verificationItems.map(item => `<div style="margin-top:6px;">${escapeHtml(item.status || '-')} · ${escapeHtml(item.name || '-')}</div>`).join('')}` : ''
-    ].filter(Boolean).join('');
-
-    const sources = Array.isArray(j.source_excerpts) ? j.source_excerpts : [];
-    const used = Array.isArray(j.sources_used) ? j.sources_used : [];
-    if (!sources.length && !used.length) {
-      results.innerHTML = '<div class="empty-state">لا توجد مصادر بعد.</div>';
-    } else {
-      const items = [];
-      if (used.length) {
-        items.push(`<div><b>المصادر:</b></div>${used.map(path => `<div>${escapeHtml(path)}</div>`).join('')}`);
-      }
-      sources.forEach(item => items.push(`<div style="margin-top:8px;"><b>${escapeHtml(item.path || '-')}</b><div>${escapeHtml(item.excerpt || '')}</div></div>`));
-      results.innerHTML = items.join('');
-    }
-
-    const orchestrator = j.orchestrator || {};
-    const guardian = j.guardian || {};
-    trace.innerHTML = [
-      `<div><b>الحارس:</b> ${escapeHtml(guardian.status || '-')} · ${escapeHtml(guardian.risk_level || '-')}</div>`,
-      `<div><b>القرار:</b> ${escapeHtml(orchestrator.decision || '-')}</div>`,
-      Array.isArray(orchestrator.trace) ? `<div><b>الخطوات:</b> ${escapeHtml(orchestrator.trace.map(x => x.step || '').filter(Boolean).join(' → '))}</div>` : ''
-    ].filter(Boolean).join('');
+    summary.innerHTML = `<div>${escapeHtml(j.reply || j.message || 'تمت المعالجة.')}</div>`;
+    executionResult.innerHTML = '';
+    executionProgress.innerHTML = '';
+    results.innerHTML = '';
+    trace.innerHTML = '';
   }
 
   function render() {
@@ -403,7 +363,6 @@
     ensureDefaultConversation();
     setConversationTitleFromPrompt(q);
     appendMessage('user', q);
-    appendMessage('system', 'جارٍ تنفيذ الطلب والتحقق من النتيجة...');
     document.getElementById('q').value = '';
     if (btn) {
       btn.disabled = true;
@@ -416,12 +375,10 @@
       });
       const j = await r.json();
       const reply = j.reply || j.message || 'تمت المعالجة.';
-      replaceLastSystemMessage(j.execution_engine && j.execution_engine.summary ? j.execution_engine.summary : 'اكتمل التنفيذ.');
       appendMessage('assistant', reply);
       state.lastReply = j;
       renderDetail(j);
     } catch (e) {
-      replaceLastSystemMessage('فشل التنفيذ.');
       appendMessage('assistant', `حدث خطأ: ${String(e)}`);
     } finally {
       if (btn) {

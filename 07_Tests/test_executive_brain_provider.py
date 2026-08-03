@@ -84,6 +84,67 @@ class ExecutiveBrainProviderTests(unittest.TestCase):
 
         self.assertEqual(sanitized, "")
 
+    def test_identity_replies_use_trusted_core_answer_without_provider(self):
+        brain = ExecutiveBrain(normalize_fn=lambda x: x)
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("provider should not be called for identity replies")
+
+        brain._call_provider = fail_if_called
+
+        plan = brain.think(
+            "من أنت؟",
+            [],
+            guardian_result={"status": "pass", "reason": ""},
+            routing_hint={"intent": "identity", "agent": "ameer_core"},
+        )
+
+        orchestrator_result = {
+            "intent": "identity",
+            "agent_brain_payload": {
+                "response_data": {
+                    "intent": "identity",
+                    "facts": {
+                        "subject": "ameer",
+                    },
+                },
+            },
+            "agent_result": {
+                "response_data": {
+                    "intent": "identity",
+                    "facts": {
+                        "subject": "ameer",
+                    },
+                },
+            },
+        }
+
+        reply, source = brain.compose_final_reply(
+            "من أنت؟",
+            orchestrator_result,
+            [],
+            existing_plan=plan,
+        )
+
+        self.assertEqual(
+            reply,
+            "أنا أمير، الوكيل التنفيذي الأساسي للنظام. أتفاعل معك مباشرة وأستخدم الوكلاء المتخصصين تحت إشرافي عند الحاجة.",
+        )
+        self.assertEqual(source, "executive_brain_core")
+
+    def test_identity_routing_keeps_execution_inside_ameer_core(self):
+        brain = ExecutiveBrain(normalize_fn=lambda x: x)
+
+        plan = brain.think(
+            "من أنت؟",
+            [],
+            guardian_result={"status": "pass", "reason": ""},
+            routing_hint={"intent": "identity", "agent": "ameer_core"},
+        )
+
+        self.assertEqual(plan.selected_agent, "ameer_core")
+        self.assertIn("العقل التنفيذي", plan.executive_message)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -20,6 +20,15 @@ class MemoryAgent(BaseAgent):
                 sources=[str(item.get("path")) for item in context.results if item.get("path")],
                 actions=["recall_memory"],
                 message="تم تجهيز رد ذاكرة من المصادر المتاحة.",
+                response_data={
+                    "intent": "memory",
+                    "facts": {
+                        "status": "found",
+                        "top_source": path,
+                        "top_excerpt": excerpt,
+                        "source_count": len(context.results),
+                    },
+                },
             )
 
         return AgentOutput(
@@ -29,4 +38,10 @@ class MemoryAgent(BaseAgent):
             sources=self.primary_sources,
             actions=["memory_not_found"],
             message="تم إنهاء مسار الذاكرة بدون نتائج.",
+            response_data={
+                "intent": "memory",
+                "facts": {
+                    "status": "not_found",
+                },
+            },
         )

@@ -17,4 +17,10 @@ class RecoveryAgent(BaseAgent):
             sources=self.primary_sources,
             actions=["recover_runtime_path"],
             message="تم تفعيل Recovery Agent لضمان عدم انهيار المسار.",
+            response_data={
+                "intent": "recovery",
+                "facts": {
+                    "status": "fallback_active",
+                },
+            },
         )

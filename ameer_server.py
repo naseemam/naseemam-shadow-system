@@ -4,17 +4,49 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import glob
 import json
+import logging
 import os
 import re
 import sys
+import uuid
 import importlib.util
-import time
-from datetime import datetime
+from datetime import datetime, timezone
+
+from ameer_runtime import (
+    public_runtime_identity,
+    print_runtime_banner,
+    resolve_host,
+    resolve_port,
+    runtime_headers,
+    runtime_metadata,
+)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
+
+# ─── Structured logger ────────────────────────────────────────────────────────
+
+_log_handler = logging.StreamHandler(sys.stdout)
+_log_handler.setFormatter(logging.Formatter("%(message)s"))
+_logger = logging.getLogger("ameer")
+_logger.setLevel(logging.INFO)
+_logger.propagate = False
+if not _logger.handlers:
+    _logger.addHandler(_log_handler)
+
+
+def _log(event: str, level: str = "info", request_id: str | None = None, **kwargs) -> None:
+    record = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "level": level,
+        "event": event,
+    }
+    if request_id:
+        record["request_id"] = request_id
+    record.update(kwargs)
+    getattr(_logger, level, _logger.info)(json.dumps(record, ensure_ascii=False))
 
 
 def load_orchestrator_class():
@@ -40,8 +72,20 @@ def load_executive_brain():
     return module.ExecutiveBrain
 
 
+def load_response_formatter():
+    module_path = os.path.join(os.path.dirname(__file__), "06_Code", "response_formatter.py")
+    spec = importlib.util.spec_from_file_location("response_formatter", module_path)
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["response_formatter"] = module
+    spec.loader.exec_module(module)
+    return module.ResponseFormatter
+
+
 AmeerOrchestrator = load_orchestrator_class()
 ExecutiveBrainClass = load_executive_brain()
+ResponseFormatterClass = load_response_formatter()
 
 app = FastAPI(title="Ameer Local Server")
 
@@ -53,18 +97,36 @@ app.mount("/modules", StaticFiles(directory=MODULES_DIR), name="modules")
 MD_GLOB = os.path.join(ROOT, "**", "*.md")
 WEB_INDEX = os.path.join(ROOT, "09_Assets", "web", "index.html")
 DEBUG_MODE = os.getenv("AMEER_DEBUG", "0").lower() in {"1", "true", "yes", "on"}
-BUILD_ID = os.getenv("AMEER_BUILD_ID") or f"local-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
-START_TIME = datetime.utcnow().isoformat() + "Z"
-
-print(f"[Ameer Boot] build_id={BUILD_ID} started_at={START_TIME}")
+RUNTIME_METADATA = runtime_metadata(workspace_root=ROOT)
 
 def load_documents():
+    # Paths (relative to ROOT) that must be excluded from the knowledge corpus.
+    # Backups may contain outdated or conflicting information; root junk files are not
+    # official documents.
+    _EXCLUDED_PREFIXES = (
+        "08_Backups/",
+        "08_DevTools/",
+        "__pycache__/",
+    )
+    _EXCLUDED_ROOT_FILES = {
+        "hello.txt",
+        "test_from_browser.txt",
+        "meeting.md",
+        "demo_notes.md",
+    }
     docs = []
     for path in glob.glob(MD_GLOB, recursive=True):
         try:
+            rel = os.path.relpath(path, ROOT).replace("\\", "/")
+            # Skip excluded prefixes
+            if any(rel.startswith(prefix) for prefix in _EXCLUDED_PREFIXES):
+                continue
+            # Skip root-level junk files
+            if rel in _EXCLUDED_ROOT_FILES:
+                continue
             with open(path, "r", encoding="utf-8") as f:
                 text = f.read()
-            docs.append({"path": os.path.relpath(path, ROOT).replace('\\', '/'), "text": text})
+            docs.append({"path": rel, "text": text})
         except Exception:
             continue
     return docs
@@ -76,9 +138,9 @@ def refresh_documents():
     return DOCUMENTS
 
 
-def utf8_json_response(payload):
+def utf8_json_response(payload, headers: dict[str, str] | None = None):
     body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-    return Response(content=body, media_type="application/json; charset=utf-8")
+    return Response(content=body, media_type="application/json; charset=utf-8", headers=headers or {})
 
 
 DOCUMENTS = load_documents()
@@ -155,7 +217,7 @@ def _manage_project_context(query: str) -> dict | None:
             name = "موقع جديد"
         existing = [p for p in projects if p.get("name", "").lower() == name.lower()]
         if not existing:
-            projects.append({"name": name, "description": text, "created_at": datetime.utcnow().isoformat()})
+            projects.append({"name": name, "description": text, "created_at": datetime.now(timezone.utc).isoformat()})
             _save_project_store(projects)
         return {"mode": "created", "project": name}
 
@@ -175,9 +237,11 @@ ORCHESTRATOR = AmeerOrchestrator(
 )
 
 EXECUTIVE_BRAIN = ExecutiveBrainClass(normalize_fn=normalize_arabic) if ExecutiveBrainClass else None
+RESPONSE_FORMATTER = ResponseFormatterClass() if ResponseFormatterClass else None
 
 @app.post('/ask')
 async def ask(request: Request):
+    request_id = str(uuid.uuid4())
     raw = await request.body()
     if not raw:
         raise HTTPException(status_code=400, detail="Empty body")
@@ -192,12 +256,10 @@ async def ask(request: Request):
 
     req = AskRequest(**payload)
     q = req.query.strip() if isinstance(req.query, str) else ''
-    if q:
-        print('ASK_QUERY_RAW=' + repr(q))
     if not q:
         raise HTTPException(status_code=400, detail="Empty query")
 
-    print(f"[Ameer Ask] build_id={BUILD_ID} query={q}")
+    _log("ask_received", request_id=request_id, build_id=RUNTIME_METADATA["build_id"])
     autonomy_plan = None
     autonomy_keywords = ["plan", "planning", "memory", "autonom", "workspace", "document", "tool", "improve", "self", "reason"]
     if any(keyword in q.lower() for keyword in autonomy_keywords):
@@ -248,44 +310,22 @@ async def ask(request: Request):
         execution_result=execution_result,
     )
 
-    orchestrator_result["reply"] = final_reply
-    orchestrator_result["execution_engine"] = execution_result
-    orchestrator_result["tool_calls"] = execution_result.get("tool_calls", [])
-    orchestrator_result["reply_meta"] = {
-        "generated_by": reply_source,
-        "single_brain_mode": bool(getattr(EXECUTIVE_BRAIN, "_single_brain_mode", False)),
-        "build_id": BUILD_ID,
-    }
-    orchestrator_result.pop("draft_reply", None)
-    orchestrator_result.pop("reply_owner", None)
+    if not RESPONSE_FORMATTER:
+        raise HTTPException(status_code=500, detail="Response Composer is unavailable")
 
-    results = orchestrator_result.get("results", [])
-    source_paths = [item.get("path") for item in results if item.get("path")]
-    source_excerpts = [
-        {"path": item.get("path"), "excerpt": item.get("excerpt", "")[:180]}
-        for item in results if item.get("path")
-    ]
-
-    if project_manager:
-        orchestrator_result["project_manager"] = project_manager
-    orchestrator_result["executive_brain"] = brain_plan
-    orchestrator_result["sources_used"] = source_paths
-    orchestrator_result["source_excerpts"] = source_excerpts
-    orchestrator_result["context"] = {
-        "resolved_project": orchestrator_result.get("orchestrator", {}).get("resolved_project"),
+    composer_payload = {
+        "reply": final_reply,
+        "message": final_reply,
         "intent": orchestrator_result.get("intent"),
-        "request_type": brain_plan.get("request_type") if brain_plan else None,
-        "selected_agent": brain_plan.get("selected_agent") if brain_plan else None,
+        "agent_result": orchestrator_result.get("agent_result"),
+        "agent_brain_payload": orchestrator_result.get("agent_brain_payload"),
     }
-    if autonomy_plan:
-        orchestrator_result["autonomy_plan"] = autonomy_plan
     if DEBUG_MODE:
         trace_steps = orchestrator_result.get("orchestrator", {}).get("trace", [])
-        orchestrator_generated_by = orchestrator_result.get("reply_meta", {}).get("generated_by")
         routing = orchestrator_result.get("routing") or {}
         orchestrator_agent = orchestrator_result.get("selected_agent")
         executive_agent = brain_plan.get("selected_agent") if brain_plan else None
-        orchestrator_result["debug_trace"] = {
+        debug_trace = {
             "router": {
                 "intent": routing.get("intent"),
                 "agent": routing.get("agent"),
@@ -299,10 +339,28 @@ async def ask(request: Request):
             },
             "executive": {
                 "selected_agent": executive_agent,
-                "reply_generated_by": orchestrator_generated_by,
+                "reply_generated_by": reply_source,
+                "single_brain_mode": bool(getattr(EXECUTIVE_BRAIN, "_single_brain_mode", False)),
             },
         }
-    return utf8_json_response(orchestrator_result)
+        _log("ask_debug_trace", request_id=request_id, trace=debug_trace)
+        if project_manager:
+            _log("ask_project_manager", request_id=request_id, project_manager=project_manager)
+        if autonomy_plan:
+            _log("ask_autonomy_plan", request_id=request_id, autonomy_plan=autonomy_plan)
+
+    try:
+        user_payload = RESPONSE_FORMATTER.format_payload(composer_payload)
+    except Exception:
+        user_payload = {
+            "reply": "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني.",
+            "message": "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني.",
+            "assistant": "أمير",
+        }
+    user_payload.update(public_runtime_identity(workspace_root=ROOT))
+    user_payload["request_id"] = request_id
+    _log("ask_completed", request_id=request_id)
+    return utf8_json_response(user_payload, headers=runtime_headers(workspace_root=ROOT))
 
 @app.get('/docs')
 async def docs():
@@ -377,7 +435,7 @@ def _record_autonomy_plan(query: str, goal: str | None = None) -> dict:
     plan = {
         "query": query.strip(),
         "goal": normalized_goal,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "steps": _derive_autonomy_steps(query),
     }
     plans = _load_plan_store()
@@ -397,11 +455,18 @@ async def store_autonomy_plan(payload: AutonomyPlanRequest):
 
 @app.get('/health')
 async def health():
-    return {
-        "status": "ok",
+    meta = runtime_metadata(workspace_root=ROOT)
+    payload = {
+        "status": meta["status"],
+        "build": meta["build"],
+        "build_id": meta["build_id"],
+        "commit": meta["commit"],
+        "host": meta["host"],
+        "port": meta["port"],
+        "started_at": meta["started_at"],
+        "pid": meta["pid"],
+        "entrypoint": meta["entrypoint"],
         "documents": len(DOCUMENTS),
-        "build_id": BUILD_ID,
-        "started_at": START_TIME,
         "ameer_status": {
             "Server": "Online",
             "Documents": "Ready",
@@ -410,6 +475,7 @@ async def health():
             "Projects": "Ready",
         },
     }
+    return utf8_json_response(payload, headers=runtime_headers(workspace_root=ROOT))
 
 
 @app.get('/documents/search')
@@ -439,7 +505,7 @@ async def save_memory(payload: MemoryRequest):
             handle.write("# Preferences\n\n")
     with open(memory_file, "r", encoding="utf-8") as handle:
         content = handle.read()
-    note = f"- {datetime.utcnow().strftime('%Y-%m-%d')} — {text}"
+    note = f"- {datetime.now(timezone.utc).strftime('%Y-%m-%d')} — {text}"
     if note in content:
         return {"saved": True, "updated": False, "note": note, "file": "04_Memory/Preferences.md"}
     if "## User Notes" not in content:
@@ -467,7 +533,7 @@ async def create_project(payload: ProjectRequest):
     existing = [p for p in projects if p.get("name", "").lower() == name.lower()]
     if existing:
         return {"created": False, "projects": projects}
-    projects.append({"name": name, "description": payload.description or "", "created_at": datetime.utcnow().isoformat()})
+    projects.append({"name": name, "description": payload.description or "", "created_at": datetime.now(timezone.utc).isoformat()})
     _save_project_store(projects)
     return {"created": True, "projects": projects}
 
@@ -480,6 +546,22 @@ async def home():
     except FileNotFoundError:
         return HTMLResponse(content="<h1>Ameer</h1><p>Web UI not found. Create 09_Assets/web/index.html</p>", media_type="text/html; charset=utf-8")
 
+
+@app.on_event("startup")
+async def log_runtime_banner():
+    meta = runtime_metadata(workspace_root=ROOT)
+    _log(
+        "runtime_started",
+        build=meta["build"],
+        commit=meta["commit"],
+        host=meta["host"],
+        port=meta["port"],
+        pid=meta["pid"],
+        started_at=meta["started_at"],
+        documents=len(DOCUMENTS),
+    )
+
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run('ameer_server:app', host='127.0.0.1', port=8000, reload=True)
+    os.environ.setdefault("AMEER_PORT", str(resolve_port()))
+    uvicorn.run('ameer_server:app', host=resolve_host(), port=resolve_port(), reload=False)

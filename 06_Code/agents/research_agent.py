@@ -18,6 +18,13 @@ class ResearchAgent(BaseAgent):
                 sources=self.primary_sources,
                 actions=["follow_up_guidance"],
                 message="تم تجهيز سياق متابعة الجلسة.",
+                response_data={
+                    "intent": "research",
+                    "facts": {
+                        "status": "follow_up",
+                        "active_goal": context.active_goal,
+                    },
+                },
             )
 
         if context.conversation_state.get("plan_shifted") and context.active_goal:
@@ -31,6 +38,13 @@ class ResearchAgent(BaseAgent):
                 sources=self.primary_sources,
                 actions=["plan_shift_guidance"],
                 message="تم تجهيز إشارة التحول في الخطة.",
+                response_data={
+                    "intent": "research",
+                    "facts": {
+                        "status": "plan_shifted",
+                        "active_goal": context.active_goal,
+                    },
+                },
             )
 
         if context.results:
@@ -48,6 +62,16 @@ class ResearchAgent(BaseAgent):
                 sources=[str(item.get("path")) for item in context.results if item.get("path")],
                 actions=["synthesize_workspace_knowledge"],
                 message="تم تجهيز مسودة رد منسقة اعتمادًا على الاسترجاع.",
+                response_data={
+                    "intent": "research",
+                    "facts": {
+                        "status": "found",
+                        "goal": context.execution_plan.get("goal", ""),
+                        "steps": context.execution_plan.get("steps", []),
+                        "top_source": path,
+                        "top_excerpt": excerpt,
+                    },
+                },
             )
 
         return AgentOutput(
@@ -57,4 +81,10 @@ class ResearchAgent(BaseAgent):
             sources=self.primary_sources,
             actions=["request_clarification"],
             message="تم إنهاء التنسيق بدون نتائج كافية.",
+            response_data={
+                "intent": "research",
+                "facts": {
+                    "status": "not_found",
+                },
+            },
         )

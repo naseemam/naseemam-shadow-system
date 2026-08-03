@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Dict, List
+from dataclasses import dataclass, field
+from typing import Any, Dict, List
 
 
 @dataclass
@@ -21,6 +21,7 @@ class AgentOutput:
     sources: List[str]
     actions: List[str]
     message: str
+    response_data: Dict[str, Any] = field(default_factory=dict)
 
 
 class BaseAgent:
