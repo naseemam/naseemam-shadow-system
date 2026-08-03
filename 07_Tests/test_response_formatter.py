@@ -1,0 +1,53 @@
+import importlib.util
+import os
+import sys
+import unittest
+
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+MODULE_PATH = os.path.join(ROOT, "06_Code", "response_formatter.py")
+SPEC = importlib.util.spec_from_file_location("response_formatter", MODULE_PATH)
+MODULE = importlib.util.module_from_spec(SPEC)
+sys.modules["response_formatter"] = MODULE
+assert SPEC.loader is not None
+SPEC.loader.exec_module(MODULE)
+ResponseFormatter = MODULE.ResponseFormatter
+
+
+class ResponseFormatterTests(unittest.TestCase):
+    def test_format_text_blocks_internal_labels(self):
+        formatter = ResponseFormatter()
+        raw = (
+            "User request: اشرح الفكرة\n"
+            "Context: internal instructions\n"
+            "The answer is: عبر وكيل research_agent في /home/runner/work/file.py\n"
+            "أكيد، هذه خلاصة واضحة للمستخدم."
+        )
+        result = formatter.format_text(raw)
+
+        self.assertIn("خلاصة واضحة", result)
+        self.assertNotIn("User request", result)
+        self.assertNotIn("Context", result)
+        self.assertNotIn("The answer is", result)
+        self.assertNotIn("research_agent", result)
+        self.assertNotIn("/home/runner/work/file.py", result)
+
+    def test_format_payload_sanitizes_reply_and_removes_debug_trace(self):
+        formatter = ResponseFormatter()
+        payload = {
+            "reply": "The answer is: تم التنفيذ.",
+            "execution_engine": {"summary": "Debug: updated /tmp/example.py"},
+            "executive_brain": {"executive_message": "Context: test"},
+            "debug_trace": {"step": "internal"},
+        }
+
+        result = formatter.format_payload(payload)
+
+        self.assertEqual(result["reply"], "تم التنفيذ.")
+        self.assertNotIn("debug_trace", result)
+        self.assertNotIn("/tmp/example.py", result["execution_engine"]["summary"])
+        self.assertNotIn("Context", result["executive_brain"]["executive_message"])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -40,8 +40,20 @@ def load_executive_brain():
     return module.ExecutiveBrain
 
 
+def load_response_formatter():
+    module_path = os.path.join(os.path.dirname(__file__), "06_Code", "response_formatter.py")
+    spec = importlib.util.spec_from_file_location("response_formatter", module_path)
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["response_formatter"] = module
+    spec.loader.exec_module(module)
+    return module.ResponseFormatter
+
+
 AmeerOrchestrator = load_orchestrator_class()
 ExecutiveBrainClass = load_executive_brain()
+ResponseFormatterClass = load_response_formatter()
 
 app = FastAPI(title="Ameer Local Server")
 
@@ -175,6 +187,7 @@ ORCHESTRATOR = AmeerOrchestrator(
 )
 
 EXECUTIVE_BRAIN = ExecutiveBrainClass(normalize_fn=normalize_arabic) if ExecutiveBrainClass else None
+RESPONSE_FORMATTER = ResponseFormatterClass() if ResponseFormatterClass else None
 
 @app.post('/ask')
 async def ask(request: Request):
@@ -302,6 +315,8 @@ async def ask(request: Request):
                 "reply_generated_by": orchestrator_generated_by,
             },
         }
+    if RESPONSE_FORMATTER:
+        orchestrator_result = RESPONSE_FORMATTER.format_payload(orchestrator_result)
     return utf8_json_response(orchestrator_result)
 
 @app.get('/docs')
