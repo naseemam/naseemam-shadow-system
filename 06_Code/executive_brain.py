@@ -390,7 +390,11 @@ class ExecutiveBrain:
         q_words = set(re.findall(r"\w+", q))
 
         greeting_tokens = {"مرحبا", "اهلا", "أهلا", "سلام", "hello", "hi", "hey"}
-        if q.strip() in greeting_tokens or any(token in q_words for token in {"hello", "hi", "hey", "مرحبا", "اهلا", "أهلا", "سلام"}):
+        assistant_name_tokens = {"أمير", "امير", "ameer"}
+        q_words_only = re.sub(r"[^\u0621-\u064Aa-zA-Z0-9]", "", q).strip()
+        is_name_call = q_words_only in {self._normalize_for_classification(n.lower()) for n in assistant_name_tokens}
+        is_greeting = q.strip() in greeting_tokens or any(token in q_words for token in {"hello", "hi", "hey", "مرحبا", "اهلا", "أهلا", "سلام"})
+        if is_name_call or is_greeting:
             return PerceptionResult(
                 request_type="question",
                 confidence=1.0,
@@ -1161,6 +1165,14 @@ class ExecutiveBrain:
     def _compose_local_reply(self, query: str, plan: ExecutivePlan, orchestrator_result: dict) -> str:
         if plan.clarification_needed and plan.clarification_question:
             return f"سؤالك يحتاج توضيح بسيط قبل المتابعة: {plan.clarification_question}"
+
+        if orchestrator_result.get("intent") == "greeting":
+            q_words_only = re.sub(r"[^\u0621-\u064Aa-zA-Z0-9]", "", (query or "").lower()).strip()
+            assistant_name_forms = {"أمير", "امير", "ameer"}
+            normalized_name_forms = {self._normalize_for_classification(n) for n in assistant_name_forms}
+            if q_words_only in normalized_name_forms:
+                return "نعم، أنا معك. كيف أساعدك؟"
+            return "مرحباً! كيف أساعدك؟"
 
         if (getattr(plan, "request_type", None) == "memory") and (orchestrator_result.get("intent") == "memory"):
             memory_text = ""

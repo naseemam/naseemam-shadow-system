@@ -405,6 +405,21 @@ class AmeerOrchestrator:
                 "agent_capabilities": capabilities,
             }
 
+        # Detect messages that are ONLY the assistant's name (a name-call, not a search query)
+        assistant_name_forms = ["أمير", "امير", "ameer"]
+        q_words_only = re.sub(r"[^\u0621-\u064Aa-zA-Z0-9]", "", q).strip()
+        if q_words_only in [self.normalize_fn(n.lower()) for n in assistant_name_forms]:
+            agent = ROUTE_AGENT_MAP.get("greeting", "greeting_agent")
+            capabilities = AGENT_CAPABILITIES.get(agent, {})
+            return {
+                "intent": "greeting",
+                "agent": agent,
+                "confidence": 0.99,
+                "reason": "matched assistant name call — treating as a call to the assistant, not a search",
+                "identity_layer": False,
+                "agent_capabilities": capabilities,
+            }
+
         greeting_terms = ["مرحبا", "اهلا", "أهلا", "السلام عليكم", "هلا", "hello", "hi", "hey"]
         identity_terms = [
             "من هي نسيم",
