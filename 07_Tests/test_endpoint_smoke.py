@@ -83,28 +83,24 @@ class AskEndpointSmokeTests(unittest.TestCase):
                 cls.server.kill()
                 cls.server.wait(timeout=5)
 
-    def test_ask_endpoint_returns_runtime_contract(self):
+    def test_ask_endpoint_returns_user_safe_contract(self):
         status_code, data = _http_post_json(
             f"{self.base_url}/ask",
             {"query": "مرحبا", "max_results": 3},
         )
         self.assertEqual(status_code, 200)
 
-        self.assertIn("routing", data)
-        self.assertIsInstance(data["routing"], dict)
-
-        self.assertIn("selected_agent", data)
-        self.assertIsInstance(data["selected_agent"], str)
-
-        self.assertIn("agent_result", data)
-        self.assertIsInstance(data["agent_result"], dict)
-
-        self.assertIn("agent_brain_payload", data)
-        self.assertIsInstance(data["agent_brain_payload"], dict)
-
         self.assertIn("reply", data)
         self.assertIsInstance(data["reply"], str)
         self.assertTrue(data["reply"].strip())
+        self.assertEqual(data.get("assistant"), "أمير")
+        self.assertEqual(data.get("message"), data.get("reply"))
+        self.assertNotIn("routing", data)
+        self.assertNotIn("selected_agent", data)
+        self.assertNotIn("agent_result", data)
+        self.assertNotIn("agent_brain_payload", data)
+        self.assertNotIn("execution_engine", data)
+        self.assertNotIn("debug_trace", data)
 
 
 if __name__ == "__main__":

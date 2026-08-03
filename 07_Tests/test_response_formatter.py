@@ -44,9 +44,11 @@ class ResponseFormatterTests(unittest.TestCase):
         result = formatter.format_payload(payload)
 
         self.assertEqual(result["reply"], "تم التنفيذ.")
+        self.assertEqual(result["message"], "تم التنفيذ.")
+        self.assertEqual(result["assistant"], "أمير")
+        self.assertNotIn("execution_engine", result)
+        self.assertNotIn("executive_brain", result)
         self.assertNotIn("debug_trace", result)
-        self.assertNotIn("/tmp/example.py", result["execution_engine"]["summary"])
-        self.assertNotIn("Context", result["executive_brain"]["executive_message"])
 
 
 if __name__ == "__main__":

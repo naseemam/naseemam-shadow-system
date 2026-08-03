@@ -1,4 +1,3 @@
-import copy
 import re
 from typing import Any
 
@@ -29,6 +28,14 @@ class ResponseFormatter:
             r"(?<!\w)(?:[A-Za-z]:\\|/)?(?:[\w.-]+/)+[\w.-]+\.(?:py|md|txt|json|js|ts|tsx|css|html|ya?ml|toml|ini|log)\b",
             re.IGNORECASE,
         )
+        self._filename_pattern = re.compile(
+            r"\b[\w.-]+\.(?:py|md|txt|json|js|ts|tsx|css|html|ya?ml|toml|ini|log)\b",
+            re.IGNORECASE,
+        )
+        self._internal_word_pattern = re.compile(
+            r"\b(debug|trace|routing|selected_agent|agent|prompt|instruction|execution|tool calls?|metadata)\b",
+            re.IGNORECASE,
+        )
 
     def _sanitize_line(self, line: str) -> str:
         cleaned = (line or "").strip()
@@ -42,7 +49,9 @@ class ResponseFormatter:
             return ""
 
         cleaned = self._path_pattern.sub("", cleaned)
+        cleaned = self._filename_pattern.sub("", cleaned)
         cleaned = self._agent_pattern.sub("", cleaned)
+        cleaned = self._internal_word_pattern.sub("", cleaned)
         cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" -:|")
         return cleaned.strip()
 
@@ -59,31 +68,13 @@ class ResponseFormatter:
 
         return formatted or self._FALLBACK_REPLY
 
-    def _sanitize_execution_engine(self, execution_engine: Any) -> Any:
-        if not isinstance(execution_engine, dict):
-            return execution_engine
-        sanitized = copy.deepcopy(execution_engine)
-        if isinstance(sanitized.get("summary"), str):
-            sanitized["summary"] = self.format_text(sanitized["summary"])
-        if isinstance(sanitized.get("error"), str):
-            sanitized["error"] = self.format_text(sanitized["error"])
-        return sanitized
-
     def format_payload(self, payload: dict) -> dict:
         if not isinstance(payload, dict):
             return {"reply": self._FALLBACK_REPLY}
 
-        formatted = copy.deepcopy(payload)
-        formatted["reply"] = self.format_text(formatted.get("reply", ""))
-        if isinstance(formatted.get("message"), str):
-            formatted["message"] = self.format_text(formatted["message"])
-        if isinstance(formatted.get("execution_engine"), dict):
-            formatted["execution_engine"] = self._sanitize_execution_engine(formatted["execution_engine"])
-        if isinstance(formatted.get("executive_brain"), dict):
-            executive = copy.deepcopy(formatted["executive_brain"])
-            if isinstance(executive.get("executive_message"), str):
-                executive["executive_message"] = self.format_text(executive["executive_message"])
-            formatted["executive_brain"] = executive
-
-        formatted.pop("debug_trace", None)
-        return formatted
+        safe_reply = self.format_text(payload.get("reply", "") or payload.get("message", ""))
+        return {
+            "reply": safe_reply,
+            "message": safe_reply,
+            "assistant": "أمير",
+        }

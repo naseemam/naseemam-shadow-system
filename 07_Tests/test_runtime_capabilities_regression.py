@@ -1,5 +1,3 @@
-import json
-import os
 import unittest
 from pathlib import Path
 
@@ -29,11 +27,14 @@ class RuntimeCapabilitiesRegressionTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        file_result = payload.get("execution_engine", {}).get("file") or {}
-        self.assertEqual(file_result.get("status"), "updated")
         self.assertIn("السطر الثاني", self.target.read_text(encoding="utf-8"))
+        self.assertIn("reply", payload)
+        self.assertEqual(payload.get("assistant"), "أمير")
+        self.assertNotIn("execution_engine", payload)
+        self.assertNotIn("routing", payload)
+        self.assertNotIn("selected_agent", payload)
 
-    def test_memory_recall_request_is_routed_as_memory(self):
+    def test_memory_recall_request_uses_user_safe_contract(self):
         self.client.post("/memory", json={"text": "كلمة السر للمشروع هي sky-123"})
         response = self.client.post(
             "/ask",
@@ -41,7 +42,10 @@ class RuntimeCapabilitiesRegressionTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload.get("context", {}).get("intent"), "memory")
+        self.assertIn("reply", payload)
+        self.assertEqual(payload.get("assistant"), "أمير")
+        self.assertNotIn("context", payload)
+        self.assertNotIn("agent_result", payload)
 
 
 if __name__ == "__main__":

@@ -290,34 +290,17 @@
     const results = document.getElementById('results');
     const trace = document.getElementById('trace');
     if (!j) {
-      summary.innerHTML = 'سيظهر ملخص الخطة والنتيجة هنا.';
-      executionResult.innerHTML = 'ستظهر نتيجة التنفيذ الفعلية هنا.';
+      summary.innerHTML = 'سيظهر رد أمير هنا.';
+      executionResult.innerHTML = '';
       executionProgress.innerHTML = '';
-      results.innerHTML = 'لن تظهر المصادر حتى تتم معالجة سؤال.';
+      results.innerHTML = '';
       trace.innerHTML = '';
       return;
     }
-    const brain = j.executive_brain || {};
-    const execution = j.execution_engine || {};
-    summary.innerHTML = [
-      brain.executive_message ? `<div>${escapeHtml(brain.executive_message)}</div>` : '',
-      brain.plan_type ? `<div><b>الخطة:</b> ${escapeHtml(brain.plan_type)}</div>` : ''
-    ].filter(Boolean).join('') || '<div class="empty-state">لا توجد خطة بعد.</div>';
-
-    const progressItems = Array.isArray(execution.progress) ? execution.progress : [];
-    const verificationItems = Array.isArray(execution.verification) ? execution.verification : [];
-    executionResult.innerHTML = [
-      execution.summary ? `<div><b>النتيجة:</b> ${escapeHtml(execution.summary)}</div>` : '',
-      execution.status ? `<div><b>الحالة:</b> ${escapeHtml(execution.status)}</div>` : '',
-      execution.execution && execution.execution.page_key ? `<div><b>الصفحة:</b> ${escapeHtml(execution.execution.page_key)}</div>` : ''
-    ].filter(Boolean).join('') || '<div class="empty-state">لا يوجد تنفيذ بعد.</div>';
-
-    executionProgress.innerHTML = [
-      progressItems.length ? `<div><b>التقدّم:</b></div>${progressItems.map(step => `<div style="margin-top:6px;">${escapeHtml(step.status || '-')} · ${escapeHtml(step.name || '-')} ${step.detail ? `- ${escapeHtml(step.detail)}` : ''}</div>`).join('')}` : '',
-      verificationItems.length ? `<div style="margin-top:10px;"><b>التحقق:</b></div>${verificationItems.map(item => `<div style="margin-top:6px;">${escapeHtml(item.status || '-')} · ${escapeHtml(item.name || '-')}</div>`).join('')}` : ''
-    ].filter(Boolean).join('');
-
-    results.innerHTML = '<div class="empty-state">يتم عرض الإجابة النهائية فقط للمستخدم.</div>';
+    summary.innerHTML = `<div>${escapeHtml(j.reply || j.message || 'تمت المعالجة.')}</div>`;
+    executionResult.innerHTML = '';
+    executionProgress.innerHTML = '';
+    results.innerHTML = '';
     trace.innerHTML = '';
   }
 
@@ -380,7 +363,6 @@
     ensureDefaultConversation();
     setConversationTitleFromPrompt(q);
     appendMessage('user', q);
-    appendMessage('system', 'جارٍ تنفيذ الطلب والتحقق من النتيجة...');
     document.getElementById('q').value = '';
     if (btn) {
       btn.disabled = true;
@@ -393,12 +375,10 @@
       });
       const j = await r.json();
       const reply = j.reply || j.message || 'تمت المعالجة.';
-      replaceLastSystemMessage(j.execution_engine && j.execution_engine.summary ? j.execution_engine.summary : 'اكتمل التنفيذ.');
       appendMessage('assistant', reply);
       state.lastReply = j;
       renderDetail(j);
     } catch (e) {
-      replaceLastSystemMessage('فشل التنفيذ.');
       appendMessage('assistant', `حدث خطأ: ${String(e)}`);
     } finally {
       if (btn) {
