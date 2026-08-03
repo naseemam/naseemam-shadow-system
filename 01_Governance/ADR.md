@@ -14,6 +14,14 @@ It should be updated whenever a high-impact architectural decision is adopted, c
 - When a decision changes later, add a new record rather than silently rewriting history.
 - Architecture documents describe the system design; this ADR explains why certain key choices were made.
 
+## Constitutional Constraint / القيد الدستوري
+
+**ADR cannot override the Executive Constitution.**
+
+No architectural decision recorded here may contradict, bypass, or supersede any principle, contract, or rule defined in `01_Docs/Executive_Constitution_v1.0.md`. If a proposed architectural decision conflicts with the Constitution, the Constitution takes precedence. The decision must be revised, or a formal Founder-approved governance change must be initiated first.
+
+لا يجوز لأي قرار معماري مسجل هنا أن يتعارض مع الدستور التنفيذي أو يتجاوزه أو يحل محله. إذا تعارض أي قرار معماري مقترح مع الدستور، فالدستور هو المرجع. يجب مراجعة القرار، أو البدء بتغيير رسمي في الحوكمة يعتمده المؤسس أولاً.
+
 ## Decision Record Format
 
 Each decision should include:

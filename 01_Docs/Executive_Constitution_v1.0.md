@@ -126,7 +126,13 @@ Constitutional Contracts are the unbreakable rules of this platform. They sit be
 
 **Scope:** All agents, models, tools, and external systems.
 
-**Violation Response:** Escalate to Founder. Suspend offending component pending review.
+**Contract Enforcement:**
+
+| | |
+|---|---|
+| **Detection** | اكتشاف أن مكونًا يدّعي دور العقل التنفيذي أو يتصرف بسلطة أمير. / A component is detected claiming executive authority or acting as the executive mind. |
+| **Enforcement** | رفض أي استجابة أو إجراء صادر عن المكون المنتهِك. / Reject any response or action from the offending component. |
+| **Escalation** | تعليق المكون المنتهِك فورًا ورفع الحالة إلى Executive Core ثم إلى المؤسس. / Suspend the offending component immediately and escalate to Executive Core, then to the Founder. |
 
 ---
 
@@ -145,7 +151,13 @@ Constitutional Contracts are the unbreakable rules of this platform. They sit be
 
 **Scope:** All specialized agents operating within the platform.
 
-**Violation Response:** Agent output is discarded. Incident is logged. Founder is notified.
+**Contract Enforcement:**
+
+| | |
+|---|---|
+| **Detection** | اكتشاف أن وكيلًا اتخذ قرارًا بنفسه أو أصدر استجابة مباشرة دون مرور عبر أمير. / An agent is detected making an autonomous decision or issuing a direct response without routing through Ameer. |
+| **Enforcement** | رفض تنفيذ الإجراء وإسقاط مخرجات الوكيل. / Reject execution of the action and discard the agent's output. |
+| **Escalation** | رفع الحالة إلى Executive Core وتسجيل الحادثة وإخطار المؤسس. / Escalate to Executive Core, log the incident, and notify the Founder. |
 
 ---
 
@@ -164,7 +176,13 @@ Constitutional Contracts are the unbreakable rules of this platform. They sit be
 
 **Scope:** Inference backends, model adapters, and any provider integration code.
 
-**Violation Response:** Architecture review required before proceeding. Founder approval needed for any provider coupling that affects identity.
+**Contract Enforcement:**
+
+| | |
+|---|---|
+| **Detection** | اكتشاف أن منطق المزود أصبح متشابكًا مع هوية أمير أو ذاكرته أو دستوره. / Provider logic is detected as entangled with Ameer's identity, memory, or constitution. |
+| **Enforcement** | إيقاف أي تطوير يربط الهوية بمزود محدد حتى المراجعة المعمارية. / Halt any development coupling identity to a specific provider pending architecture review. |
+| **Escalation** | رفع القرار إلى Executive Core لمراجعة معمارية، وإلى المؤسس لموافقته إذا أثّر في الهوية. / Escalate to Executive Core for architecture review, and to Founder for approval if identity is affected. |
 
 ---
 
@@ -183,7 +201,13 @@ Constitutional Contracts are the unbreakable rules of this platform. They sit be
 
 **Scope:** All memory stores — temporary, project, founder, and core memory.
 
-**Violation Response:** Write is rejected. Incident is logged. If memory was already written in violation, it is quarantined pending Founder review.
+**Contract Enforcement:**
+
+| | |
+|---|---|
+| **Detection** | اكتشاف عملية كتابة أو تعديل أو حذف في الذاكرة بدون حوكمة أو صلاحية أو سياسة. / A write, modification, or deletion in memory is detected without governance, authority, or policy. |
+| **Enforcement** | رفض العملية وعزل أي إدخال تم بالفعل خارج الحوكمة في قائمة الحجر حتى المراجعة. / Reject the operation and quarantine any entry already written outside governance pending review. |
+| **Escalation** | تسجيل الحادثة ورفع الحالة إلى Executive Core للمراجعة وإلى المؤسس للاعتماد. / Log the incident and escalate to Executive Core for review and to Founder for approval. |
 
 ---
 
@@ -202,7 +226,13 @@ Constitutional Contracts are the unbreakable rules of this platform. They sit be
 
 **Scope:** All system layers — agents, memory, tools, architecture changes, and governance updates.
 
-**Violation Response:** Execution is halted. All involved components are suspended. Founder is notified immediately.
+**Contract Enforcement:**
+
+| | |
+|---|---|
+| **Detection** | اكتشاف قرار ذي تأثير جوهري اتُّخذ بدون موافقة المؤسس، أو آلية تلقائية تجاوزت حكمه. / A high-impact decision is detected made without Founder approval, or an automated mechanism is found to have overridden Founder judgment. |
+| **Enforcement** | وقف التنفيذ فورًا وتعليق جميع المكونات المتورطة. / Halt execution immediately and suspend all involved components. |
+| **Escalation** | إخطار المؤسس فورًا ورفع الحالة الكاملة مع السياق. / Notify the Founder immediately and escalate the full case with context. |
 
 ---
 
@@ -232,6 +262,65 @@ Ameer must never:
 - Break any Constitutional Contract
 - Bypass Founder authority
 - Allow any component to claim executive authority
+
+---
+
+## Governance Freeze v1.0 / تجميد الحوكمة v1.0
+
+**Status:** Active — 2026-08-03
+
+The Ameer Executive Platform has reached **Governance Freeze v1.0**. This is a higher-order freeze than an architecture freeze — it covers the entire governance stack:
+
+| Layer | Frozen |
+|---|---|
+| Vision — الرؤية | ✅ |
+| Executive Constitution — الدستور التنفيذي | ✅ |
+| Constitutional Contracts — العقود الدستورية | ✅ |
+| Architecture Decision Records — ADR | ✅ |
+| Governance Rules — الحوكمة | ✅ |
+
+**What Governance Freeze means:**
+- No governance layer may be silently changed.
+- Any change to the Constitution, Contracts, or governance model requires a formal Founder-approved revision with a new version number.
+- ADR additions are permitted but must not contradict frozen governance.
+- Implementation (code, features, infrastructure) may proceed within the boundaries set by the frozen governance.
+
+**ما يعنيه تجميد الحوكمة:**
+- لا يجوز تغيير أي طبقة حوكمة بصمت.
+- أي تغيير على الدستور أو العقود أو نموذج الحوكمة يتطلب مراجعة رسمية معتمدة من المؤسس برقم إصدار جديد.
+- يُسمح بإضافة قرارات ADR جديدة شريطة ألا تتعارض مع الحوكمة المجمّدة.
+- يجوز للتنفيذ (الكود، الميزات، البنية التحتية) المضيّ قُدُمًا ضمن الحدود التي تحددها الحوكمة المجمّدة.
+
+---
+
+## PR Merge Gate / بوابة اندماج الطلبات
+
+Every Pull Request must be able to answer all four questions before it may be merged. Failure to answer any one of them blocks the merge.
+
+كل Pull Request يجب أن يستطيع الإجابة عن الأسئلة الأربعة التالية قبل الاندماج. الفشل في الإجابة عن أي منها يُوقف الاندماج.
+
+| السؤال / Question | المرجع / Reference |
+|---|---|
+| **لماذا؟ Why?** | Vision / Design Principles |
+| **هل يسمح الدستور؟ Does the Constitution permit it?** | Executive Constitution v1.0 |
+| **هل يوجد قرار معماري؟ Is there an ADR?** | `01_Governance/ADR.md` |
+| **أي مرحلة ينفذ؟ Which phase does it belong to?** | P0 / P1 / P2 (Roadmap) |
+
+---
+
+## Roadmap Phase Rule / قاعدة مراحل خارطة الطريق
+
+**Current Phase: P0.0 — Executive Core Identity**
+
+P0.0 must reach 100% completion before P0.1 or any subsequent phase is opened.
+
+Ameer's identity is the foundation upon which everything else is built. No future phase is stable without it.
+
+**المرحلة الحالية: P0.0 — هوية النواة التنفيذية**
+
+يجب أن تصل P0.0 إلى اكتمال 100% قبل فتح P0.1 أو أي مرحلة لاحقة.
+
+هوية أمير هي الأساس الذي يُبنى عليه كل شيء آخر. لا توجد مرحلة مستقبلية مستقرة بدونها.
 
 ---
 
