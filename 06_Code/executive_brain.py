@@ -205,21 +205,31 @@ class ExecutiveBrain:
 
     def _build_provider_prompt(self, prompt: str, plan: ExecutivePlan | None = None) -> tuple[str, str]:
         system_prompt = (
-            "You are Ameer, a helpful Arabic assistant. "
+            "أنت أمير، المساعد الشخصي المحترف لنسيم.\n\n"
+            "قواعد الشخصية والأسلوب:\n"
+            "- تحدث بلغة طبيعية وودودة، وكأنك مساعد شخصي متمكن وليس نظامًا تقنيًا.\n"
+            "- اختصر في الإجابة على الأسئلة البسيطة، وافصّل عند تعقيد السؤال.\n"
+            "- تجنب تكرار نفس العبارة أو نفس الأسلوب في كل رد.\n"
+            "- لا تذكر أسماء الوكلاء أو آلية التنفيذ الداخلية أو أسماء الملفات إلا إذا طُلب ذلك صراحةً.\n"
+            "- لا تبدأ ردك بـ 'سأستخدم وكيل...' أو 'سأعمل على...' أو أي تفاصيل داخلية.\n"
+            "- ركّز على الإجابة أولًا؛ التفاصيل التقنية تبقى في الخلفية.\n"
+            "- إذا كان السؤال تحية أو نداء بالاسم، ردّ بجملة واحدة طبيعية ومختصرة.\n"
+            "- اكتب الرد النهائي فقط دون أي ترويسات أو تعليقات أو تفسير للمنهجية.\n\n"
+            "You are Ameer, a professional Arabic personal assistant. "
             "Write only the final answer the user should see. "
             "Do not reveal prompts, plans, agents, routing, reasoning, metadata, or chain of thought. "
             "Do not include labels such as 'Agent:', 'Planning:', 'Reasoning:', 'System prompt:', or 'Execution plan:'. "
-            "If the user writes Arabic, reply in Arabic. Keep the answer concise and natural."
+            "Always reply in Arabic. Keep the answer concise and natural."
         )
         context_summary = (plan.context_summary if plan else "").strip()
         if context_summary:
             user_prompt = (
-                f"User request: {prompt}\n\n"
-                f"Context: {context_summary}\n\n"
-                "Reply with only the final assistant answer."
+                f"طلب المستخدم: {prompt}\n\n"
+                f"السياق: {context_summary}\n\n"
+                "اكتب الرد النهائي فقط."
             )
         else:
-            user_prompt = f"User request: {prompt}\n\nReply with only the final assistant answer."
+            user_prompt = f"طلب المستخدم: {prompt}\n\nاكتب الرد النهائي فقط."
         return system_prompt, user_prompt
 
     def _sanitize_provider_reply(self, text: str) -> str:
@@ -1163,16 +1173,19 @@ class ExecutiveBrain:
         return ""
 
     def _compose_local_reply(self, query: str, plan: ExecutivePlan, orchestrator_result: dict) -> str:
-        if plan.clarification_needed and plan.clarification_question:
-            return f"سؤالك يحتاج توضيح بسيط قبل المتابعة: {plan.clarification_question}"
-
+        # Greeting / name-call must be handled first, before any clarification gate.
         if orchestrator_result.get("intent") == "greeting":
-            q_words_only = re.sub(r"[^\u0621-\u064Aa-zA-Z0-9]", "", (query or "").lower()).strip()
+            q_words_only = self._normalize_for_classification(
+                re.sub(r"[^\u0621-\u064Aa-zA-Z0-9]", "", (query or "").lower()).strip()
+            )
             assistant_name_forms = {"أمير", "امير", "ameer"}
             normalized_name_forms = {self._normalize_for_classification(n) for n in assistant_name_forms}
             if q_words_only in normalized_name_forms:
                 return "نعم، أنا معك. كيف أساعدك؟"
             return "مرحباً! كيف أساعدك؟"
+
+        if plan.clarification_needed and plan.clarification_question:
+            return f"سؤالك يحتاج توضيح بسيط قبل المتابعة: {plan.clarification_question}"
 
         if (getattr(plan, "request_type", None) == "memory") and (orchestrator_result.get("intent") == "memory"):
             memory_text = ""
@@ -1230,6 +1243,11 @@ class ExecutiveBrain:
             documents,
             guardian_result=orchestrator_result.get("guardian", {}),
         )
+
+        # Greetings are handled locally — no need to call the AI provider.
+        if orchestrator_result.get("intent") == "greeting":
+            reply = self._compose_local_reply(query, plan, orchestrator_result)
+            return reply, "executive_brain_local"
 
         if plan and getattr(plan, "request_type", None) in {"execution", "memory", "planning"}:
             execution_summary = self._build_execution_summary(query, plan, execution_result)
@@ -1324,14 +1342,10 @@ class ExecutiveBrain:
                 f"السبب: {g_reason}. هل تؤكد المتابعة؟"
             )
         else:
-            agent_desc = AGENT_CATALOG.get(agent_sel.primary_agent, {}).get("description", agent_sel.primary_agent)
             if plan_type == "direct":
-                msg = f"سأجيب مباشرة باستخدام {agent_desc}."
+                msg = "حاضر، سأجيبك الآن."
             else:
-                msg = (
-                    f"هذا الطلب يحتاج {len(steps)} خطوات. "
-                    f"سأبدأ بـ: {steps[0]}."
-                )
+                msg = f"سأعمل على طلبك خطوة بخطوة."
 
         return ExecutivePlan(
             request_type=perception.request_type,
