@@ -8,13 +8,17 @@ class ResponseFormatter:
 
     def __init__(self) -> None:
         self._drop_line_patterns = [
-            re.compile(r"^\s*(user request|context|the answer is|final answer|system prompt|instruction)\s*[:\-]", re.IGNORECASE),
-            re.compile(r"^\s*(طلب المستخدم|السياق|الرد النهائي|الإجابة النهائية|التعليمات)\s*[:\-]", re.IGNORECASE),
+            re.compile(r"^\s*(user request|context|system prompt|instruction)\s*[:\-]", re.IGNORECASE),
+            re.compile(r"^\s*(طلب المستخدم|السياق|التعليمات)\s*[:\-]", re.IGNORECASE),
             re.compile(r"^\s*(agent|selected_agent|routing|debug|trace|metadata|tool calls?)\s*[:\-]", re.IGNORECASE),
             re.compile(r"^\s*(الوكيل|التوجيه|التصحيح|التتبع|بيانات داخلية|الأدوات)\s*[:\-]", re.IGNORECASE),
         ]
+        self._prefix_cleanup_patterns = [
+            re.compile(r"^\s*(the answer is|final answer|assistant answer|answer)\s*[:\-]?\s*", re.IGNORECASE),
+            re.compile(r"^\s*(الإجابة|الإجابة النهائية|الرد النهائي|الجواب)\s*[:\-]?\s*", re.IGNORECASE),
+        ]
         self._internal_phrase_patterns = [
-            re.compile(r"\b(user request|context|the answer is|system prompt|internal prompt|chain of thought)\b", re.IGNORECASE),
+            re.compile(r"\b(user request|context|system prompt|internal prompt|chain of thought)\b", re.IGNORECASE),
             re.compile(r"\b(selected_agent|debug|trace|tool[_\s-]?calls?|execution plan)\b", re.IGNORECASE),
         ]
         self._agent_pattern = re.compile(
@@ -32,6 +36,8 @@ class ResponseFormatter:
             return ""
         if any(pattern.match(cleaned) for pattern in self._drop_line_patterns):
             return ""
+        for pattern in self._prefix_cleanup_patterns:
+            cleaned = pattern.sub("", cleaned)
         if any(pattern.search(cleaned) for pattern in self._internal_phrase_patterns):
             return ""
 
