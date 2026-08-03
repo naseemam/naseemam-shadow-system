@@ -88,6 +88,12 @@ class ResponseFormatterTests(unittest.TestCase):
         result = formatter.format_text(raw)
         self.assertEqual(result, "الرد للمستخدم: نسيم هي المؤسسة.")
 
+    def test_format_text_blocks_repeated_provider_instruction_echo(self):
+        formatter = ResponseFormatter()
+        raw = " ".join(["The user is asked to provide a single answer in Arabic."] * 10)
+        result = formatter.format_text(raw)
+        self.assertEqual(result, "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني.")
+
     def test_format_payload_always_returns_public_contract_only(self):
         formatter = ResponseFormatter()
         payload = {

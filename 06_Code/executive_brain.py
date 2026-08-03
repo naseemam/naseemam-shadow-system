@@ -260,6 +260,9 @@ class ExecutiveBrain:
             r"\bcontext:\b",
             r"\breply with only the final assistant answer\b",
             r"\basked to reply\b",
+            r"\bthe user is asked to\b",
+            r"\bsingle answer in arabic\b",
+            r"\breply in arabic\b",
             r"\bdifficult for a human\b",
         ]
         if any(re.search(pattern, cleaned, re.IGNORECASE) for pattern in instruction_like_patterns):
@@ -304,6 +307,38 @@ class ExecutiveBrain:
             cleaned = " ".join(lines).strip()
 
         return cleaned
+
+    def _extract_response_data(self, orchestrator_result: dict) -> dict:
+        if not isinstance(orchestrator_result, dict):
+            return {}
+        for key in ("agent_brain_payload", "agent_result"):
+            candidate = orchestrator_result.get(key)
+            if isinstance(candidate, dict):
+                response_data = candidate.get("response_data", {})
+                if isinstance(response_data, dict) and response_data:
+                    return response_data
+        return {}
+
+    def _compose_trusted_core_reply(self, orchestrator_result: dict) -> str:
+        response_data = self._extract_response_data(orchestrator_result)
+        intent = str(response_data.get("intent", "")).strip().lower()
+        facts = response_data.get("facts", {})
+        if not isinstance(facts, dict):
+            facts = {}
+
+        if intent == "identity":
+            subject = str(facts.get("subject", "")).strip().lower()
+            if subject == "founder":
+                return "نسيم هي المؤسسة وصاحبة القرار النهائي في مشروع أمير."
+            return "أنا أمير، الوكيل التنفيذي الأساسي للنظام. أتفاعل معك مباشرة وأستخدم الوكلاء المتخصصين تحت إشرافي عند الحاجة."
+
+        if intent == "greeting":
+            mode = str(facts.get("mode", "")).strip().lower()
+            if mode == "name_call":
+                return "نعم، أنا معك. كيف أساعدك الآن؟"
+            return "مرحبًا نسيم، أنا حاضر. كيف تحبين أن نبدأ؟"
+
+        return ""
 
     def _call_provider(self, prompt: str, plan: ExecutivePlan | None = None) -> Optional[str]:
         system_prompt, user_prompt = self._build_provider_prompt(prompt, plan)
@@ -1293,6 +1328,10 @@ class ExecutiveBrain:
             documents,
             guardian_result=orchestrator_result.get("guardian", {}),
         )
+
+        trusted_core_reply = self._compose_trusted_core_reply(orchestrator_result)
+        if trusted_core_reply:
+            return trusted_core_reply, "executive_brain_core"
 
         # Greetings are handled locally — no need to call the AI provider.
         if orchestrator_result.get("intent") == "greeting":

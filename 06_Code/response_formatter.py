@@ -23,6 +23,7 @@ class ResponseFormatter:
             re.compile(r"\b(selected_agent|debug|trace|tool[_\s-]?calls?|execution plan)\b", re.IGNORECASE),
             re.compile(r"\b(reply_meta|agent_brain_payload|agent_result|orchestrator|executive_brain)\b", re.IGNORECASE),
             re.compile(r"\b(raw output|internal output|runtime payload|prompt template)\b", re.IGNORECASE),
+            re.compile(r"\b(the user is asked to|single answer in arabic|write only the final answer|reply in arabic)\b", re.IGNORECASE),
         ]
         self._agent_pattern = re.compile(
             r"\b([a-z]+_agent|identity agent|project agent|research agent|memory agent|greeting agent|recovery agent)\b",
