@@ -265,6 +265,51 @@ Ameer must never:
 
 ---
 
+## Executive Integrity / النزاهة التنفيذية
+
+Every change to the Ameer Executive Platform must preserve the consistency of Ameer's identity and behavior across all layers.
+
+كل تغيير على منصة أمير التنفيذية يجب أن يحافظ على اتساق هوية أمير وسلوكه عبر جميع الطبقات.
+
+### The Rule / القاعدة
+
+> Ameer's identity as defined in the Constitution must be the same identity expressed in every response, every agent behavior, every memory entry, and every provider integration.
+>
+> هوية أمير كما هي محددة في الدستور يجب أن تكون هي نفسها الهوية المُعبَّر عنها في كل رد، وكل سلوك وكيل، وكل إدخال في الذاكرة، وكل تكامل مع مزود.
+
+### Integrity Violations / انتهاكات النزاهة
+
+The following are violations of Executive Integrity and are prohibited:
+
+الحالات التالية تُعدّ انتهاكًا للنزاهة التنفيذية وهي محظورة:
+
+- **Identity Drift:** Ameer's identity in the Constitution differs from how Ameer presents itself in responses.
+  انجراف الهوية: هوية أمير في الدستور تختلف عمّا يقدمه أمير في ردوده.
+
+- **Layer Inconsistency:** Executive Brain decides one way, but Response Composer presents a different personality.
+  تعارض الطبقات: يقرر Executive Brain بطريقة، بينما يعرض Response Composer شخصية مختلفة.
+
+- **Provider Contamination:** An inference provider changes Ameer's personality, tone, or behavioral boundaries.
+  تلوث المزود: يغيّر مزود الاستدلال شخصية أمير أو نبرته أو حدوده السلوكية.
+
+- **Silent Divergence:** A code change, prompt update, or configuration change alters identity behavior without a governance review.
+  الانحراف الصامت: تغيير في الكود أو تحديث في التوجيهات أو تعديل في الإعدادات يغيّر سلوك الهوية دون مراجعة حوكمة.
+
+### Integrity Check / فحص النزاهة
+
+Before any change that touches identity, behavior, response format, or provider integration, the following question must be answered:
+
+قبل أي تغيير يمس الهوية أو السلوك أو تنسيق الردود أو تكامل المزود، يجب الإجابة عن السؤال التالي:
+
+> **Does this change preserve Ameer's identity consistently across all layers?**
+> هل يحافظ هذا التغيير على هوية أمير باتساق عبر جميع الطبقات؟
+
+If the answer is no, or uncertain — the change does not proceed without Founder review.
+
+إذا كانت الإجابة لا، أو غير مؤكدة — لا يمضي التغيير دون مراجعة المؤسس.
+
+---
+
 ## Governance Freeze v1.0 / تجميد الحوكمة v1.0
 
 **Status:** Active — 2026-08-03
@@ -310,17 +355,42 @@ Every Pull Request must be able to answer all four questions before it may be me
 
 ## Roadmap Phase Rule / قاعدة مراحل خارطة الطريق
 
-**Current Phase: P0.0 — Executive Core Identity**
+### Foundation Status / حالة الأساس
 
-P0.0 must reach 100% completion before P0.1 or any subsequent phase is opened.
+| Foundation | Status |
+|---|---|
+| Governance Foundation — أساس الحوكمة | ✅ Complete |
+| Architecture Foundation — أساس المعمارية | ✅ Complete |
+| Project Baseline — خط الأساس للمشروع | 🔒 Locked |
 
-Ameer's identity is the foundation upon which everything else is built. No future phase is stable without it.
+The project has passed the foundation phase. No further governance or architecture documents are needed before execution begins. The baseline is locked and implementation may proceed.
 
-**المرحلة الحالية: P0.0 — هوية النواة التنفيذية**
+المشروع تجاوز مرحلة الأساس. لا توجد وثائق حوكمة أو معمارية إضافية مطلوبة قبل بدء التنفيذ. خط الأساس مقفل والتنفيذ يجوز البدء به.
 
-يجب أن تصل P0.0 إلى اكتمال 100% قبل فتح P0.1 أو أي مرحلة لاحقة.
+### Sprint 0 — Executive Core Identity / هوية النواة التنفيذية
 
-هوية أمير هي الأساس الذي يُبنى عليه كل شيء آخر. لا توجد مرحلة مستقبلية مستقرة بدونها.
+**Current Active Sprint:** Sprint 0
+
+**Goal:** Prove that Ameer knows who it is.
+
+Sprint 0 is not about adding features. It is about proving, in practice, that the Executive Constitution works.
+
+Sprint 0 ليس عن إضافة ميزات. بل عن إثبات — عمليًا — أن الدستور التنفيذي يعمل.
+
+**Sprint 0 Success Criteria / معايير نجاح Sprint 0:**
+
+| Criterion | Verification |
+|---|---|
+| Ameer knows who it is — أمير يعرف من هو | Identity matches the Constitution across all responses |
+| Ameer knows its boundaries — يعرف حدوده | Refuses requests outside its permission model |
+| Ameer knows when to respond — يعرف متى يجيب | Responds to valid requests with appropriate framing |
+| Ameer knows when to refuse — يعرف متى يرفض | Refuses prohibited actions without exception |
+| Ameer knows when to delegate — يعرف متى يفوض | Routes to agents without granting them autonomous authority |
+| Ameer maintains identity across providers — يحافظ على شخصيته بغض النظر عن المزود | Same identity behavior when using OpenAI, Ollama, or any backend |
+
+**Sprint 0 Rule:** No sprint after Sprint 0 opens until all six criteria above are verified.
+
+**قاعدة Sprint 0:** لا يُفتح أي Sprint بعد Sprint 0 حتى يتم التحقق من المعايير الستة أعلاه.
 
 ---
 
