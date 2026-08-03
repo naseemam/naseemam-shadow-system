@@ -10,7 +10,7 @@ CODE_ROOT = os.path.dirname(__file__)
 if CODE_ROOT not in sys.path:
     sys.path.insert(0, CODE_ROOT)
 
-from agents.base import AgentContext
+from agents.base import AgentContext, AgentOutput
 from agents.registry import AGENTS, AGENT_CAPABILITIES
 from adapters.agent_brain_adapter import AgentBrainAdapter
 
@@ -215,7 +215,7 @@ class AmeerOrchestrator:
             return CORE_ROUTE_CAPABILITIES[executor]
         return AGENT_CAPABILITIES.get(executor, {})
 
-    def _build_core_identity_payload(self, query: str) -> Dict[str, object]:
+    def _build_core_identity_payload(self, query: str) -> AgentOutput:
         qn = self.normalize_fn(query.lower())
         founder_question = any(term in qn for term in [self.normalize_fn(term.lower()) for term in [
             "من هي نسيم",
@@ -280,18 +280,18 @@ class AmeerOrchestrator:
                 "purpose": "Executive reasoning, supervised delegation, and final response ownership",
             }
 
-        return {
-            "agent": "ameer_core",
-            "confidence": 0.96,
-            "reply_draft": reply,
-            "sources": CORE_ROUTE_CAPABILITIES["ameer_core"]["primary_sources"],
-            "actions": ["answer_core_identity"],
-            "message": "تمت الإجابة من Ameer Core دون تشغيل وكيل متخصص.",
-            "response_data": {
+        return AgentOutput(
+            agent="ameer_core",
+            confidence=0.96,
+            reply_draft=reply,
+            sources=CORE_ROUTE_CAPABILITIES["ameer_core"]["primary_sources"],
+            actions=["answer_core_identity"],
+            message="تمت الإجابة من Ameer Core دون تشغيل وكيل متخصص.",
+            response_data={
                 "intent": "identity",
                 "facts": facts,
             },
-        }
+        )
 
     def classify_intent(self, query: str) -> str:
         return self.route_query(query)["intent"]

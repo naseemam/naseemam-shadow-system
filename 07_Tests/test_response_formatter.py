@@ -68,7 +68,7 @@ class ResponseFormatterTests(unittest.TestCase):
 
         self.assertEqual(
             result["reply"],
-            "أنا أمير، شريكك التنفيذي الذكي لدعم إدارة المشاريع وتنظيم المعرفة واتخاذ القرارات.",
+            "أنا أمير، الوكيل التنفيذي الأساسي للنظام. أتفاعل معك مباشرة وأستخدم الوكلاء المتخصصين تحت إشرافي عند الحاجة.",
         )
 
     def test_format_text_blocks_json_like_internal_payload(self):
