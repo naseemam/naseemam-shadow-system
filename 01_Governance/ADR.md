@@ -196,6 +196,7 @@ A single runtime simplifies operations, reduces fragmentation, preserves archite
 
 ## Relationship to Other Documents
 
+- `01_Docs/Executive_Constitution_v1.0.md` is the supreme governing document above this ADR. Constitutional Contracts defined there are non-negotiable and take precedence over any architectural decision.
 - `03_Architecture/System_Architecture.md` explains how the major components connect.
 - Architecture documents in `03_Architecture/` explain structure and behavior.
 - This ADR explains why the most important structural choices were made.
