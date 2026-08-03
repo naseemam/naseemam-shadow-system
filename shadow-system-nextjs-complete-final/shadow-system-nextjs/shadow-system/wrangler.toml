@@ -8,7 +8,12 @@ compatibility_flags = ["nodejs_compat"]
 directory = ".open-next/assets"
 binding = "ASSETS"
 
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "random_id"
-# database_id = "10183848-4cc7-4198-b8c7-1374015ab09c"
+# Cloudflare Workers AI — powers Ameer's intelligence
+[ai]
+binding = "AI"
+
+# D1 database — stores users, conversations, messages, memory, audit log
+[[d1_databases]]
+binding = "DB"
+database_name = "shadow-system-db"
+database_id = "10183848-4cc7-4198-b8c7-1374015ab09c"

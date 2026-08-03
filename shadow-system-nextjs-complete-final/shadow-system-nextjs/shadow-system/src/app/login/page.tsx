@@ -126,9 +126,7 @@ export default function LoginPage() {
           </div>
 
           <div className="text-center text-sm text-gray-400">
-            <p>بيانات الدخول الافتراضية:</p>
-            <p className="mt-1">المسؤول: naseem / admin123</p>
-            <p>المساعد الذكي: amir / assistant123</p>
+            <p>للحصول على بيانات الدخول، تواصل مع مسؤول النظام</p>
           </div>
         </form>
       </div>

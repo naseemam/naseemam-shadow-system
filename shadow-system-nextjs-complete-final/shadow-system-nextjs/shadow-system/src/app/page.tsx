@@ -1,263 +1,323 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 
 interface User {
   id: number;
   username: string;
   role: string;
+  display_name?: string;
+}
+
+interface ChatMessage {
+  id?: number;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  created_at?: string;
 }
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
-  const [chatHistory, setChatHistory] = useState<{ sender: string; text: string; time: string }[]>([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
+  // Scroll to the latest message
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => { scrollToBottom(); }, [chatHistory]);
+
+  // Check auth on mount
   useEffect(() => {
-    // التحقق من حالة المصادقة عند تحميل الصفحة
     const checkAuth = async () => {
       try {
-        const response = await fetch('/api/auth/check');
-        const data = await response.json();
-        
+        const res = await fetch('/api/auth/check');
+        const data = await res.json();
         if (data.authenticated) {
           setUser(data.user);
         } else {
-          // إذا كان المستخدم غير مسجل الدخول، إعادة توجيهه إلى صفحة تسجيل الدخول
           router.push('/login');
         }
-      } catch (error) {
-        console.error('خطأ في التحقق من المصادقة:', error);
+      } catch {
         router.push('/login');
       } finally {
         setLoading(false);
       }
     };
-    
     checkAuth();
   }, [router]);
 
+  // Load conversation history once user is known
   useEffect(() => {
-    // إضافة رسائل ترحيبية افتراضية إذا كان المستخدم مسجل الدخول
-    if (user) {
-      const currentTime = new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
-      
-      if (user.role === 'assistant') {
-        setChatHistory([
-          { 
-            sender: 'system', 
-            text: 'مرحباً بك أمير! أنت الآن في وضع المساعد الذكي. يمكنك مساعدة المستخدمين في تحليل البيانات وإدارة المخزون والتعامل مع حالات الطوارئ.', 
-            time: currentTime 
+    if (!user) return;
+
+    const loadConversations = async () => {
+      try {
+        const res = await fetch('/api/chat');
+        const data = await res.json();
+        if (data.success && data.conversations?.length > 0) {
+          const lastConv = data.conversations[0];
+          setConversationId(lastConv.id);
+
+          const msgRes = await fetch(`/api/chat?conversationId=${lastConv.id}`);
+          const msgData = await msgRes.json();
+          if (msgData.success) {
+            setChatHistory(msgData.messages.map((m: ChatMessage) => ({
+              role: m.role,
+              content: m.content,
+            })));
+            return;
           }
-        ]);
-      } else {
-        setChatHistory([
-          { 
-            sender: 'amir', 
-            text: `مرحباً ${user.username}! أنا أمير، المساعد الذكي الخاص بك. كيف يمكنني مساعدتك اليوم؟`, 
-            time: currentTime 
-          }
-        ]);
+        }
+      } catch {
+        // no previous conversation — show welcome message
       }
-    }
+
+      // Welcome message for new session
+      const welcome: ChatMessage = {
+        role: 'assistant',
+        content: user.role === 'assistant'
+          ? 'مرحباً! أنت الآن في وضع المساعد الذكي.'
+          : `مرحباً ${user.display_name ?? user.username}! أنا أمير، شريكك الذكي. كيف يمكنني مساعدتك اليوم؟`,
+      };
+      setChatHistory([welcome]);
+    };
+
+    loadConversations();
   }, [user]);
 
   const handleSendMessage = async () => {
-    if (!message.trim()) return;
-    
-    const currentTime = new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
-    
-    // إضافة رسالة المستخدم إلى المحادثة
-    setChatHistory(prev => [
-      ...prev, 
-      { sender: user?.username || 'guest', text: message, time: currentTime }
-    ]);
-    
-    try {
-      // في الإصدار النهائي، هنا سيتم إرسال الرسالة إلى API
-      // لكن الآن سنقوم بمحاكاة رد المساعد الذكي بعد ثانية واحدة
-      setTimeout(() => {
-        let response = '';
-        
-        if (message.includes('مرحبا') || message.includes('السلام عليكم')) {
-          response = 'مرحباً بك! كيف يمكنني مساعدتك اليوم؟';
-        } else if (message.includes('تحليل') || message.includes('بيانات') || message.includes('سوق')) {
-          response = 'يمكنني مساعدتك في تحليل بيانات السوق وتقديم توصيات بناءً على الاتجاهات الحالية. هل ترغب في تحليل قطاع معين؟';
-        } else if (message.includes('مخزون') || message.includes('منتجات')) {
-          response = 'لدينا حالياً 1,250 منتجاً في المخزون. هل ترغب في عرض المنتجات منخفضة المخزون أو تقرير حالة المخزون الكامل؟';
-        } else if (message.includes('طوارئ') || message.includes('أمان')) {
-          response = 'بروتوكولات الأمان محدثة وجاهزة. لم يتم تسجيل أي حالات طوارئ في الأسبوع الماضي.';
-        } else if (message.includes('شخصية') || message.includes('ذاكرة')) {
-          response = 'يمكنك تخصيص شخصيتي وإضافة ذكريات عاطفية جديدة من خلال قسم إعدادات المساعد الذكي.';
-        } else {
-          response = 'أفهم ما تقوله. هل يمكنك توضيح كيف يمكنني مساعدتك بشكل أفضل؟';
-        }
-        
-        setChatHistory(prev => [
-          ...prev, 
-          { 
-            sender: user?.role === 'assistant' ? 'user' : 'amir', 
-            text: response, 
-            time: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) 
-          }
-        ]);
-      }, 1000);
-    } catch (error) {
-      console.error('خطأ في إرسال الرسالة:', error);
-    }
-    
-    // مسح حقل الرسالة
+    if (!message.trim() || sending) return;
+
+    const userMessage = message.trim();
     setMessage('');
+    setSending(true);
+
+    // Optimistically add user message
+    setChatHistory((prev) => [...prev, { role: 'user', content: userMessage }]);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMessage, conversationId }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        if (data.conversationId && !conversationId) {
+          setConversationId(data.conversationId);
+        }
+        setChatHistory((prev) => [...prev, { role: 'assistant', content: data.response }]);
+      } else {
+        setChatHistory((prev) => [
+          ...prev,
+          { role: 'assistant', content: 'عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.' },
+        ]);
+      }
+    } catch {
+      setChatHistory((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'تعذّر الاتصال بالخادم. يرجى التحقق من الاتصال.' },
+      ]);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
   };
 
   const handleLogout = async () => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      router.push('/login');
-    } catch (error) {
-      console.error('خطأ في تسجيل الخروج:', error);
-    }
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/login');
   };
 
-  // إذا كان التحميل جارياً، عرض رسالة التحميل
+  const handleNewConversation = () => {
+    setConversationId(null);
+    setChatHistory([
+      {
+        role: 'assistant',
+        content: `مرحباً ${user?.display_name ?? user?.username}! محادثة جديدة — كيف يمكنني مساعدتك؟`,
+      },
+    ]);
+  };
+
   if (loading) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-900 p-4">
-        <div className="text-center text-white">
-          <p className="text-xl">جاري التحميل...</p>
+      <div className="flex min-h-screen items-center justify-center bg-gray-950">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+          <p className="text-gray-400">جاري التحميل...</p>
         </div>
       </div>
     );
   }
 
-  // إذا كان المستخدم غير مسجل الدخول، عرض زر تسجيل الدخول
-  if (!user) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-900 p-4">
-        <div className="w-full max-w-md space-y-8 rounded-lg bg-gray-800 p-8 text-center shadow-lg">
-          <h1 className="text-3xl font-bold text-white">نظام الظل الذكي</h1>
-          <p className="mt-2 text-gray-300">
-            مرحباً بك في نظام الظل الذكي. يرجى تسجيل الدخول للوصول إلى المساعد الذكي "أمير".
-          </p>
-          <Link 
-            href="/login" 
-            className="mt-6 block rounded-md bg-blue-600 px-4 py-3 text-center text-lg font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          >
-            تسجيل الدخول
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  if (!user) return null;
 
   return (
-    <div className="flex h-screen flex-col bg-gray-900 text-white" dir="rtl">
-      {/* الشريط العلوي */}
-      <header className="flex items-center justify-between bg-gray-800 p-4 shadow-md">
-        <h1 className="text-xl font-bold">نظام الظل الذكي</h1>
-        <div className="flex items-center space-x-4">
-          {user && (
-            <div className="flex items-center space-x-2 space-x-reverse">
-              <span className="text-sm text-gray-300">مرحباً، {user.username}</span>
-              <button 
-                onClick={handleLogout}
-                className="rounded bg-red-600 px-3 py-1 text-sm hover:bg-red-700"
-              >
-                تسجيل الخروج
-              </button>
-            </div>
+    <div className="flex h-screen flex-col bg-gray-950 text-white" dir="rtl">
+      {/* Header */}
+      <header className="flex items-center justify-between border-b border-gray-800 bg-gray-900 px-6 py-3 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-sm font-bold">
+            أ
+          </div>
+          <div>
+            <h1 className="text-base font-semibold leading-none">نظام الظل — أمير</h1>
+            <p className="mt-0.5 text-xs text-gray-400">شريكك الذكي</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="hidden text-sm text-gray-300 sm:block">
+            {user.display_name ?? user.username}
+          </span>
+          {user.role === 'admin' && (
+            <span className="rounded-full bg-blue-900 px-2 py-0.5 text-xs text-blue-300">
+              مؤسس
+            </span>
           )}
+          <button
+            onClick={handleLogout}
+            className="rounded-md bg-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+          >
+            خروج
+          </button>
         </div>
       </header>
 
-      {/* محتوى الصفحة الرئيسي */}
-      <main className="flex flex-1 overflow-hidden">
-        {/* الشريط الجانبي */}
-        <div className="hidden w-64 bg-gray-800 p-4 md:block">
-          <h2 className="mb-4 text-lg font-semibold">القائمة الرئيسية</h2>
-          <nav className="space-y-2">
-            <a href="#" className="block rounded bg-blue-600 p-2 hover:bg-blue-700">الصفحة الرئيسية</a>
-            <a href="#" className="block rounded p-2 hover:bg-gray-700">تحليل السوق</a>
-            <a href="#" className="block rounded p-2 hover:bg-gray-700">إدارة المخزون</a>
-            <a href="#" className="block rounded p-2 hover:bg-gray-700">بروتوكولات الأمان</a>
-            <a href="#" className="block rounded p-2 hover:bg-gray-700">حالات الطوارئ</a>
-            {user?.role === 'admin' && (
-              <a href="#" className="block rounded p-2 hover:bg-gray-700">إعدادات المساعد الذكي</a>
-            )}
+      {/* Layout */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <aside className="hidden w-56 flex-col border-l border-gray-800 bg-gray-900 p-4 md:flex">
+          <button
+            onClick={handleNewConversation}
+            className="mb-4 w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-medium hover:bg-blue-700 transition-colors"
+          >
+            + محادثة جديدة
+          </button>
+
+          <nav className="space-y-1">
+            <p className="mb-2 px-2 text-xs font-medium text-gray-500">القائمة</p>
+            {[
+              { label: 'المحادثة', active: true },
+              { label: 'تحليل السوق', active: false },
+              { label: 'إدارة المشاريع', active: false },
+              { label: 'إدارة المخزون', active: false },
+              { label: 'بروتوكولات الأمان', active: false },
+            ].map(({ label, active }) => (
+              <button
+                key={label}
+                className={`w-full rounded-md px-3 py-2 text-right text-sm transition-colors ${
+                  active
+                    ? 'bg-blue-600/20 text-blue-400'
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </nav>
-          
-          {user?.role === 'admin' && (
-            <div className="mt-8">
-              <h2 className="mb-4 text-lg font-semibold">إعدادات المساعد الذكي</h2>
-              <nav className="space-y-2">
-                <a href="#" className="block rounded p-2 hover:bg-gray-700">تخصيص الشخصية</a>
-                <a href="#" className="block rounded p-2 hover:bg-gray-700">الذاكرة العاطفية</a>
-                <a href="#" className="block rounded p-2 hover:bg-gray-700">ترحيل المساعد</a>
-              </nav>
-            </div>
-          )}
-        </div>
 
-        {/* منطقة المحادثة */}
-        <div className="flex flex-1 flex-col bg-gray-900">
-          {/* عنوان المحادثة */}
-          <div className="border-b border-gray-700 bg-gray-800 p-4">
-            <h2 className="text-lg font-semibold">
-              {user?.role === 'assistant' ? 'وضع المساعد الذكي' : 'المحادثة مع أمير'}
-            </h2>
-          </div>
-
-          {/* محتوى المحادثة */}
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="space-y-4">
-              {chatHistory.map((chat, index) => (
-                <div 
-                  key={index} 
-                  className={`flex ${chat.sender === user?.username || (user?.role === 'assistant' && chat.sender === 'system') ? 'justify-end' : 'justify-start'}`}
+          {user.role === 'admin' && (
+            <nav className="mt-6 space-y-1 border-t border-gray-800 pt-4">
+              <p className="mb-2 px-2 text-xs font-medium text-gray-500">إعدادات أمير</p>
+              {['الذاكرة', 'الموافقات', 'سجل الأحداث', 'تخصيص الشخصية'].map((label) => (
+                <button
+                  key={label}
+                  className="w-full rounded-md px-3 py-2 text-right text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
                 >
-                  <div 
-                    className={`max-w-[80%] rounded-lg p-3 ${
-                      chat.sender === user?.username || (user?.role === 'assistant' && chat.sender === 'system')
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-700 text-white'
-                    }`}
-                  >
-                    <div className="mb-1 text-sm font-semibold">
-                      {chat.sender === user?.username ? 'أنت' : chat.sender === 'amir' ? 'أمير' : chat.sender}
-                    </div>
-                    <div>{chat.text}</div>
-                    <div className="mt-1 text-right text-xs opacity-70">{chat.time}</div>
+                  {label}
+                </button>
+              ))}
+            </nav>
+          )}
+        </aside>
+
+        {/* Chat area */}
+        <main className="flex flex-1 flex-col overflow-hidden">
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {chatHistory.map((msg, index) => (
+              <div
+                key={index}
+                className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'}`}
+              >
+                <div
+                  className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                    msg.role === 'user'
+                      ? 'bg-gray-800 text-gray-100'
+                      : 'bg-blue-600 text-white'
+                  }`}
+                >
+                  <p className="mb-1 text-xs font-medium opacity-70">
+                    {msg.role === 'user' ? (user.display_name ?? user.username) : 'أمير'}
+                  </p>
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                </div>
+              </div>
+            ))}
+
+            {sending && (
+              <div className="flex justify-end">
+                <div className="max-w-[75%] rounded-2xl bg-blue-600/50 px-4 py-3">
+                  <p className="text-xs font-medium text-blue-200 mb-1">أمير</p>
+                  <div className="flex gap-1">
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-white/70 [animation-delay:0ms]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-white/70 [animation-delay:150ms]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-white/70 [animation-delay:300ms]" />
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
           </div>
 
-          {/* مربع إدخال الرسالة */}
-          <div className="border-t border-gray-700 bg-gray-800 p-4">
-            <div className="flex space-x-2 space-x-reverse">
-              <input
-                type="text"
+          {/* Input */}
+          <div className="border-t border-gray-800 bg-gray-900 p-4">
+            <div className="flex items-end gap-2">
+              <textarea
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder={user?.role === 'assistant' ? "أدخل رداً كمساعد ذكي..." : "اكتب رسالة لأمير..."}
-                className="flex-1 rounded-md border border-gray-600 bg-gray-700 p-2 text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                onKeyDown={handleKeyDown}
+                placeholder="اكتب رسالة لأمير... (Enter للإرسال، Shift+Enter لسطر جديد)"
+                rows={1}
+                className="flex-1 resize-none rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 max-h-32"
+                style={{ minHeight: '48px' }}
               />
               <button
                 onClick={handleSendMessage}
-                className="rounded-md bg-blue-600 px-4 py-2 font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                disabled={sending || !message.trim()}
+                className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+                aria-label="إرسال"
               >
-                إرسال
+                <svg className="h-5 w-5 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
               </button>
             </div>
+            <p className="mt-2 text-center text-xs text-gray-600">
+              أمير يعمل بموجب دستور المشروع — القرار النهائي لنسيم دائماً
+            </p>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
+
