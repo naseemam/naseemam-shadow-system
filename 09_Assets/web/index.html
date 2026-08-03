@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width=device-width, initial-scale=1" />
+  <title>Ameer Workspace</title>
+  <style>
+    :root {
+      --bg: #f3f5f8;
+      --panel: #ffffff;
+      --panel-soft: #f8fafc;
+      --line: #e5e7eb;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --accent: #2563eb;
+      --accent-2: #0f766e;
+      --success: #16a34a;
+      --warning: #d97706;
+      --shadow: 0 10px 30px rgba(15,23,42,0.07);
+      --bg-gradient: linear-gradient(135deg, #eef4ff 0%, #f8fafc 100%);
+    }
+    :root[data-theme="dark"] {
+      --bg: #020617;
+      --panel: #0f172a;
+      --panel-soft: #111827;
+      --line: #334155;
+      --ink: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #60a5fa;
+      --accent-2: #2dd4bf;
+      --success: #4ade80;
+      --warning: #fbbf24;
+      --shadow: 0 10px 30px rgba(2,6,23,0.35);
+      --bg-gradient: linear-gradient(135deg, #0f172a 0%, #111827 100%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: var(--ink);
+      background: var(--bg-gradient);
+      min-height: 100vh;
+      padding: 16px;
+      transition: background 0.2s ease, color 0.2s ease;
+    }
+    button, input, select, textarea { font: inherit; }
+    .workspace-shell { min-height: calc(100vh - 32px); }
+    .workspace {
+      display: grid;
+      grid-template-columns: 280px 1fr 340px;
+      gap: 14px;
+      min-height: calc(100vh - 32px);
+      max-width: 1500px;
+      margin: 0 auto;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar { padding: 16px; gap: 12px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; margin-bottom: 10px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+    .group-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.15em; margin: 8px 0 6px; }
+    .tab-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+    .tab { padding: 8px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel-soft); color: var(--ink); cursor: pointer; font-size: 13px; font-weight: 700; }
+    .tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .dashboard-grid { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dashboard-card { border: 1px solid var(--line); border-radius: 14px; background: white; padding: 12px; display: grid; gap: 8px; }
+    .dashboard-card h3 { margin: 0; font-size: 14px; }
+    .dashboard-card .subtle { color: var(--muted); font-size: 12px; }
+    .dashboard-item { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--panel-soft); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .dashboard-item strong { font-size: 13px; }
+    .dashboard-item span { font-size: 12px; color: var(--muted); }
+    .dashboard-hero { border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; background: linear-gradient(90deg, rgba(37,99,235,0.08), rgba(15,118,110,0.05)); display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .dashboard-hero h2 { margin: 4px 0 2px; font-size: 18px; }
+    .dashboard-hero p { margin: 0; color: var(--muted); font-size: 13px; }
+    .dashboard-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .dashboard-actions button { border: none; border-radius: 10px; padding: 8px 12px; background: var(--accent); color: white; cursor: pointer; }
+    .action-btn { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--panel-soft); color: var(--ink); text-align: right; cursor: pointer; margin-bottom: 8px; }
+    .conversation-list { display: grid; gap: 8px; margin-top: 8px; }
+    .conversation-item { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: #fff; cursor: pointer; display: grid; gap: 6px; }
+    .conversation-item.active { border-color: rgba(37, 99, 235, 0.35); background: rgba(37, 99, 235, 0.06); }
+    .conversation-item .meta-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+    .title-row { display: flex; justify-content: space-between; align-items: center; }
+    .pill { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 999px; background: var(--panel-soft); color: var(--muted); font-size: 11px; }
+    .chip { display: inline-flex; align-items: center; gap: 4px; padding: 5px 8px; border-radius: 999px; background: var(--panel-soft); color: var(--ink); font-size: 12px; }
+    .main { display: grid; grid-template-rows: auto 1fr auto; }
+    .topbar { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 10px; background: linear-gradient(90deg, rgba(37,99,235,0.05), rgba(15,118,110,0.04)); }
+    .topbar .title { font-weight: 800; font-size: 18px; }
+    .topbar .sub { font-size: 12px; color: var(--muted); }
+    .top-actions { display: flex; gap: 8px; }
+    .top-actions button { border: none; border-radius: 10px; padding: 8px 10px; background: var(--accent); color: white; cursor: pointer; }
+    .top-actions button.secondary { background: var(--panel-soft); color: var(--ink); border: 1px solid var(--line); }
+    .content { padding: 16px; display: grid; gap: 12px; overflow: auto; }
+    .message-area { display: grid; gap: 10px; align-content: start; }
+    .bubble { border-radius: 14px; padding: 11px 12px; border: 1px solid var(--line); line-height: 1.6; font-size: 14px; background: white; }
+    .bubble.user { background: rgba(37,99,235,0.07); border-color: rgba(37,99,235,0.16); }
+    .bubble.assistant { background: #fff; }
+    .bubble.system { background: var(--panel-soft); color: var(--muted); }
+    .bubble .meta { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .composer { border-top: 1px solid var(--line); padding: 12px 16px; display: grid; gap: 10px; background: var(--panel-soft); }
+    .composer textarea { width: 100%; min-height: 88px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; resize: vertical; background: white; }
+    .composer textarea:focus { outline: none; border-color: rgba(37,99,235,0.35); box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+    .composer-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .composer button { border: none; border-radius: 10px; padding: 10px 14px; background: var(--accent); color: white; cursor: pointer; }
+    .composer button:disabled { opacity: 0.65; cursor: not-allowed; }
+    .detail { padding: 14px; gap: 10px; }
+    .card { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: var(--panel-soft); }
+    .card h4 { margin: 0 0 8px; font-size: 13px; }
+    .card .body { font-size: 13px; color: var(--muted); line-height: 1.6; }
+    .detail-toggle { width: 100%; border: 1px solid var(--line); border-radius: 10px; background: white; padding: 8px 10px; text-align: right; font-weight: 700; cursor: pointer; }
+    .empty-state { color: var(--muted); font-size: 13px; padding: 8px 0; }
+    .doc-list, .settings-list { display: grid; gap: 8px; }
+    .doc-item { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: white; font-size: 13px; }
+    .page-view { display: none; }
+    .page-view.active { display: block; }
+    .icon-btn { border: none; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; }
+    .status-pill { display: inline-flex; gap: 6px; align-items: center; padding: 6px 10px; border-radius: 999px; background: rgba(22,163,74,0.12); color: var(--success); font-size: 12px; font-weight: 700; }
+    .status-pill.warn { background: rgba(217,119,6,0.12); color: var(--warning); }
+    .auth-gate { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .auth-card { width: min(420px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 12px 36px rgba(15,23,42,0.09); padding: 24px; display: grid; gap: 12px; }
+    .auth-card h2 { margin: 0; font-size: 22px; }
+    .auth-card p { margin: 0; color: var(--muted); line-height: 1.6; }
+    .auth-field { display: grid; gap: 6px; }
+    .auth-field input { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: white; }
+    .auth-field input:focus { outline: none; border-color: rgba(37,99,235,0.35); box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+    .auth-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .auth-actions button { border: none; border-radius: 10px; padding: 10px 14px; background: var(--accent); color: white; cursor: pointer; }
+    .auth-message { min-height: 20px; color: var(--warning); font-size: 13px; }
+    @media (max-width: 1400px) {
+      .workspace { grid-template-columns: 240px 1fr 300px; }
+    }
+    @media (max-width: 1100px) {
+      .workspace { grid-template-columns: 220px 1fr; }
+      .detail { grid-column: 1 / -1; order: 3; }
+    }
+    @media (max-width: 760px) {
+      body { padding: 10px; }
+      .workspace { grid-template-columns: 1fr; min-height: auto; }
+      .sidebar, .detail, .main { min-height: auto; }
+      .topbar { flex-direction: column; align-items: flex-start; }
+      .top-actions { width: 100%; flex-wrap: wrap; }
+      .dashboard-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div id="workspaceShell" class="workspace-shell">
+    <div class="workspace">
+    <aside class="panel sidebar">
+      <div class="brand"><span class="dot"></span> أمير Workspace</div>
+      <div class="status-pill" id="serverStatus">متصل</div>
+      <div class="chip" id="buildIdBadge" style="margin-top:4px;">build: booting</div>
+      <button class="action-btn" id="newConversationBtn">＋ محادثة جديدة</button>
+      <div>
+        <div class="group-title">Ameer OS</div>
+        <div class="tab-list" id="pageTabs"></div>
+      </div>
+      <div>
+        <div class="group-title">المحادثات</div>
+        <input id="conversationSearch" type="search" placeholder="بحث داخل المحادثات" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:10px;" />
+        <div id="conversationList" class="conversation-list"></div>
+      </div>
+      <div>
+        <div class="group-title">المشاريع</div>
+        <div id="projectList" class="doc-list"></div>
+      </div>
+    </aside>
+
+    <main class="panel main">
+      <div class="topbar">
+        <div>
+          <div class="title" id="currentConversationTitle">محادثة جديدة</div>
+          <div class="sub" id="currentConversationMeta">ابدأ محادثة جديدة أو اختر واحدة من القائمة</div>
+        </div>
+        <div class="top-actions">
+          <button class="secondary" id="themeToggleBtn" type="button">🌗 Theme</button>
+          <button class="secondary" id="pinConversationBtn">⭐ تثبيت</button>
+          <button class="secondary" id="renameConversationBtn">✏️ إعادة تسمية</button>
+          <button class="secondary" id="deleteConversationBtn">🗑 حذف</button>
+        </div>
+      </div>
+
+      <div class="content">
+        <div id="messageArea" class="message-area"></div>
+        <div id="view-home" class="page-view active">
+          <div id="homeContent"></div>
+        </div>
+        <div id="view-executive-chat" class="page-view">
+          <div id="executiveChatContent"></div>
+        </div>
+        <div id="view-projects" class="page-view">
+          <div id="projectsContent"></div>
+        </div>
+        <div id="view-memory" class="page-view">
+          <div id="memoryContent"></div>
+        </div>
+        <div id="view-development" class="page-view">
+          <div id="developmentContent"></div>
+        </div>
+        <div id="view-websites" class="page-view">
+          <div id="websitesContent"></div>
+        </div>
+        <div id="view-business" class="page-view">
+          <div id="businessContent"></div>
+        </div>
+        <div id="view-investment" class="page-view">
+          <div id="investmentContent"></div>
+        </div>
+        <div id="view-bots" class="page-view">
+          <div id="botsContent"></div>
+        </div>
+        <div id="view-system" class="page-view">
+          <div id="systemContent"></div>
+        </div>
+        <div id="view-services" class="page-view">
+          <div id="servicesContent"></div>
+        </div>
+        <div id="view-pricing" class="page-view">
+          <div id="pricingContent"></div>
+        </div>
+        <div id="view-about" class="page-view">
+          <div id="aboutContent"></div>
+        </div>
+        <div id="view-contact" class="page-view">
+          <div id="contactContent"></div>
+        </div>
+      </div>
+
+      <div class="composer">
+        <textarea id="q" placeholder="اكتب سؤالًا أو طلبًا..."></textarea>
+        <div class="composer-row">
+          <div class="sub">الرد يظهر داخل المحادثة الحالية فقط</div>
+          <button id="askBtn">إرسال</button>
+        </div>
+      </div>
+    </main>
+
+    <aside class="panel detail">
+      <div class="card">
+        <h4>الملخص</h4>
+        <div id="summary" class="body">سيظهر ملخص الخطة والنتيجة هنا.</div>
+      </div>
+      <div class="card">
+        <h4>التنفيذ</h4>
+        <div id="executionResult" class="body">ستظهر نتيجة التنفيذ الفعلية هنا.</div>
+        <div id="executionProgress" class="body" style="margin-top:8px;"></div>
+      </div>
+      <div class="card">
+        <h4>المصادر</h4>
+        <div id="results" class="body">لن تظهر المصادر حتى تتم معالجة سؤال.</div>
+      </div>
+      <details class="card" open>
+        <summary style="font-weight:700;cursor:pointer;">▶ عرض طريقة التفكير</summary>
+        <div id="trace" class="body" style="margin-top:8px;"></div>
+      </details>
+      <div class="card">
+        <h4>حول أمير</h4>
+        <div class="body">أمير هو شريك محلي يساعد على تنظيم المعرفة، المشاريع، والوثائق المحلية.</div>
+      </div>
+    </aside>
+    </div>
+  </div>
+
+  <script src="./modules/layout.js"></script>
+  <script src="./modules/theme.js"></script>
+  <script src="./modules/router.js"></script>
+  <script src="./modules/loader.js"></script>
+  <script src="./modules/shell.js"></script>
+  <script src="./modules/app.js"></script>
+</body>
+</html>
