@@ -53,6 +53,7 @@ class AskEndpointSmokeTests(unittest.TestCase):
                 str(cls.port),
             ],
             cwd=ROOT,
+            env={**os.environ, "AMEER_PORT": str(cls.port)},
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -63,7 +64,7 @@ class AskEndpointSmokeTests(unittest.TestCase):
                 raise RuntimeError("Smoke test server exited before becoming healthy")
             try:
                 health = _http_get_json(f"{cls.base_url}/health")
-                if health.get("status") == "ok":
+                if health.get("status") == "ok" and health.get("port") == cls.port:
                     return
             except Exception:
                 pass
@@ -84,6 +85,7 @@ class AskEndpointSmokeTests(unittest.TestCase):
                 cls.server.wait(timeout=5)
 
     def test_ask_endpoint_returns_user_safe_contract(self):
+        health = _http_get_json(f"{self.base_url}/health")
         status_code, data = _http_post_json(
             f"{self.base_url}/ask",
             {"query": "مرحبا", "max_results": 3},
@@ -95,6 +97,10 @@ class AskEndpointSmokeTests(unittest.TestCase):
         self.assertTrue(data["reply"].strip())
         self.assertEqual(data.get("assistant"), "أمير")
         self.assertEqual(data.get("message"), data.get("reply"))
+        self.assertEqual(data.get("build_id"), health.get("build_id"))
+        self.assertEqual(data.get("build"), health.get("build"))
+        self.assertEqual(data.get("commit"), health.get("commit"))
+        self.assertEqual(data.get("port"), health.get("port"))
         self.assertNotIn("routing", data)
         self.assertNotIn("selected_agent", data)
         self.assertNotIn("agent_result", data)
@@ -104,6 +110,16 @@ class AskEndpointSmokeTests(unittest.TestCase):
         self.assertNotIn("_agent", data["reply"].lower())
         self.assertNotIn(".md", data["reply"].lower())
         self.assertNotIn("prompt", data["reply"].lower())
+
+    def test_health_endpoint_exposes_runtime_identity(self):
+        data = _http_get_json(f"{self.base_url}/health")
+        self.assertEqual(data.get("status"), "ok")
+        self.assertTrue(data.get("build_id"))
+        self.assertEqual(data.get("build"), data.get("build_id"))
+        self.assertTrue(data.get("commit"))
+        self.assertEqual(data.get("port"), self.port)
+        self.assertEqual(data.get("workspace"), ROOT)
+        self.assertTrue(data.get("started_at"))
 
 
 if __name__ == "__main__":

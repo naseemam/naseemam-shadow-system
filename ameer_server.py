@@ -8,8 +8,16 @@ import os
 import re
 import sys
 import importlib.util
-import time
 from datetime import datetime
+
+from ameer_runtime import (
+    public_runtime_identity,
+    print_runtime_banner,
+    resolve_host,
+    resolve_port,
+    runtime_headers,
+    runtime_metadata,
+)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -65,10 +73,7 @@ app.mount("/modules", StaticFiles(directory=MODULES_DIR), name="modules")
 MD_GLOB = os.path.join(ROOT, "**", "*.md")
 WEB_INDEX = os.path.join(ROOT, "09_Assets", "web", "index.html")
 DEBUG_MODE = os.getenv("AMEER_DEBUG", "0").lower() in {"1", "true", "yes", "on"}
-BUILD_ID = os.getenv("AMEER_BUILD_ID") or f"local-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
-START_TIME = datetime.utcnow().isoformat() + "Z"
-
-print(f"[Ameer Boot] build_id={BUILD_ID} started_at={START_TIME}")
+RUNTIME_METADATA = runtime_metadata(workspace_root=ROOT)
 
 def load_documents():
     docs = []
@@ -88,9 +93,9 @@ def refresh_documents():
     return DOCUMENTS
 
 
-def utf8_json_response(payload):
+def utf8_json_response(payload, headers: dict[str, str] | None = None):
     body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-    return Response(content=body, media_type="application/json; charset=utf-8")
+    return Response(content=body, media_type="application/json; charset=utf-8", headers=headers or {})
 
 
 DOCUMENTS = load_documents()
@@ -210,7 +215,7 @@ async def ask(request: Request):
     if not q:
         raise HTTPException(status_code=400, detail="Empty query")
 
-    print(f"[Ameer Ask] build_id={BUILD_ID} query={q}")
+    print(f"[Ameer Ask] build_id={RUNTIME_METADATA['build_id']} query={q}")
     autonomy_plan = None
     autonomy_keywords = ["plan", "planning", "memory", "autonom", "workspace", "document", "tool", "improve", "self", "reason"]
     if any(keyword in q.lower() for keyword in autonomy_keywords):
@@ -308,7 +313,8 @@ async def ask(request: Request):
             "message": "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني.",
             "assistant": "أمير",
         }
-    return utf8_json_response(user_payload)
+    user_payload.update(public_runtime_identity(workspace_root=ROOT))
+    return utf8_json_response(user_payload, headers=runtime_headers(workspace_root=ROOT))
 
 @app.get('/docs')
 async def docs():
@@ -403,11 +409,9 @@ async def store_autonomy_plan(payload: AutonomyPlanRequest):
 
 @app.get('/health')
 async def health():
-    return {
-        "status": "ok",
+    payload = runtime_metadata(workspace_root=ROOT)
+    payload.update({
         "documents": len(DOCUMENTS),
-        "build_id": BUILD_ID,
-        "started_at": START_TIME,
         "ameer_status": {
             "Server": "Online",
             "Documents": "Ready",
@@ -415,7 +419,8 @@ async def health():
             "Memory": "Ready",
             "Projects": "Ready",
         },
-    }
+    })
+    return utf8_json_response(payload, headers=runtime_headers(workspace_root=ROOT))
 
 
 @app.get('/documents/search')
@@ -486,6 +491,12 @@ async def home():
     except FileNotFoundError:
         return HTMLResponse(content="<h1>Ameer</h1><p>Web UI not found. Create 09_Assets/web/index.html</p>", media_type="text/html; charset=utf-8")
 
+
+@app.on_event("startup")
+async def log_runtime_banner():
+    print_runtime_banner(workspace_root=ROOT)
+
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run('ameer_server:app', host='127.0.0.1', port=8000, reload=True)
+    os.environ.setdefault("AMEER_PORT", str(resolve_port()))
+    uvicorn.run('ameer_server:app', host=resolve_host(), port=resolve_port(), reload=False)
