@@ -236,9 +236,15 @@ export default function Home() {
           {user.role === 'admin' && (
             <nav className="mt-6 space-y-1 border-t border-gray-800 pt-4">
               <p className="mb-2 px-2 text-xs font-medium text-gray-500">إعدادات أمير</p>
-              {['الذاكرة', 'الموافقات', 'سجل الأحداث', 'تخصيص الشخصية'].map((label) => (
+              {[
+                { label: 'الذاكرة' },
+                { label: 'الموافقات', href: '/approvals' },
+                { label: 'سجل الأحداث' },
+                { label: 'تخصيص الشخصية' },
+              ].map(({ label, href }) => (
                 <button
                   key={label}
+                  onClick={href ? () => router.push(href) : undefined}
                   className="w-full rounded-md px-3 py-2 text-right text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
                 >
                   {label}
@@ -320,4 +326,3 @@ export default function Home() {
     </div>
   );
 }
-
