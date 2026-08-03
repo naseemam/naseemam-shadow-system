@@ -237,10 +237,10 @@ export default function Home() {
             <nav className="mt-6 space-y-1 border-t border-gray-800 pt-4">
               <p className="mb-2 px-2 text-xs font-medium text-gray-500">إعدادات أمير</p>
               {[
-                { label: 'الذاكرة' },
+                { label: 'الذاكرة', href: '/memory' },
                 { label: 'الموافقات', href: '/approvals' },
-                { label: 'سجل الأحداث' },
-                { label: 'تخصيص الشخصية' },
+                { label: 'سجل الأحداث', href: '/events' },
+                { label: 'تخصيص الشخصية', href: '/personality' },
               ].map(({ label, href }) => (
                 <button
                   key={label}
