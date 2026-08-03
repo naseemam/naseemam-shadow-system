@@ -50,6 +50,27 @@ class ResponseFormatterTests(unittest.TestCase):
         self.assertNotIn("executive_brain", result)
         self.assertNotIn("debug_trace", result)
 
+    def test_format_payload_prefers_structured_agent_data(self):
+        formatter = ResponseFormatter()
+        payload = {
+            "reply": "سأجيب باستخدام identity_agent من المصدر الداخلي",
+            "agent_brain_payload": {
+                "response_data": {
+                    "intent": "identity",
+                    "facts": {
+                        "subject": "ameer",
+                    },
+                },
+            },
+        }
+
+        result = formatter.format_payload(payload)
+
+        self.assertEqual(
+            result["reply"],
+            "أنا أمير، شريكك التنفيذي الذكي لدعم إدارة المشاريع وتنظيم المعرفة واتخاذ القرارات.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

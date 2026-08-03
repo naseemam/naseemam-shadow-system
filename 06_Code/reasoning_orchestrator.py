@@ -99,6 +99,7 @@ class AmeerOrchestrator:
             "sources",
             "actions",
             "message",
+            "response_data",
         ]
 
     def _validate_agent_output(self, agent_output) -> Dict[str, List[str] | bool]:
@@ -890,6 +891,9 @@ class AmeerOrchestrator:
             confidence = float(brain_payload.get("confidence", 0.0))
             sources = list(brain_payload.get("sources", []))
             actions = list(brain_payload.get("actions", []))
+            response_data = brain_payload.get("response_data", {})
+            if not isinstance(response_data, dict):
+                response_data = {}
         else:
             draft_reply = "لا توجد نتائج كافية، يلزم توليد رد توضيحي من Executive Brain."
             message = (
@@ -900,6 +904,7 @@ class AmeerOrchestrator:
             confidence = 0.0
             sources = []
             actions = []
+            response_data = {}
             brain_payload = {
                 "agent": selected_agent_name,
                 "confidence": confidence,
@@ -907,6 +912,7 @@ class AmeerOrchestrator:
                 "sources": sources,
                 "actions": actions,
                 "message": message,
+                "response_data": response_data,
             }
 
         agent_result = {
@@ -915,6 +921,7 @@ class AmeerOrchestrator:
             "reply_draft": draft_reply,
             "sources": sources,
             "actions": actions,
+            "response_data": response_data,
         }
 
         response = {

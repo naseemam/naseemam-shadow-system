@@ -30,6 +30,15 @@ class IdentityAgent(BaseAgent):
                 sources=self.primary_sources,
                 actions=["answer_identity"],
                 message="تم تجهيز رد هوية للمؤسس.",
+                response_data={
+                    "intent": "identity",
+                    "facts": {
+                        "subject": "founder",
+                        "name": "Naseem",
+                        "role": "Founder",
+                        "authority": "Final decision maker",
+                    },
+                },
             )
 
         reply = IDENTITY_RESPONSES.get("who", IDENTITY_CORE["description"])
@@ -51,4 +60,13 @@ class IdentityAgent(BaseAgent):
             sources=self.primary_sources,
             actions=["answer_identity"],
             message="تم تجهيز رد هوية أولي لطبقة Executive Brain.",
+            response_data={
+                "intent": "identity",
+                "facts": {
+                    "subject": "ameer",
+                    "name": "Ameer",
+                    "role": "Executive AI Partner",
+                    "purpose": "Project management, knowledge organization, and decision support",
+                },
+            },
         )

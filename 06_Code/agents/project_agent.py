@@ -23,6 +23,15 @@ class ProjectAgent(BaseAgent):
                 sources=[str(item.get("path")) for item in context.results if item.get("path")],
                 actions=["summarize_project_context"],
                 message="تم تجهيز مسودة رد منسقة اعتمادًا على الاسترجاع.",
+                response_data={
+                    "intent": "project",
+                    "facts": {
+                        "goal": context.execution_plan.get("goal", ""),
+                        "steps": context.execution_plan.get("steps", []),
+                        "top_source": path,
+                        "top_excerpt": excerpt,
+                    },
+                },
             )
 
         return AgentOutput(
@@ -32,4 +41,10 @@ class ProjectAgent(BaseAgent):
             sources=self.primary_sources,
             actions=["request_more_project_context"],
             message="تم إنهاء التنسيق بدون نتائج كافية.",
+            response_data={
+                "intent": "project",
+                "facts": {
+                    "status": "not_found",
+                },
+            },
         )

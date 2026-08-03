@@ -72,9 +72,61 @@ class ResponseFormatter:
         if not isinstance(payload, dict):
             return {"reply": self._FALLBACK_REPLY}
 
-        safe_reply = self.format_text(payload.get("reply", "") or payload.get("message", ""))
+        response_data = self._extract_response_data(payload)
+        composed = self._compose_from_structured_data(response_data)
+        safe_reply = self.format_text(composed or payload.get("reply", "") or payload.get("message", ""))
         return {
             "reply": safe_reply,
             "message": safe_reply,
             "assistant": "أمير",
         }
+
+    def _extract_response_data(self, payload: dict) -> dict:
+        if not isinstance(payload, dict):
+            return {}
+        candidates = [
+            payload.get("agent_brain_payload"),
+            payload.get("agent_result"),
+        ]
+        for candidate in candidates:
+            if isinstance(candidate, dict):
+                response_data = candidate.get("response_data", {})
+                if isinstance(response_data, dict) and response_data:
+                    return response_data
+        return {}
+
+    def _compose_from_structured_data(self, response_data: dict) -> str:
+        if not isinstance(response_data, dict):
+            return ""
+        intent = str(response_data.get("intent", "")).strip().lower()
+        facts = response_data.get("facts", {})
+        if not isinstance(facts, dict):
+            facts = {}
+
+        if intent == "identity":
+            subject = str(facts.get("subject", "")).strip().lower()
+            if subject == "founder":
+                return "نسيم هي المؤسسة وصاحبة القرار النهائي في مشروع أمير."
+            return "أنا أمير، شريكك التنفيذي الذكي لدعم إدارة المشاريع وتنظيم المعرفة واتخاذ القرارات."
+
+        if intent == "greeting":
+            mode = str(facts.get("mode", "")).strip().lower()
+            if mode == "name_call":
+                return "نعم، أنا معك. كيف أساعدك الآن؟"
+            return "مرحبًا نسيم، أنا حاضر. كيف تحبين أن نبدأ؟"
+
+        if intent in {"project", "research", "memory"}:
+            status = str(facts.get("status", "")).strip().lower()
+            excerpt = str(facts.get("top_excerpt", "")).strip()
+            if status in {"found", "follow_up", "plan_shifted"} and excerpt:
+                return excerpt[:260]
+            if intent == "memory":
+                return "راجعت الذاكرة المتاحة، وإذا أردت أستطيع تضييق البحث على نقطة محددة."
+            if intent == "project":
+                return "راجعت سياق المشروع، ويمكنني تحويله إلى خطوات تنفيذية واضحة حسب أولوياتك."
+            return "راجعت السياق المتاح، ويمكنني تقديم إجابة أدق إذا حددت الهدف بشكل أوضح."
+
+        if intent == "recovery":
+            return "واجهت تعارضًا داخليًا بسيطًا وتم تفعيل مسار آمن للاستمرار. أقدر أكمل معك بشكل طبيعي."
+
+        return ""

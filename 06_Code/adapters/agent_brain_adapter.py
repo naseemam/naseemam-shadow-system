@@ -12,6 +12,9 @@ class AgentBrainAdapter:
         return getattr(obj, key, default)
 
     def prepare(self, agent_result: Any) -> Dict[str, Any]:
+        response_data = self._read(agent_result, "response_data", {}) or {}
+        if not isinstance(response_data, dict):
+            response_data = {}
         return {
             "agent": self._read(agent_result, "agent", "unknown_agent"),
             "confidence": float(self._read(agent_result, "confidence", 0.0) or 0.0),
@@ -19,4 +22,5 @@ class AgentBrainAdapter:
             "sources": list(self._read(agent_result, "sources", []) or []),
             "actions": list(self._read(agent_result, "actions", []) or []),
             "message": self._read(agent_result, "message", "") or "",
+            "response_data": response_data,
         }

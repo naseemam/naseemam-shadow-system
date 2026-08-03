@@ -24,4 +24,10 @@ class GreetingAgent(BaseAgent):
             sources=self.primary_sources,
             actions=["open_conversation"],
             message="تم تجهيز رد ترحيبي مبدئي.",
+            response_data={
+                "intent": "greeting",
+                "facts": {
+                    "mode": "name_call" if is_name_call else "standard_greeting",
+                },
+            },
         )
