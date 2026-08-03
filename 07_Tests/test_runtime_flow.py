@@ -36,6 +36,7 @@ class RuntimeFlowTests(unittest.TestCase):
         self.assertIn("sources", schema)
         self.assertIn("actions", schema)
         self.assertIn("response_data", schema)
+        self.assertEqual(result["selected_agent"], "ameer_core")
 
     def test_runtime_selected_agent_matches_routing(self):
         result = self.orchestrator.answer("ما هو هدف المشروع؟")

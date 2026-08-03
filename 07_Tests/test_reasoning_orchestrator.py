@@ -49,11 +49,18 @@ class AmeerOrchestratorIdentityTests(unittest.TestCase):
 
         result = orchestrator.answer("من هي نسيم", max_results=3)
         self.assertEqual(result["intent"], "identity")
-        self.assertEqual(result["selected_agent"], "identity_agent")
+        self.assertEqual(result["selected_agent"], "ameer_core")
         self.assertIn("نسيم", result["reply"])
         self.assertIn("execution_plan", result)
         self.assertEqual(result["execution_plan"]["planner"], "identity_layer")
         self.assertIn("agent_result", result)
+
+    def test_direct_executive_questions_do_not_invoke_specialized_agent(self):
+        result = self.orchestrator.answer("هل تفهمني؟", max_results=3)
+        self.assertEqual(result["intent"], "identity")
+        self.assertEqual(result["selected_agent"], "ameer_core")
+        self.assertEqual(result["agent_result"]["agent"], "ameer_core")
+        self.assertIn("أفهمك", result["reply"])
 
     def test_low_specificity_questions_return_no_results_reply(self):
         orchestrator = reasoning_orchestrator.AmeerOrchestrator(

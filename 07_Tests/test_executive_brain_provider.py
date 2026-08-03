@@ -84,6 +84,19 @@ class ExecutiveBrainProviderTests(unittest.TestCase):
 
         self.assertEqual(sanitized, "")
 
+    def test_identity_routing_keeps_execution_inside_ameer_core(self):
+        brain = ExecutiveBrain(normalize_fn=lambda x: x)
+
+        plan = brain.think(
+            "من أنت؟",
+            [],
+            guardian_result={"status": "pass", "reason": ""},
+            routing_hint={"intent": "identity", "agent": "ameer_core"},
+        )
+
+        self.assertEqual(plan.selected_agent, "ameer_core")
+        self.assertIn("العقل التنفيذي", plan.executive_message)
+
 
 if __name__ == "__main__":
     unittest.main()

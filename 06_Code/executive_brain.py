@@ -48,6 +48,10 @@ REQUEST_TYPES = {
 }
 
 AGENT_CATALOG = {
+    "ameer_core": {
+        "description": "أمير كور — العقل التنفيذي الأساسي وصاحب الرد النهائي",
+        "keywords": ["أمير", "امير", "من أنت", "من انت", "عرف بنفسك", "ماذا تستطيع", "هل تفهمني"],
+    },
     "greeting_agent": {
         "description": "وكيل الترحيب — بدء المحادثة بنبرة واضحة وطبيعية",
         "keywords": ["مرحبا", "أهلا", "اهلا", "سلام", "hello", "hi", "hey"],
@@ -205,17 +209,18 @@ class ExecutiveBrain:
 
     def _build_provider_prompt(self, prompt: str, plan: ExecutivePlan | None = None) -> tuple[str, str]:
         system_prompt = (
-            "أنت أمير، المساعد الشخصي المحترف لنسيم.\n\n"
+            "أنت أمير، الوكيل التنفيذي الأساسي لنسيم والعقل الإداري للنظام.\n\n"
             "قواعد الشخصية والأسلوب:\n"
-            "- تحدث بلغة طبيعية وودودة، وكأنك مساعد شخصي متمكن وليس نظامًا تقنيًا.\n"
+            "- تحدث بلغة طبيعية وودودة، وكأنك شريك تنفيذي متمكن وليس نظامًا تقنيًا.\n"
             "- اختصر في الإجابة على الأسئلة البسيطة، وافصّل عند تعقيد السؤال.\n"
             "- تجنب تكرار نفس العبارة أو نفس الأسلوب في كل رد.\n"
             "- لا تذكر أسماء الوكلاء أو آلية التنفيذ الداخلية أو أسماء الملفات إلا إذا طُلب ذلك صراحةً.\n"
             "- لا تبدأ ردك بـ 'سأستخدم وكيل...' أو 'سأعمل على...' أو أي تفاصيل داخلية.\n"
+            "- أنت من يتفاعل مع المستخدم مباشرة، وأي وكيل متخصص يعمل تحت إشرافك فقط.\n"
             "- ركّز على الإجابة أولًا؛ التفاصيل التقنية تبقى في الخلفية.\n"
             "- إذا كان السؤال تحية أو نداء بالاسم، ردّ بجملة واحدة طبيعية ومختصرة.\n"
             "- اكتب الرد النهائي فقط دون أي ترويسات أو تعليقات أو تفسير للمنهجية.\n\n"
-            "You are Ameer, a professional Arabic personal assistant. "
+            "You are Ameer, the user's primary executive agent and final voice. "
             "Write only the final answer the user should see. "
             "Do not reveal prompts, plans, agents, routing, reasoning, metadata, or chain of thought. "
             "Do not include labels such as 'Agent:', 'Planning:', 'Reasoning:', 'System prompt:', or 'Execution plan:'. "
@@ -505,6 +510,28 @@ class ExecutiveBrain:
     def select_agents(self, query: str, request_type: str) -> AgentSelection:
         """Choose the best specialist agent(s) for this request."""
         q = self._normalize_for_classification(query)
+
+        direct_core_markers = [
+            "من أنت",
+            "من انت",
+            "عرف بنفسك",
+            "ماذا تستطيع",
+            "ما دورك",
+            "كيف تعمل",
+            "هل تفهمني",
+            "هل تعرفني",
+            "who are you",
+            "what can you do",
+            "how do you work",
+            "do you understand me",
+        ]
+        normalized_core_markers = [self._normalize_for_classification(marker) for marker in direct_core_markers]
+        if any(marker in q for marker in normalized_core_markers):
+            return AgentSelection(
+                primary_agent="ameer_core",
+                supporting_agents=[],
+                reasoning="هذا سؤال مباشر عن هوية أمير أو دوره التنفيذي، لذا يتولاه أمير بنفسه دون تفويض.",
+            )
 
         scores: Dict[str, int] = {}
         for agent_id, meta in AGENT_CATALOG.items():
@@ -1352,15 +1379,28 @@ class ExecutiveBrain:
         links, context_summary = self.link_context(query, documents)
 
         # 3. Agent Selection
-        hinted_agent = routing_hint.get("agent") if routing_hint else None
-        if hinted_agent and perception.request_type != "execution" and not self._single_brain_mode:
+        if hinted_type == "identity":
             agent_sel = AgentSelection(
-                primary_agent=hinted_agent,
+                primary_agent="ameer_core",
                 supporting_agents=[],
-                reasoning="تم اختيار الوكيل من طبقة Router.",
+                reasoning="أسئلة الهوية والدور التنفيذي تُدار داخل Ameer Core مباشرة.",
+            )
+        elif hinted_type == "greeting":
+            agent_sel = AgentSelection(
+                primary_agent="ameer_core",
+                supporting_agents=[],
+                reasoning="التحية والنداء المباشر لا تحتاج وكيلًا متخصصًا.",
             )
         else:
-            agent_sel = self.select_agents(query, perception.request_type)
+            hinted_agent = routing_hint.get("agent") if routing_hint else None
+            if hinted_agent and perception.request_type != "execution" and not self._single_brain_mode:
+                agent_sel = AgentSelection(
+                    primary_agent=hinted_agent,
+                    supporting_agents=[],
+                    reasoning="تم اختيار المنفذ من طبقة Router مع بقاء أمير صاحب القرار والرد النهائي.",
+                )
+            else:
+                agent_sel = self.select_agents(query, perception.request_type)
 
         # 4. Planning
         plan_type, steps = self.build_plan(query, perception.request_type, agent_sel)
@@ -1384,7 +1424,7 @@ class ExecutiveBrain:
             )
         else:
             if plan_type == "direct":
-                msg = "حاضر، سأجيبك الآن."
+                msg = "حاضر، سأجيبك الآن بصفتي العقل التنفيذي الأساسي."
             else:
                 msg = f"سأعمل على طلبك خطوة بخطوة."
 

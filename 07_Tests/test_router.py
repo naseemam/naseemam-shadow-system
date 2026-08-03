@@ -25,7 +25,7 @@ class RouterTests(unittest.TestCase):
     def test_identity_route(self):
         result = self.orchestrator.answer("من هي نسيم؟")
         self.assertEqual(result["routing"]["intent"], "identity")
-        self.assertEqual(result["selected_agent"], "identity_agent")
+        self.assertEqual(result["selected_agent"], "ameer_core")
 
     def test_project_route(self):
         result = self.orchestrator.answer("ما هو هدف المشروع؟")
@@ -47,6 +47,11 @@ class RouterTests(unittest.TestCase):
         result = self.orchestrator.answer("ابن موقع جديد")
         self.assertEqual(result["routing"]["intent"], "project")
         self.assertEqual(result["selected_agent"], "project_agent")
+
+    def test_direct_executive_question_stays_in_ameer_core(self):
+        result = self.orchestrator.answer("هل تفهمني؟")
+        self.assertEqual(result["routing"]["intent"], "identity")
+        self.assertEqual(result["selected_agent"], "ameer_core")
 
 
 if __name__ == "__main__":

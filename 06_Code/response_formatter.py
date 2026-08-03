@@ -121,7 +121,7 @@ class ResponseFormatter:
             subject = str(facts.get("subject", "")).strip().lower()
             if subject == "founder":
                 return "نسيم هي المؤسسة وصاحبة القرار النهائي في مشروع أمير."
-            return "أنا أمير، شريكك التنفيذي الذكي لدعم إدارة المشاريع وتنظيم المعرفة واتخاذ القرارات."
+            return "أنا أمير، الوكيل التنفيذي الأساسي للنظام. أتفاعل معك مباشرة وأستخدم الوكلاء المتخصصين تحت إشرافي عند الحاجة."
 
         if intent == "greeting":
             mode = str(facts.get("mode", "")).strip().lower()
