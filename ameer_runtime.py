@@ -67,6 +67,8 @@ def public_runtime_identity(workspace_root: str | Path | None = None) -> dict:
         "build_id": meta["build_id"],
         "commit": meta["commit"],
         "port": meta["port"],
+        "workspace": meta["workspace"],
+        "started_at": meta["started_at"],
     }
 
 

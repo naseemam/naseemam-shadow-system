@@ -463,6 +463,7 @@ async def health():
         "commit": meta["commit"],
         "host": meta["host"],
         "port": meta["port"],
+        "workspace": meta["workspace"],
         "started_at": meta["started_at"],
         "pid": meta["pid"],
         "entrypoint": meta["entrypoint"],
