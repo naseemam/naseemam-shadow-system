@@ -87,9 +87,17 @@ class ResponseFormatter:
                 "assistant": "أمير",
             }
 
-        response_data = self._extract_response_data(payload)
-        composed = self._compose_from_structured_data(response_data)
-        safe_reply = self.format_text(composed or payload.get("reply", "") or payload.get("message", ""))
+        # EC-001: The executive pipeline (compose_final_reply) has already applied
+        # Guardian/Policy enforcement and produced a governed reply.  That reply
+        # must be honoured as-is; structured reconstruction from agent_brain_payload
+        # or agent_result must only be used when the governed reply is absent.
+        governed_reply = (payload.get("reply") or payload.get("message") or "").strip()
+        if not governed_reply:
+            response_data = self._extract_response_data(payload)
+            composed = self._compose_from_structured_data(response_data)
+        else:
+            composed = ""
+        safe_reply = self.format_text(governed_reply or composed)
         return {
             "reply": safe_reply,
             "message": safe_reply,
