@@ -1,0 +1,16 @@
+# Render deployment configuration
+# https://render.com/docs/render-yaml
+
+services:
+  - type: web
+    name: ameer
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python ameer_server.py
+    healthCheckPath: /health
+    envVars:
+      - key: AMEER_PORT
+        value: 10000
+      - key: PYTHON_VERSION
+        value: "3.12"
+    autoDeploy: true

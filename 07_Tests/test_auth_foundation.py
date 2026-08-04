@@ -13,7 +13,8 @@ class WorkspaceShellTests(unittest.TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         html = response.text
-        self.assertIn("workspaceShell", html)
+        # P0.1 chat UI uses id="app" as the root shell (was "workspaceShell" in workspace UI)
+        self.assertIn('id="app"', html)
         self.assertNotIn("تسجيل دخول المؤسس", html)
         self.assertNotIn("founder@ameer.local", html)
         self.assertNotIn("Ameer2026!", html)
