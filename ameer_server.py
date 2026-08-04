@@ -364,7 +364,7 @@ async def ask(request: Request):
 
 @app.get('/docs')
 async def docs():
-    return {"count": len(DOCUMENTS), "files": [d['path'] for d in DOCUMENTS]}
+    return {"count": len(DOCUMENTS)}
 
 def _load_project_store() -> list[dict]:
     store_path = os.path.join(ROOT, ".ameer", "projects.json")
