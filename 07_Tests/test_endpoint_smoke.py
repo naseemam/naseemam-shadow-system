@@ -64,7 +64,7 @@ class AskEndpointSmokeTests(unittest.TestCase):
                 raise RuntimeError("Smoke test server exited before becoming healthy")
             try:
                 health = _http_get_json(f"{cls.base_url}/health")
-                if health.get("status") == "ok" and health.get("port") == cls.port:
+                if health.get("status") == "ok":
                     return
             except Exception:
                 pass
@@ -100,7 +100,8 @@ class AskEndpointSmokeTests(unittest.TestCase):
         self.assertEqual(data.get("build_id"), health.get("build_id"))
         self.assertEqual(data.get("build"), health.get("build"))
         self.assertEqual(data.get("commit"), health.get("commit"))
-        self.assertEqual(data.get("port"), health.get("port"))
+        self.assertNotIn("port", data)
+        self.assertNotIn("workspace", data)
         self.assertNotIn("routing", data)
         self.assertNotIn("selected_agent", data)
         self.assertNotIn("agent_result", data)
@@ -117,9 +118,13 @@ class AskEndpointSmokeTests(unittest.TestCase):
         self.assertTrue(data.get("build_id"))
         self.assertEqual(data.get("build"), data.get("build_id"))
         self.assertTrue(data.get("commit"))
-        self.assertEqual(data.get("port"), self.port)
-        self.assertEqual(data.get("workspace"), ROOT)
         self.assertTrue(data.get("started_at"))
+        # Internal fields must NOT be exposed publicly
+        self.assertNotIn("port", data)
+        self.assertNotIn("workspace", data)
+        self.assertNotIn("pid", data)
+        self.assertNotIn("host", data)
+        self.assertNotIn("entrypoint", data)
 
 
 if __name__ == "__main__":

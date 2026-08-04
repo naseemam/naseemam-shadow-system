@@ -70,8 +70,6 @@ def public_runtime_identity(workspace_root: str | Path | None = None) -> dict:
         "build": meta["build"],
         "build_id": meta["build_id"],
         "commit": meta["commit"],
-        "port": meta["port"],
-        "workspace": meta["workspace"],
         "started_at": meta["started_at"],
     }
 
@@ -81,7 +79,6 @@ def runtime_headers(workspace_root: str | Path | None = None) -> dict[str, str]:
     return {
         "X-Ameer-Build-ID": str(meta["build_id"]),
         "X-Ameer-Commit": str(meta["commit"]),
-        "X-Ameer-Port": str(meta["port"]),
     }
 
 
