@@ -10,7 +10,7 @@ class GreetingAgent(BaseAgent):
         return AgentOutput(
             agent=self.name,
             confidence=0.97,
-            reply_draft="مرحبا نسيم، أنا حاضر. كيف تحبين نبدأ الآن؟",
+            reply_draft="نعم، أنا معك. كيف أساعدك؟",
             sources=self.primary_sources,
             actions=["open_conversation"],
             message="تم تجهيز رد ترحيبي مبدئي.",

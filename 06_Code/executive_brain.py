@@ -1159,6 +1159,9 @@ class ExecutiveBrain:
         return ""
 
     def _compose_local_reply(self, query: str, plan: ExecutivePlan, orchestrator_result: dict) -> str:
+        if (orchestrator_result.get("intent") == "greeting") or (plan.selected_agent == "greeting_agent"):
+            return "نعم، أنا معك. كيف أساعدك؟"
+
         if plan.clarification_needed and plan.clarification_question:
             return f"سؤالك يحتاج توضيح بسيط قبل المتابعة: {plan.clarification_question}"
 
@@ -1282,7 +1285,7 @@ class ExecutiveBrain:
 
         # 3. Agent Selection
         hinted_agent = routing_hint.get("agent") if routing_hint else None
-        if hinted_agent and perception.request_type != "execution" and not self._single_brain_mode:
+        if hinted_agent and perception.request_type != "execution":
             agent_sel = AgentSelection(
                 primary_agent=hinted_agent,
                 supporting_agents=[],

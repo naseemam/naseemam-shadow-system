@@ -354,6 +354,31 @@ class AmeerOrchestrator:
         ]
         return any(pattern in q for pattern in project_patterns)
 
+    def _is_simple_greeting_or_assistant_name(self, query: str) -> bool:
+        q = self.normalize_fn(query.strip())
+        if not q:
+            return False
+
+        clean = re.sub(r"[^\w\s\u0600-\u06ff]", " ", q)
+        clean = re.sub(r"\s+", " ", clean).strip()
+        if not clean:
+            return False
+
+        assistant_names = {"أمير", "امير", "ameer", "amir"}
+        greeting_terms = {"مرحبا", "اهلا", "أهلا", "السلام عليكم", "هلا", "hello", "hi", "hey", "hola", "yo"}
+        lowered = clean.lower()
+
+        if lowered in {name.lower() for name in assistant_names}:
+            return True
+
+        if lowered in {term.lower() for term in greeting_terms}:
+            return True
+
+        if len(clean.split()) <= 2 and any(term in lowered for term in ["مرحبا", "اهلا", "أهلا", "سلام", "hello", "hi", "hey"]):
+            return True
+
+        return False
+
     def _persist_onboarding_memory(self, query: str, intent: str) -> Dict[str, object]:
         if intent != "onboarding":
             return {"saved": False, "file": None, "fact": None, "reason": "intent_not_onboarding"}
@@ -437,7 +462,11 @@ class AmeerOrchestrator:
         reason = "default knowledge lookup"
         confidence = 0.55
 
-        if self._is_project_creation_request(query):
+        if self._is_simple_greeting_or_assistant_name(query):
+            intent = "greeting"
+            reason = "matched simple greeting or assistant name"
+            confidence = 0.99
+        elif self._is_project_creation_request(query):
             intent = "project"
             reason = "matched project creation request"
             confidence = 0.95

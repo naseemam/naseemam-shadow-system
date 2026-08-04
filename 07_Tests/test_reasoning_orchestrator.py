@@ -12,6 +12,12 @@ reasoning_orchestrator = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = reasoning_orchestrator
 spec.loader.exec_module(reasoning_orchestrator)
 
+EXECUTIVE_BRAIN_PATH = os.path.join(ROOT, "06_Code", "executive_brain.py")
+spec_brain = importlib.util.spec_from_file_location("executive_brain", EXECUTIVE_BRAIN_PATH)
+executive_brain = importlib.util.module_from_spec(spec_brain)
+sys.modules[spec_brain.name] = executive_brain
+spec_brain.loader.exec_module(executive_brain)
+
 
 class AmeerOrchestratorIdentityTests(unittest.TestCase):
     @classmethod
@@ -113,6 +119,30 @@ class AmeerOrchestratorIdentityTests(unittest.TestCase):
             stored = handle.read()
         self.assertIn("أفضل العمل في الليل", stored)
 
+    def test_assistant_name_only_messages_route_to_greeting(self):
+        orchestrator = reasoning_orchestrator.AmeerOrchestrator(
+            documents=[],
+            score_fn=lambda query, text: 0,
+            normalize_fn=lambda text: text.lower().strip(),
+        )
+
+        route = orchestrator.route_query("أمير")
+        self.assertEqual(route["intent"], "greeting")
+        self.assertEqual(route["agent"], "greeting_agent")
+
+    def test_simple_greeting_messages_use_greeting_agent_without_research(self):
+        orchestrator = reasoning_orchestrator.AmeerOrchestrator(
+            documents=[],
+            score_fn=lambda query, text: 0,
+            normalize_fn=lambda text: text.lower().strip(),
+        )
+
+        result = orchestrator.answer("Ameer", max_results=3)
+        self.assertEqual(result["intent"], "greeting")
+        self.assertEqual(result["selected_agent"], "greeting_agent")
+        self.assertEqual(result["results"], [])
+        self.assertIn("أساعدك", result["reply"])
+
     def test_execution_requests_with_common_arabic_variants_route_to_execution(self):
         orchestrator = reasoning_orchestrator.AmeerOrchestrator(
             documents=[],
@@ -124,6 +154,15 @@ class AmeerOrchestratorIdentityTests(unittest.TestCase):
 
         self.assertEqual(result["intent"], "execution")
         self.assertEqual(result["reason"], "matched execution request")
+
+    def test_simple_greeting_returns_direct_reply_without_execution_overhead(self):
+        brain = executive_brain.ExecutiveBrain(normalize_fn=lambda text: text.lower().strip())
+        plan = brain.think("أمير", [], routing_hint={"intent": "greeting", "agent": "greeting_agent"})
+        self.assertEqual(plan.request_type, "question")
+        self.assertEqual(plan.selected_agent, "greeting_agent")
+        reply = brain._compose_local_reply("أمير", plan, {"intent": "greeting"})
+        self.assertIn("أنا معك", reply)
+        self.assertNotIn("المصدر الأهم", reply)
 
 
 if __name__ == "__main__":
