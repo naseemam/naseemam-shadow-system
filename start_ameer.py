@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ameer_runtime import DEFAULT_PORT, resolve_host, resolve_port
+from ameer_runtime import DEFAULT_PORT, resolve_port
 
 ROOT = Path(__file__).resolve().parent
 os.chdir(ROOT)
@@ -16,7 +16,7 @@ def port_is_busy(host: str, port: int) -> bool:
         return sock.connect_ex((host, port)) == 0
 
 
-host = resolve_host()
+host = "0.0.0.0"
 port = resolve_port()
 os.environ["AMEER_PORT"] = str(port)
 cmd = [
