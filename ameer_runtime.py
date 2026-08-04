@@ -9,7 +9,7 @@ import subprocess
 WORKSPACE_ROOT = Path(__file__).resolve().parent
 ENTRYPOINT = "start_ameer.py"
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8011
+DEFAULT_PORT = int(os.getenv("PORT", "8000"))
 START_TIME = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
