@@ -14,13 +14,17 @@ START_TIME = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def resolve_host() -> str:
-    return os.getenv("AMEER_HOST", DEFAULT_HOST)
+    # AMEER_HOST overrides everything; fall back to 0.0.0.0 when a PORT
+    # env var is present (Railway, Render, Fly.io set PORT automatically).
+    default = "0.0.0.0" if os.getenv("PORT") else DEFAULT_HOST
+    return os.getenv("AMEER_HOST", default)
 
 
 def resolve_port() -> int:
-    raw = os.getenv("AMEER_PORT", str(DEFAULT_PORT)).strip()
+    # Cloud platforms (Railway, Render, Fly.io) inject PORT; respect it.
+    raw = os.getenv("AMEER_PORT") or os.getenv("PORT") or str(DEFAULT_PORT)
     try:
-        return int(raw)
+        return int(raw.strip())
     except ValueError:
         return DEFAULT_PORT
 
@@ -66,7 +70,7 @@ def public_runtime_identity(workspace_root: str | Path | None = None) -> dict:
         "build": meta["build"],
         "build_id": meta["build_id"],
         "commit": meta["commit"],
-        "port": meta["port"],
+        "started_at": meta["started_at"],
     }
 
 
@@ -75,7 +79,6 @@ def runtime_headers(workspace_root: str | Path | None = None) -> dict[str, str]:
     return {
         "X-Ameer-Build-ID": str(meta["build_id"]),
         "X-Ameer-Commit": str(meta["commit"]),
-        "X-Ameer-Port": str(meta["port"]),
     }
 
 

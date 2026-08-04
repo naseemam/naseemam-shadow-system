@@ -87,9 +87,22 @@ class ResponseFormatter:
                 "assistant": "أمير",
             }
 
-        response_data = self._extract_response_data(payload)
-        composed = self._compose_from_structured_data(response_data)
-        safe_reply = self.format_text(composed or payload.get("reply", "") or payload.get("message", ""))
+        # EC-001: The executive pipeline (compose_final_reply) has already applied
+        # Guardian/Policy enforcement and produced a governed reply.  That reply
+        # must be honoured as-is; structured reconstruction from agent_brain_payload
+        # or agent_result must only be used when the governed reply is absent or
+        # contains internal/operational phrases that must never reach the user.
+        governed_reply = (payload.get("reply") or payload.get("message") or "").strip()
+        # A reply that mentions internal routing tokens is an operational artefact,
+        # not a user-facing response — treat it as absent so structured data wins.
+        _is_internal = bool(governed_reply and self._agent_pattern.search(governed_reply))
+        safe_governed = (self.format_text(governed_reply) if governed_reply and not _is_internal else "")
+        if not safe_governed or safe_governed == self._FALLBACK_REPLY:
+            response_data = self._extract_response_data(payload)
+            composed = self._compose_from_structured_data(response_data)
+        else:
+            composed = ""
+        safe_reply = safe_governed or self.format_text(composed)
         return {
             "reply": safe_reply,
             "message": safe_reply,

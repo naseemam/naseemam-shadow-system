@@ -1170,7 +1170,10 @@ class ExecutiveBrain:
                 result["tool_calls"].append("memory.save")
                 self._update_step(progress, "persist_request_memory", "succeeded" if memory_result.get("saved") else "failed", memory_result.get("reason", ""))
 
-        if has_memory_intent or any(token in " ".join(steps) for token in ["remember", "save", "تذكر", "ذاكرة", "احفظ"]):
+        # EC-002: Memory Governance — WRITE only on explicit save intent.
+        # has_memory_intent fires on read words like "تذكر" (recall/remember).
+        # Gating on has_explicit_save_request ensures READ never becomes WRITE.
+        if has_explicit_save_request and (has_memory_intent or any(token in " ".join(steps) for token in ["remember", "save", "تذكر", "ذاكرة", "احفظ"])):
             fact = self._extract_memory_fact(query, plan)
             if fact and not result["memory"]:
                 self._update_step(progress, "persist_memory_fact", "running", "جارٍ حفظ المعلومة المطلوبة")
@@ -1375,6 +1378,25 @@ class ExecutiveBrain:
         trusted_core_reply = self._compose_trusted_core_reply(orchestrator_result)
         if trusted_core_reply:
             return trusted_core_reply, "executive_brain_core"
+
+        # ── EC-001: Guardian gate ─────────────────────────────────────────────
+        # The Guardian/Policy Engine must run before reasoning, retrieval, or
+        # response composition.  Any request that the guardian has flagged must
+        # be rejected here — before any document lookup, provider call, or
+        # reply assembly reaches the user.  Identity and greeting replies are
+        # exempted because they are constitutional duties, not governed actions.
+        if plan and getattr(plan, "guardian_status", "pass") == "needs_approval":
+            reason = (orchestrator_result.get("guardian") or {}).get("reason") or plan.guardian_reason
+            return (
+                "لا أستطيع تنفيذ هذا الطلب بصيغته الحالية لأنه يتجاوز حدود التشغيل المسموح بها. "
+                "إذا كان هدفك مشروعًا أو مهمة عملية، أستطيع اقتراح طريقة آمنة تحقق نفس النتيجة."
+            ), "guardian_gate"
+
+        if plan and getattr(plan, "guardian_status", "pass") == "blocked":
+            return (
+                "لا أستطيع المتابعة في هذا الطلب الآن لأنّه خارج النطاق المسموح به. "
+                "أستطيع مساعدتك في البدائل الآمنة التي تدفع المشروع forward دون المخاطرة."
+            ), "guardian_gate"
 
         # Greetings are handled locally — no need to call the AI provider.
         if orchestrator_result.get("intent") == "greeting":

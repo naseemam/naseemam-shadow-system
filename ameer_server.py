@@ -364,7 +364,7 @@ async def ask(request: Request):
 
 @app.get('/docs')
 async def docs():
-    return {"count": len(DOCUMENTS), "files": [d['path'] for d in DOCUMENTS]}
+    return {"count": len(DOCUMENTS)}
 
 def _load_project_store() -> list[dict]:
     store_path = os.path.join(ROOT, ".ameer", "projects.json")
@@ -461,11 +461,7 @@ async def health():
         "build": meta["build"],
         "build_id": meta["build_id"],
         "commit": meta["commit"],
-        "host": meta["host"],
-        "port": meta["port"],
         "started_at": meta["started_at"],
-        "pid": meta["pid"],
-        "entrypoint": meta["entrypoint"],
         "documents": len(DOCUMENTS),
         "ameer_status": {
             "Server": "Online",

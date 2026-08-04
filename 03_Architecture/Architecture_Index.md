@@ -4,6 +4,8 @@ This index maps the core architecture documents for Ameer and highlights how the
 
 ## Documents
 
+- `System_Architecture.md`
+  - Top-level architecture map that connects Executive Core, Executive Brain, orchestration, memory, knowledge, agents, providers, frontend, backend, and runtime.
 - `Ameer_Architecture_Overview.md`
   - High-level system blueprint for model choice, hybrid execution, memory, tools, security, and the new Intelligence Core.
 - `Ameer_Intelligence_Core_v1.md`
