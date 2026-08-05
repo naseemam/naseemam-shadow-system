@@ -13,9 +13,9 @@ class GreetingAgent(BaseAgent):
         q_words_only = re.sub(r"[^\u0621-\u064Aa-zA-Z0-9]", "", (context.query or "").lower()).strip()
         is_name_call = q_words_only in self._assistant_name_forms
         reply = (
-            "نعم، أنا معك. كيف أساعدك؟"
+            "أنا معك. حددي النقطة التي نحتاج حسمها الآن."
             if is_name_call
-            else "مرحبا نسيم، أنا حاضر. كيف تحبين نبدأ الآن؟"
+            else "راجعت السياق المفتوح، والأفضل أن نبدأ بأعلى نقطة تؤثر على بقية العمل."
         )
         return AgentOutput(
             agent=self.name,

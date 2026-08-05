@@ -22,9 +22,12 @@ if _CODE_ROOT not in sys.path:
     sys.path.insert(0, _CODE_ROOT)
 
 from kernel.state_manager import ExecutiveStateManager
+from kernel.decision_engine import DecisionEngine
+from kernel.approval_gate import ApprovalGate
 from context.workspace_awareness import WorkspaceAwareness
 from context.session_context import SessionContext
 from context.founder_profile import FounderProfile
+from executive_conversation import PersistentConversationMemory
 
 
 def _now_iso() -> str:
@@ -50,9 +53,12 @@ class ExecutiveKernel:
 
         # Component registry
         self.state: ExecutiveStateManager = ExecutiveStateManager(self._root)
+        self.decisions: DecisionEngine = DecisionEngine(self._root)
+        self.approvals: ApprovalGate = ApprovalGate(self._root)
         self.workspace: WorkspaceAwareness = WorkspaceAwareness(self._root)
         self.session: SessionContext = SessionContext()
         self.founder: FounderProfile = FounderProfile(self._root)
+        self.conversation_memory: PersistentConversationMemory = PersistentConversationMemory(self._root)
 
     # ── Startup helpers ───────────────────────────────────────────────────────
 
@@ -140,6 +146,29 @@ class ExecutiveKernel:
             self._health["session_context"] = f"error: {exc}"
             errors.append("session_context")
 
+        try:
+            _ = self.conversation_memory.snapshot()
+            self._health["persistent_conversation_memory"] = "ok"
+        except Exception as exc:
+            self._health["persistent_conversation_memory"] = f"error: {exc}"
+            errors.append("persistent_conversation_memory")
+
+        # 5. Decision Engine
+        try:
+            _ = self.decisions.snapshot()
+            self._health["decision_engine"] = "ok"
+        except Exception as exc:
+            self._health["decision_engine"] = f"error: {exc}"
+            errors.append("decision_engine")
+
+        # 6. Approval Gate
+        try:
+            _ = self.approvals.snapshot()
+            self._health["approval_gate"] = "ok"
+        except Exception as exc:
+            self._health["approval_gate"] = f"error: {exc}"
+            errors.append("approval_gate")
+
         overall = "degraded" if errors else "running"
         self.state.set_runtime_status(overall)
         self._initialized = True
@@ -184,18 +213,85 @@ class ExecutiveKernel:
             "founder_context": self.founder.build_context_block(),
             "workspace_summary": self.state.workspace_summary,
             "pending_approvals": self.state.pending_approvals,
+            "pending_approval_requests": self.approvals.pending(),
             "active_projects": self.state.active_projects,
             "running_tasks": self.state.running_tasks,
             "executive_assessment": self.state.executive_assessment,
+            "persistent_conversation_memory": self.conversation_memory.snapshot(),
+            "persistent_memory_context": self.conversation_memory.build_context_block(),
             "session_count": self.state.session_count,
             "is_follow_up": self.session.is_follow_up(),
             "is_first_turn": is_first_turn,
+            "proactive_briefing": self._build_proactive_briefing() if is_first_turn else "",
         }
 
     def after_request(self, reply: str) -> None:
         """يُسجّل رد أمير في تاريخ المحادثة."""
         if reply:
             self.session.add_assistant_message(reply)
+
+    # ── Proactive Briefing ────────────────────────────────────────────────────
+
+    def _build_proactive_briefing(self) -> str:
+        """
+        يُنتج إحاطة استباقية عند أول رسالة في الجلسة.
+        تشمل: المشاريع النشطة، الموافقات المعلّقة، القرارات الأخيرة.
+        """
+        parts: list = []
+
+        active = self.state.active_projects
+        if active:
+            names = "، ".join(active[:5])
+            parts.append(f"المشاريع النشطة: {names}.")
+
+        pending_approvals = self.approvals.pending()
+        if pending_approvals:
+            count = len(pending_approvals)
+            desc = pending_approvals[0].get("description", "")
+            parts.append(f"لديك {count} طلب موافقة معلّق" + (f': "{desc}"' if desc else "") + ".")
+
+        pending_decisions = self.decisions.pending()
+        if pending_decisions:
+            count = len(pending_decisions)
+            title = pending_decisions[0].get("title", "")
+            parts.append(f"لديك {count} قرار قيد الانتظار" + (f': "{title}"' if title else "") + ".")
+
+        running_tasks = self.state.running_tasks
+        if running_tasks:
+            count = len(running_tasks)
+            parts.append(f"المهام الجارية: {count}.")
+
+        return " ".join(parts) if parts else ""
+
+    # ── Decision & Approval helpers ───────────────────────────────────────────
+
+    def record_decision(
+        self,
+        title: str,
+        reason: str,
+        category: str = "other",
+        expected_outcome: str = "",
+    ) -> str:
+        """تسجيل قرار تنفيذي. يُعيد decision_id."""
+        return self.decisions.record(
+            title=title,
+            reason=reason,
+            category=category,
+            expected_outcome=expected_outcome,
+        )
+
+    def request_approval(
+        self,
+        action: str,
+        description: str,
+        requested_by: str = "executive_brain",
+    ) -> str:
+        """طلب موافقة المؤسسة على إجراء حساس. يُعيد approval_id."""
+        return self.approvals.request(
+            action=action,
+            description=description,
+            requested_by=requested_by,
+        )
 
     # ── Health ────────────────────────────────────────────────────────────────
 
@@ -206,6 +302,8 @@ class ExecutiveKernel:
             "session_turns": len(self.session),
             "founder_loaded": self.founder.is_loaded,
             "pending_approvals": len(self.state.pending_approvals),
+            "pending_approval_requests": len(self.approvals.pending()),
+            "pending_decisions": len(self.decisions.pending()),
             "components": self._health,
         }
 
