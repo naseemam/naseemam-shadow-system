@@ -1,3 +1,12 @@
-# Founder Personal Memory — Travel
+# Travel
 
-- TODO: No confirmed travel information should be stored here.
+## Founder Memory
+
+## Confirmed Facts
+- Unknown
+
+## TODO
+- Founder-approved travel information: TODO
+
+## Verified Sources
+- No verified founder-approved travel information currently available for storage.

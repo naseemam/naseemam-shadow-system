@@ -1,4 +1,12 @@
-# Founder Personal Memory — Preferences
+# Preferences
 
-- TODO: No confirmed founder preference should be stored here yet under the current constraint set.
-- TODO: Any preference added later must be explicitly confirmed from approved materials or by founder approval.
+## Founder Memory
+
+## Confirmed Facts
+- Unknown
+
+## TODO
+- Founder-approved preferences: TODO
+
+## Verified Sources
+- No verified founder-approved preference currently available for storage.

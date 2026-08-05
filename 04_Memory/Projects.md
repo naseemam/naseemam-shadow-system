@@ -1,12 +1,12 @@
-# Project Memory — Projects
+# Projects
 
-## Active Project
+## Project Memory
 
 ### Ameer
-- Type: Personal AI / executive platform project
-- Founder: Naseem
-- Status: Active repository and active documentation set
-- Sources:
+- Type: Personal AI / executive platform project.
+- Founder: Naseem.
+- Status: Active repository with active architecture, governance, and roadmap documentation.
+- Verified Sources:
   - `01_Docs/Ameer_Constitution_v0.1.md`
   - `01_Docs/Vision.md`
   - `10_Documentation/Production_Roadmap.md`
@@ -14,13 +14,14 @@
 ## Confirmed Project Facts
 - Ameer is an intelligent executive partner operating under founder authority and constitution rules.
 - Ameer is designed as a private lifelong personal AI intelligence system for Naseem.
-- The system is intended to support Arabic interaction as a first-class mode and operate bilingually.
-- The current runtime includes a FastAPI server with `/ask`, `/docs`, and `/projects` endpoints.
-- The repository includes specialized agents such as identity, greeting, memory, project, research, and recovery agents.
-- The current production roadmap states the system is partially complete and not yet production-ready.
+- Arabic interaction is a first-class requirement and the system is intended to operate bilingually.
+- The current runtime includes `/ask`, `/docs`, and `/projects` endpoints.
+- The repository includes agent/runtime components documented for identity, greeting, memory, project, research, and recovery roles.
+- The production roadmap states the system is partially complete and not yet production-ready.
 
-## Related Project Mentioned In Documentation
+## Related Confirmed Context
 - `حلم الندى`
-  - Mentioned in `01_Docs/Vision.md` as a project that affects financial planning context.
+  - Mentioned in `01_Docs/Vision.md` as project-related context affecting financial planning.
   - Mentioned in `06_Code/kernel/decision_engine.py` in project-related logic/examples.
-  - TODO: Confirm whether this should be stored as ongoing project memory and what canonical description is approved.
+  - Status: TODO
+  - Canonical description: TODO

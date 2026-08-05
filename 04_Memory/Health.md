@@ -1,3 +1,12 @@
-# Founder Personal Memory — Health
+# Health
 
-- TODO: No confirmed health information should be stored here.
+## Founder Memory
+
+## Confirmed Facts
+- Unknown
+
+## TODO
+- Founder-approved health information: TODO
+
+## Verified Sources
+- No verified founder-approved health information currently available for storage.

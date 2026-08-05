@@ -1,25 +1,23 @@
-# Memory Index
+# Index
 
-## Scope
-- `04_Memory/` currently separates confirmed project memory from founder personal memory.
-- Project memory may be filled from repository code, documentation, and existing confirmed memory only.
-- Founder personal memory must remain empty unless explicitly confirmed in current project materials or approved by the founder.
+## Memory Categories
 
-## Project Memory
-- `Projects.md`
-- `Goals.md`
-- `Knowledge.md`
+### Project Memory
+- `Projects.md` — facts about Ameer, repository scope, and confirmed project context.
+- `Goals.md` — confirmed project goals and roadmap priorities.
+- `Knowledge.md` — confirmed architecture, runtime, and governance knowledge.
 
-## Founder Personal Memory
-- `Founder.md`
-- `Preferences.md`
-- `Routine.md`
-- `Health.md`
-- `Finance.md`
-- `Relationships.md`
-- `Travel.md`
+### Founder Memory
+- `Founder.md` — founder-approved identity facts only.
+- `Finance.md` — founder-approved financial facts only.
+- `Preferences.md` — founder-approved preferences only.
+- `Routine.md` — founder-approved routine facts only.
+- `Health.md` — founder-approved health facts only.
+- `Relationships.md` — founder-approved relationship facts only.
+- `Travel.md` — founder-approved travel facts only.
 
 ## Rules
-- Do not invent personal, health, financial, relationship, or preference information.
-- If a field is not confirmed, leave it empty and mark it as `TODO`.
-- Permanent founder memory requires explicit founder approval.
+- Populate memory only from the repository, project documentation, source code, or explicit founder-provided facts.
+- Unknown fields must remain `TODO` or `Unknown`.
+- Do not invent, infer, summarize beyond verified facts, or assume personal information.
+- Preserve this file structure so current memory-loading code can consume it without changes.

@@ -1,17 +1,20 @@
-# Founder Personal Memory
+# Founder
 
-## Confirmed Information
+## Founder Memory
+
+## Confirmed Facts
 - Name: Naseem
 - Role: Founder of Project Ameer
 
-## Unconfirmed / Approval Required
+## Unknown / TODO
 - Personal background: TODO
-- Personal preferences: TODO
-- Health information: TODO
+- Preferences: TODO
+- Routine: TODO
+- Health: TODO
 - Financial information: TODO
-- Relationship information: TODO
-- Travel information: TODO
-- Routine information: TODO
+- Relationships: TODO
+- Travel: TODO
 
-## Note
-- This file should only be expanded with confirmed information from current project materials or explicit founder approval.
+## Verified Sources
+- `01_Docs/Ameer_Constitution_v0.1.md`
+- Existing founder identity already present in prior `04_Memory/Founder.md`
