@@ -723,11 +723,16 @@ async def post_approval_request(request: Request):
 
 
 @app.post('/approvals/{approval_id}/approve')
-async def approve_request(approval_id: str):
+async def approve_request(approval_id: str, request: Request):
     """موافقة المؤسسة على طلب."""
     if not KERNEL:
         return utf8_json_response({"status": "unavailable"}, status_code=503)
-    updated = KERNEL.approvals.approve(approval_id, approved_by="naseem")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    approved_by = body.get("approved_by", "naseem")
+    updated = KERNEL.approvals.approve(approval_id, approved_by=approved_by)
     if not updated:
         return utf8_json_response({"error": "approval not found or already resolved"}, status_code=404)
     return utf8_json_response({"id": approval_id, "status": "approved"})
@@ -741,9 +746,11 @@ async def reject_request(approval_id: str, request: Request):
     try:
         body = await request.json()
         reason = body.get("reason", "")
+        rejected_by = body.get("rejected_by", "naseem")
     except Exception:
         reason = ""
-    updated = KERNEL.approvals.reject(approval_id, reason=reason, rejected_by="naseem")
+        rejected_by = "naseem"
+    updated = KERNEL.approvals.reject(approval_id, reason=reason, rejected_by=rejected_by)
     if not updated:
         return utf8_json_response({"error": "approval not found or already resolved"}, status_code=404)
     return utf8_json_response({"id": approval_id, "status": "rejected"})

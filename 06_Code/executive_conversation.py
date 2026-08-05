@@ -133,7 +133,7 @@ class PersistentConversationMemory:
         if q:
             self._remember_topic(q)
             if q.endswith("؟") or "?" in q:
-                self._upsert_list("pending_questions", q, remove_if_answered=bool(r))
+                self._upsert_list("pending_questions", q, remove_if_answered=self._reply_resolves_question(r))
             else:
                 self._upsert_list("unfinished_discussions", q)
         if planner_state.next_executive_action:
@@ -158,6 +158,20 @@ class PersistentConversationMemory:
         normalized = re.sub(r"\s+", " ", text).strip()
         if normalized:
             self._upsert_list("recurring_topics", normalized[:120])
+
+    def _reply_resolves_question(self, reply: str) -> bool:
+        text = (reply or "").strip()
+        if not text:
+            return False
+        resolution_markers = [
+            "القرار",
+            "الخطوة التالية",
+            "تم الحسم",
+            "أقترح",
+            "ابدئي",
+            "ابدأ",
+        ]
+        return any(marker in text for marker in resolution_markers)
 
     def _upsert_list(self, key: str, value: str, remove_if_answered: bool = False) -> None:
         items = [str(v) for v in self._state.get(key, []) if str(v).strip()]

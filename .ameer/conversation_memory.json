@@ -1,0 +1,40 @@
+{
+  "unfinished_discussions": [
+    "أمير",
+    "اقترح خطوة تالية."
+  ],
+  "previous_promises": [],
+  "pending_questions": [
+    "ما وضع المشاريع الآن؟",
+    "من أنت؟",
+    "ما الأولويات الآن؟"
+  ],
+  "user_priorities": [],
+  "ongoing_projects": [],
+  "recurring_topics": [
+    "أمير",
+    "ما وضع المشاريع الآن؟",
+    "من أنت؟",
+    "اقترح خطوة تالية.",
+    "ما الأولويات الآن؟"
+  ],
+  "relationship_continuity": {
+    "last_summary": "أمير",
+    "last_reply": "أنا معك. حددي النقطة التي نحتاج حسمها الآن. الخطوة التالية: أغلق نقطة القرار التالية ثم واصل التنفيذ.",
+    "last_user_message": "أمير"
+  },
+  "executive_commitments": [
+    "أغلق نقطة القرار التالية ثم واصل التنفيذ."
+  ],
+  "initiative_log": [],
+  "last_planner_state": {
+    "executive_objective": "أمير",
+    "founder_objective": "أمير",
+    "current_project_objective": "أمير",
+    "detected_risks": [],
+    "missing_information": [],
+    "next_executive_action": "أغلق نقطة القرار التالية ثم واصل التنفيذ."
+  },
+  "updated_at": "2026-08-05T15:12:16Z",
+  "created_at": "2026-08-05T15:12:10Z"
+}
