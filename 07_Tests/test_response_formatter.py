@@ -68,14 +68,14 @@ class ResponseFormatterTests(unittest.TestCase):
 
         self.assertEqual(
             result["reply"],
-            "أنا أمير، الوكيل التنفيذي الأساسي للنظام. أتفاعل معك مباشرة وأستخدم الوكلاء المتخصصين تحت إشرافي عند الحاجة.",
+            "أنا أمير، شريكك التنفيذي. أفكر معك، أخطط، أتابع، وأقدم الرد النهائي باسمي.",
         )
 
     def test_format_text_blocks_json_like_internal_payload(self):
         formatter = ResponseFormatter()
         raw = '{"selected_agent":"identity_agent","execution_engine":{"tool_calls":["file.create"]}}'
         result = formatter.format_text(raw)
-        self.assertEqual(result, "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني.")
+        self.assertEqual(result, "أنا معك.")
 
     def test_format_text_drops_source_file_and_prompt_labels(self):
         formatter = ResponseFormatter()
@@ -92,7 +92,7 @@ class ResponseFormatterTests(unittest.TestCase):
         formatter = ResponseFormatter()
         raw = " ".join(["The user is asked to provide a single answer in Arabic."] * 10)
         result = formatter.format_text(raw)
-        self.assertEqual(result, "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني.")
+        self.assertEqual(result, "أنا معك.")
 
     def test_format_payload_always_returns_public_contract_only(self):
         formatter = ResponseFormatter()

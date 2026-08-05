@@ -70,8 +70,8 @@ class ExecutiveBrainProviderTests(unittest.TestCase):
 
         reply = brain._compose_local_reply("طلب حساس", plan, orchestrator_result)
 
-        self.assertIn("لا أستطيع تنفيذ هذا الطلب بصيغته الحالية", reply)
-        self.assertIn("طريقة آمنة", reply)
+        self.assertIn("يتجاوز ما أستطيع تنفيذه", reply)
+        self.assertIn("آمن", reply)
 
     def test_sanitize_provider_reply_removes_internal_prompt_leakage(self):
         brain = ExecutiveBrain(normalize_fn=lambda x: x)
@@ -128,7 +128,7 @@ class ExecutiveBrainProviderTests(unittest.TestCase):
 
         self.assertEqual(
             reply,
-            "أنا أمير، الوكيل التنفيذي الأساسي للنظام. أتفاعل معك مباشرة وأستخدم الوكلاء المتخصصين تحت إشرافي عند الحاجة.",
+            "أنا أمير، شريكك التنفيذي. أفكر معك، أخطط، أتابع، وأقدم الرد النهائي باسمي.",
         )
         self.assertEqual(source, "executive_brain_core")
 

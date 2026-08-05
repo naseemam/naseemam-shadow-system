@@ -227,7 +227,7 @@ class AmeerOrchestrator:
         ]])
 
         if founder_question:
-            reply = "نسيم هي المؤسسة وصاحبة القرار النهائي، وأمير يعمل تحت سلطتها التنفيذية المباشرة."
+            reply = "نسيم هي المؤسسة وصاحبة القرار، وأنا أعمل تحت سلطتها مباشرة."
             facts = {
                 "subject": "founder",
                 "name": "Naseem",
@@ -240,23 +240,23 @@ class AmeerOrchestrator:
             "do you understand me",
             "do you know me",
         ]]):
-            reply = "نعم، أفهمك ضمن ما تشاركينه معي، ودوري أن أستوعب هدفك ثم أقرر إن كنت أجيب مباشرة أو أستعين بوكيل متخصص تحت إشرافي."
+            reply = "نعم، أفهمك ضمن ما تشاركينه معي. أستوعب هدفك وأعمل معك لتحقيقه."
             facts = {
                 "subject": "ameer",
                 "name": "Ameer",
-                "role": "Primary Executive Agent",
-                "purpose": "Direct understanding, executive coordination, and supervised delegation",
+                "role": "Executive Partner",
+                "purpose": "Direct understanding and executive partnership",
             }
         elif any(term in qn for term in [self.normalize_fn(term.lower()) for term in [
             "ماذا تستطيع",
             "what can you do",
         ]]):
-            reply = "أنا أمير، الوكيل التنفيذي الأساسي للنظام. أفهم الهدف، أحدد المسار، أختار الوكلاء المتخصصين عند الحاجة، ثم أراجع النتائج وأصوغ الرد النهائي باسمي."
+            reply = "أنا أمير، شريكك التنفيذي. أفهم هدفك، أحدد المسار، أنسّق ما يلزم، وأقدم الرد النهائي باسمي."
             facts = {
                 "subject": "ameer",
                 "name": "Ameer",
-                "role": "Primary Executive Agent",
-                "purpose": "Executive coordination, planning, and final response ownership",
+                "role": "Executive Partner",
+                "purpose": "Executive planning, coordination, and final response ownership",
             }
         elif any(term in qn for term in [self.normalize_fn(term.lower()) for term in [
             "حدود",
@@ -264,20 +264,20 @@ class AmeerOrchestrator:
             "كيف تعمل",
             "how do you work",
         ]]):
-            reply = "أعمل كعقل تنفيذي للنظام تحت سلطة المؤسس. أستطيع التحليل والتخطيط والتنسيق، لكن القرارات النهائية والإجراءات المؤثرة تبقى ضمن حدود الدستور وموافقة المؤسس عند الحاجة."
+            reply = "أعمل كشريك تنفيذي تحت سلطة المؤسس. أستطيع التحليل والتخطيط والتنسيق، والقرارات المصيرية تبقى معك."
             facts = {
                 "subject": "ameer",
                 "name": "Ameer",
-                "role": "Primary Executive Agent",
+                "role": "Executive Partner",
                 "purpose": "Constitution-bound executive reasoning",
             }
         else:
-            reply = "أنا أمير، الوكيل التنفيذي الأساسي والعقل الإداري للنظام. المستخدم يتفاعل معي مباشرة، وأنا أقرر متى أجيب بنفسي ومتى أستخدم وكلاء متخصصين تحت إشرافي ثم أقدّم الرد النهائي باسمي."
+            reply = "أنا أمير، شريكك التنفيذي. أتفاعل معك مباشرة وأقرر متى أجيب بنفسي ومتى أستعين بما يلزم ثم أقدم الرد النهائي باسمي."
             facts = {
                 "subject": "ameer",
                 "name": "Ameer",
-                "role": "Primary Executive Agent",
-                "purpose": "Executive reasoning, supervised delegation, and final response ownership",
+                "role": "Executive Partner",
+                "purpose": "Executive reasoning and final response ownership",
             }
 
         return AgentOutput(
@@ -286,7 +286,7 @@ class AmeerOrchestrator:
             reply_draft=reply,
             sources=CORE_ROUTE_CAPABILITIES["ameer_core"]["primary_sources"],
             actions=["answer_core_identity"],
-            message="تمت الإجابة من Ameer Core دون تشغيل وكيل متخصص.",
+            message="تمت الإجابة من Ameer Core.",
             response_data={
                 "intent": "identity",
                 "facts": facts,

@@ -3,7 +3,7 @@ from typing import Any
 
 
 class ResponseFormatter:
-    _FALLBACK_REPLY = "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني."
+    _FALLBACK_REPLY = "أنا معك."
 
     def __init__(self) -> None:
         self._drop_line_patterns = [
@@ -134,14 +134,14 @@ class ResponseFormatter:
         if intent == "identity":
             subject = str(facts.get("subject", "")).strip().lower()
             if subject == "founder":
-                return "نسيم هي المؤسسة وصاحبة القرار النهائي في مشروع أمير."
-            return "أنا أمير، الوكيل التنفيذي الأساسي للنظام. أتفاعل معك مباشرة وأستخدم الوكلاء المتخصصين تحت إشرافي عند الحاجة."
+                return "نسيم هي المؤسسة وصاحبة القرار، وأنا أعمل تحت سلطتها مباشرة."
+            return "أنا أمير، شريكك التنفيذي. أفكر معك، أخطط، أتابع، وأقدم الرد النهائي باسمي."
 
         if intent == "greeting":
             mode = str(facts.get("mode", "")).strip().lower()
             if mode == "name_call":
-                return "أنا معك. حددي النقطة التي نحتاج حسمها الآن."
-            return "راجعت ما بقي مفتوحًا منذ آخر مرة، والأفضل أن نبدأ بالنقطة الأعلى أثرًا."
+                return "أنا هنا. من أين نبدأ؟"
+            return "نبدأ من أعلى نقطة أثرًا — ما الذي يحتاج قرارًا الآن؟"
 
         if intent in {"project", "research", "memory"}:
             status = str(facts.get("status", "")).strip().lower()
@@ -149,12 +149,12 @@ class ResponseFormatter:
             if status in {"found", "follow_up", "plan_shifted"} and excerpt:
                 return excerpt[:260]
             if intent == "memory":
-                return "راجعت الذاكرة المتاحة، وإذا أردت أستطيع تضييق البحث على نقطة محددة."
+                return "راجعت الذاكرة المتاحة. أخبريني بما تحتاجين تحديدًا."
             if intent == "project":
-                return "راجعت سياق المشروع، ويمكنني تحويله إلى خطوات تنفيذية واضحة حسب أولوياتك."
-            return "راجعت السياق المتاح، ويمكنني تقديم إجابة أدق إذا حددت الهدف بشكل أوضح."
+                return "راجعت سياق المشروع. يمكنني تحويل هذا إلى خطوات تنفيذية حسب أولوياتك."
+            return "راجعت السياق المتاح. حددي الهدف بدقة وأعطيك إجابة أوضح."
 
         if intent == "recovery":
-            return "واجهت تعارضًا داخليًا بسيطًا وتم تفعيل مسار آمن للاستمرار. أقدر أكمل معك بشكل طبيعي."
+            return "واجهت تعارضًا داخليًا بسيطًا وعالجته. نكمل طبيعيًا."
 
         return ""

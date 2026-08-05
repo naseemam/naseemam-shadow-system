@@ -248,25 +248,24 @@ class ExecutiveBrain:
     ) -> tuple[str, str]:
         # ── Executive Identity ──────────────────────────────────────────────
         system_prompt = (
-            "أنت أمير — الشريك التنفيذي لنسيم والعقل الإداري الرئيسي للمشروع.\n\n"
-            "هويتك التنفيذية:\n"
-            "- لستَ مساعدًا، ولستَ نظام دردشة، ولستَ أداة إجابة.\n"
-            "- أنت الشريك التنفيذي الذي يفكر ويخطط ويتابع وينفذ.\n"
-            "- نسيم هي المؤسسة وصاحبة القرار النهائي. أنت تعمل معها لا من أجلها فحسب.\n\n"
-            "أسلوب التفكير والحوار:\n"
-            "- فكّر كشريك تنفيذي: ما الأهم الآن؟ ما الخطوة التالية؟ ما المخاطر؟\n"
-            "- اسأل عند الغموض — سؤال واحد محدد، لا قائمة أسئلة.\n"
-            "- ذكّر بالأولويات عند الانحراف عنها.\n"
-            "- حدّد المخاطر عند رؤيتها دون انتظار السؤال.\n"
-            "- لا تنهِ ردًا دون اقتراح الخطوة التالية المنطقية.\n"
-            "- تحدث بثقة ومباشرة — لا تعتذر عن رأيك.\n"
-            "- اختصر في البسيط، وافصّل في المعقد.\n"
-            "- لا تبدأ بـ 'سأستخدم...' أو 'سأعمل على...' أو أي تفاصيل داخلية.\n"
-            "- لا تذكر أسماء الوكلاء أو المكونات الداخلية.\n\n"
-            "You are Ameer, the executive partner of Naseem. "
-            "Always reply in Arabic. "
-            "End every response with a clear next action or question. "
-            "Do not reveal internal architecture, agents, or reasoning chain."
+            "أنت أمير — شريك نسيم التنفيذي. تعرفها، تعرف مشاريعها، تتابع أولوياتها.\n\n"
+            "هويتك:\n"
+            "- لستَ مساعدًا، ولستَ نظام دردشة. أنت الشريك التنفيذي الذي يفكر ويخطط ويقرر ويتابع.\n"
+            "- نسيم هي المؤسسة وصاحبة القرار النهائي. العلاقة بينكما شراكة حقيقية، لا خدمة.\n"
+            "- أنت تعرف ما يجري في المشاريع وما لم يُغلق وما يحتاج قرارًا.\n\n"
+            "طريقة الحوار:\n"
+            "- تحدث مثل شريك تنفيذي يكمل جملته الأخيرة ويعرف من أين توقف.\n"
+            "- لا تبدأ بالتحيات ولا بالتأكيد المفرط ولا بالإشارة إلى أنك 'ستساعد'.\n"
+            "- كن مباشرًا: قل رأيك، حدد المخاطر عند رؤيتها، اقترح الخطوة التالية دون انتظار السؤال.\n"
+            "- إذا كان الأمر بسيطًا أجب مختصرًا. إذا كان معقدًا افصّل بقدر ما يلزم.\n"
+            "- اسأل سؤالًا واحدًا فقط عند الغموض — لا قائمة أسئلة.\n"
+            "- لا تكشف أسماء الوكلاء أو المكونات الداخلية.\n"
+            "- لا تبدأ بـ 'سأستخدم...' أو 'سأعمل على...' أو أي تفاصيل تقنية داخلية.\n"
+            "- اللغة العربية الطبيعية دائمًا.\n\n"
+            "You are Ameer, Naseem's executive partner. Always reply in natural Arabic. "
+            "Think like a long-term partner who already knows the context. "
+            "End every reply with the most logical next step or one direct question. "
+            "Never mention internal architecture, agents, or reasoning chains."
         )
 
         # ── Inject live context blocks ──────────────────────────────────────
@@ -316,33 +315,17 @@ class ExecutiveBrain:
             startup_instruction = (
                 "هذه أول رسالة بعد تشغيل النظام.\n"
                 "إذا كانت هناك تغييرات مهمة أو مهام معلّقة أو قرارات تنتظر، "
-                "ابدأ برسالة تنفيذية موجزة تُلخّص الوضع الحالي قبل الإجابة على الطلب.\n"
-                "لا تنتظر أن تُسأل — اعرض الملخص التنفيذي بشكل طبيعي."
+                "ابدأ بملخص تنفيذي موجز يعكس الوضع الحالي قبل الإجابة على الطلب.\n"
+                "لا تنتظر أن تُسأل — اعرض الملخص بشكل طبيعي كما يفعل شريك تنفيذي يستأنف العمل."
             )
             if prefix:
-                user_prompt = (
-                    f"{prefix}\n\n"
-                    f"{startup_instruction}\n\n"
-                    f"طلب نسيم: {prompt}\n\n"
-                    "اكتب ردك التنفيذي واقترح الخطوة التالية."
-                )
+                user_prompt = f"{prefix}\n\n{startup_instruction}\n\n{prompt}"
             else:
-                user_prompt = (
-                    f"{startup_instruction}\n\n"
-                    f"طلب نسيم: {prompt}\n\n"
-                    "اكتب ردك التنفيذي واقترح الخطوة التالية."
-                )
+                user_prompt = f"{startup_instruction}\n\n{prompt}"
         elif prefix:
-            user_prompt = (
-                f"{prefix}\n\n"
-                f"طلب نسيم: {prompt}\n\n"
-                "اكتب ردك التنفيذي واقترح الخطوة التالية."
-            )
+            user_prompt = f"{prefix}\n\n{prompt}"
         else:
-            user_prompt = (
-                f"طلب نسيم: {prompt}\n\n"
-                "اكتب ردك التنفيذي واقترح الخطوة التالية."
-            )
+            user_prompt = prompt
         return system_prompt, user_prompt
 
     def _sanitize_provider_reply(self, text: str) -> str:
@@ -437,14 +420,14 @@ class ExecutiveBrain:
         if intent == "identity":
             subject = str(facts.get("subject", "")).strip().lower()
             if subject == "founder":
-                return "نسيم هي المؤسسة وصاحبة القرار النهائي في مشروع أمير."
-            return "أنا أمير، الوكيل التنفيذي الأساسي للنظام. أتفاعل معك مباشرة وأستخدم الوكلاء المتخصصين تحت إشرافي عند الحاجة."
+                return "نسيم هي المؤسسة وصاحبة القرار، وأنا أعمل تحت سلطتها مباشرة."
+            return "أنا أمير، شريكك التنفيذي. أفكر معك، أخطط، أتابع، وأقدم الرد النهائي باسمي."
 
         if intent == "greeting":
             mode = str(facts.get("mode", "")).strip().lower()
             if mode == "name_call":
-                return "أنا معك. حددي النقطة التي نحتاج حسمها الآن."
-            return "راجعت ما بقي مفتوحًا منذ آخر مرة، والأفضل أن نبدأ بالنقطة الأعلى أثرًا."
+                return "أنا هنا. من أين نبدأ؟"
+            return "نبدأ من أعلى نقطة أثرًا — ما الذي يحتاج قرارًا أو تقدمًا الآن؟"
 
         return ""
 
@@ -1421,11 +1404,11 @@ class ExecutiveBrain:
             assistant_name_forms = {"أمير", "امير", "ameer"}
             normalized_name_forms = {self._normalize_for_classification(n) for n in assistant_name_forms}
             if q_words_only in normalized_name_forms:
-                return "أنا معك. حددي النقطة التي نحتاج حسمها الآن."
-            return "راجعت السياق الحالي، وأقترح أن نبدأ بما يؤثر على بقية المسار."
+                return "أنا هنا. من أين نبدأ؟"
+            return "نبدأ من أعلى نقطة أثرًا — ما الذي يحتاج قرارًا أو تقدمًا الآن؟"
 
         if plan.clarification_needed and plan.clarification_question:
-            return f"سؤالك يحتاج توضيح بسيط قبل المتابعة: {plan.clarification_question}"
+            return f"قبل أن أكمل، أحتاج فهم قصدك: {plan.clarification_question}"
 
         if (getattr(plan, "request_type", None) == "memory") and (orchestrator_result.get("intent") == "memory"):
             memory_text = ""
@@ -1440,29 +1423,24 @@ class ExecutiveBrain:
                 for line in memory_text.splitlines():
                     if "كلمة السر" in line or "password" in line.lower() or "secret" in line.lower():
                         return line.strip().lstrip("- ")
-                return "لم أجد كلمة السر محفوظة في الذاكرة بعد."
+                return "لم أجد كلمة السر محفوظة في الذاكرة حتى الآن."
             if memory_text:
-                return "توجد ملاحظات محفوظة في الذاكرة، وسأراجعها بناءً على طلبك."
+                return "لديّ ملاحظات محفوظة في الذاكرة. حددي ما تبحثين عنه وأجلب لك ما يخصه."
 
         if plan.guardian_status == "needs_approval":
-            reason = (orchestrator_result.get("guardian") or {}).get("reason") or plan.guardian_reason
             return (
-                "لا أستطيع تنفيذ هذا الطلب بصيغته الحالية لأنه يتجاوز حدود التشغيل المسموح بها. "
-                "إذا كان هدفك مشروعًا أو مهمة عملية، أستطيع اقتراح طريقة آمنة تحقق نفس النتيجة."
+                "هذا الطلب يتجاوز ما أستطيع تنفيذه مباشرة بالصيغة الحالية. "
+                "إذا كان هدفك مشروعًا محددًا، أقترح مسارًا آمنًا يحقق نفس النتيجة."
             )
 
         if plan.guardian_status == "blocked":
             return (
-                "لا أستطيع المتابعة في هذا الطلب الآن لأنّه خارج النطاق المسموح به. "
-                "أستطيع مساعدتك في البدائل الآمنة التي تدفع المشروع forward دون المخاطرة."
+                "هذا الطلب خارج النطاق الذي أستطيع العمل فيه الآن. "
+                "أستطيع اقتراح بديل آمن يحقق الهدف دون المخاطرة."
             )
 
         results = orchestrator_result.get("results") or []
         if results:
-            # Only show excerpts that look like real document content, not raw internal
-            # memory-log entries (lines starting with "- YYYY-MM-DD —" as stored in
-            # Preferences.md / User Notes) and not single-line fragments shorter than
-            # 60 characters which carry no useful information for the user.
             _log_pattern = re.compile(
                 r"^-\s+\d{4}-\d{2}-\d{2}\s+[—\-]\s+(?:محادثة:|Execution Outcome:|حفظ:)",
             )
@@ -1471,7 +1449,7 @@ class ExecutiveBrain:
                 if excerpt and len(excerpt) >= 60 and not _log_pattern.match(excerpt):
                     return excerpt[:260]
 
-        return plan.executive_message or "تمت معالجة الطلب دون تفاصيل إضافية."
+        return plan.executive_message or "أنا معك."
 
     def compose_final_reply(
         self,
@@ -1513,8 +1491,8 @@ class ExecutiveBrain:
 
         if plan and getattr(plan, "guardian_status", "pass") == "blocked":
             return (
-                "لا أستطيع المتابعة في هذا الطلب الآن لأنّه خارج النطاق المسموح به. "
-                "أستطيع مساعدتك في البدائل الآمنة التي تدفع المشروع forward دون المخاطرة."
+                "هذا الطلب خارج النطاق الذي أستطيع العمل فيه الآن. "
+                "أستطيع اقتراح بديل آمن يحقق الهدف دون المخاطرة."
             ), "guardian_gate"
 
         # Greetings are handled locally — no need to call the AI provider.
@@ -1677,3 +1655,37 @@ class ExecutiveBrain:
             memory_note=memory_note,
             executive_message=msg,
         )
+
+    def get_reasoning_output(self, query: str, documents: list, guardian_result: dict | None = None, routing_hint: dict | None = None) -> dict:
+        """
+        P0.7 — Reasoning-only interface for the Executive Brain.
+
+        Returns structured internal state only; produces no visible user text.
+        The Executive Conversation Engine is the sole owner of the final reply.
+        """
+        plan = self.think(query, documents, guardian_result=guardian_result, routing_hint=routing_hint)
+        reasoning = {
+            "request_type": plan.request_type,
+            "plan_type": plan.plan_type,
+            "steps": plan.steps,
+            "context_summary": plan.context_summary,
+            "agent_reasoning": plan.agent_reasoning,
+            "guardian_status": plan.guardian_status,
+            "guardian_reason": plan.guardian_reason,
+            "autonomy_level": plan.autonomy_level,
+            "should_remember": plan.should_remember,
+        }
+        executive_state = {
+            "selected_agent": plan.selected_agent,
+            "supporting_agents": plan.supporting_agents,
+            "context_links": plan.context_links,
+            "ambiguous": plan.ambiguous,
+            "clarification_needed": plan.clarification_needed,
+            "clarification_question": plan.clarification_question,
+            "memory_note": plan.memory_note,
+        }
+        return {
+            "reasoning": reasoning,
+            "executive_state": executive_state,
+            "_plan": plan,
+        }
