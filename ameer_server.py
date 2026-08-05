@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from ameer_runtime import (
     public_runtime_identity,
     print_runtime_banner,
+    resolve_data_root,
     resolve_host,
     resolve_port,
     runtime_headers,
@@ -103,7 +104,7 @@ app = FastAPI(title="Ameer Local Server")
 
 
 # Load markdown documents from workspace
-ROOT = os.path.dirname(__file__)
+ROOT = str(resolve_data_root())
 MODULES_DIR = os.path.join(ROOT, "09_Assets", "web", "modules")
 app.mount("/modules", StaticFiles(directory=MODULES_DIR), name="modules")
 MD_GLOB = os.path.join(ROOT, "**", "*.md")
