@@ -1,0 +1,74 @@
+[
+  {
+    "id": "78bf94dc-48e1-4877-a561-2b2766adc3c1",
+    "action": "publish",
+    "description": "نشر تجريبي",
+    "requested_by": "executive_brain",
+    "context": {},
+    "status": "approved",
+    "approved_by": "naseem",
+    "rejection_reason": null,
+    "requested_at": "2026-08-05T14:46:19Z",
+    "resolved_at": "2026-08-05T14:46:19Z"
+  },
+  {
+    "id": "72f5514c-82fb-41c6-a8c7-29c3d7d020c1",
+    "action": "delete",
+    "description": "حذف ملف اختباري",
+    "requested_by": "executive_brain",
+    "context": {},
+    "status": "pending",
+    "approved_by": null,
+    "rejection_reason": null,
+    "requested_at": "2026-08-05T14:46:19Z",
+    "resolved_at": null
+  },
+  {
+    "id": "03128539-60c1-445e-9bdd-92d540fe0e81",
+    "action": "external",
+    "description": "استدعاء API خارجي",
+    "requested_by": "executive_brain",
+    "context": {},
+    "status": "rejected",
+    "approved_by": "naseem",
+    "rejection_reason": "لا يجوز الآن",
+    "requested_at": "2026-08-05T14:46:19Z",
+    "resolved_at": "2026-08-05T14:46:19Z"
+  },
+  {
+    "id": "57d08eee-e834-43f3-b2c5-401905b7ec39",
+    "action": "publish",
+    "description": "نشر تجريبي",
+    "requested_by": "executive_brain",
+    "context": {},
+    "status": "approved",
+    "approved_by": "naseem",
+    "rejection_reason": null,
+    "requested_at": "2026-08-05T14:46:26Z",
+    "resolved_at": "2026-08-05T14:46:26Z"
+  },
+  {
+    "id": "4c1b657e-f8f1-4cde-9b05-f52fc0ecfccb",
+    "action": "delete",
+    "description": "حذف ملف اختباري",
+    "requested_by": "executive_brain",
+    "context": {},
+    "status": "pending",
+    "approved_by": null,
+    "rejection_reason": null,
+    "requested_at": "2026-08-05T14:46:26Z",
+    "resolved_at": null
+  },
+  {
+    "id": "f4ae54f6-dc95-4ca0-b06f-c06cf2179720",
+    "action": "external",
+    "description": "استدعاء API خارجي",
+    "requested_by": "executive_brain",
+    "context": {},
+    "status": "rejected",
+    "approved_by": "naseem",
+    "rejection_reason": "لا يجوز الآن",
+    "requested_at": "2026-08-05T14:46:26Z",
+    "resolved_at": "2026-08-05T14:46:26Z"
+  }
+]

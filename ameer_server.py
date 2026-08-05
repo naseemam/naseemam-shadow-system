@@ -157,9 +157,9 @@ def refresh_documents():
     return DOCUMENTS
 
 
-def utf8_json_response(payload, headers: dict[str, str] | None = None):
+def utf8_json_response(payload, headers: dict[str, str] | None = None, status_code: int = 200):
     body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-    return Response(content=body, media_type="application/json; charset=utf-8", headers=headers or {})
+    return Response(content=body, media_type="application/json; charset=utf-8", headers=headers or {}, status_code=status_code)
 
 
 DOCUMENTS = load_documents()
@@ -620,6 +620,92 @@ async def kernel_workspace():
         return utf8_json_response({"status": "unavailable"})
     summary = KERNEL.refresh_workspace()
     return utf8_json_response({"workspace_summary": summary})
+
+
+@app.get('/decisions')
+async def get_decisions():
+    """آخر القرارات التنفيذية المسجّلة."""
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable", "decisions": []})
+    return utf8_json_response(KERNEL.decisions.snapshot())
+
+
+@app.post('/decisions')
+async def post_decision(request: Request):
+    """تسجيل قرار تنفيذي جديد."""
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return utf8_json_response({"error": "invalid JSON"}, status_code=400)
+    title = (body.get("title") or "").strip()
+    reason = (body.get("reason") or "").strip()
+    if not title or not reason:
+        return utf8_json_response({"error": "title and reason are required"}, status_code=400)
+    decision_id = KERNEL.record_decision(
+        title=title,
+        reason=reason,
+        category=body.get("category", "other"),
+        expected_outcome=body.get("expected_outcome", ""),
+    )
+    return utf8_json_response({"id": decision_id, "status": "recorded"})
+
+
+@app.get('/approvals')
+async def get_approvals():
+    """طلبات الموافقة المعلّقة."""
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable", "approvals": []})
+    return utf8_json_response(KERNEL.approvals.snapshot())
+
+
+@app.post('/approvals')
+async def post_approval_request(request: Request):
+    """طلب موافقة المؤسسة على إجراء حساس."""
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return utf8_json_response({"error": "invalid JSON"}, status_code=400)
+    action = (body.get("action") or "other").strip()
+    description = (body.get("description") or "").strip()
+    if not description:
+        return utf8_json_response({"error": "description is required"}, status_code=400)
+    approval_id = KERNEL.request_approval(
+        action=action,
+        description=description,
+        requested_by=body.get("requested_by", "executive_brain"),
+    )
+    return utf8_json_response({"id": approval_id, "status": "pending"})
+
+
+@app.post('/approvals/{approval_id}/approve')
+async def approve_request(approval_id: str):
+    """موافقة المؤسسة على طلب."""
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    updated = KERNEL.approvals.approve(approval_id, approved_by="naseem")
+    if not updated:
+        return utf8_json_response({"error": "approval not found or already resolved"}, status_code=404)
+    return utf8_json_response({"id": approval_id, "status": "approved"})
+
+
+@app.post('/approvals/{approval_id}/reject')
+async def reject_request(approval_id: str, request: Request):
+    """رفض المؤسسة لطلب."""
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    try:
+        body = await request.json()
+        reason = body.get("reason", "")
+    except Exception:
+        reason = ""
+    updated = KERNEL.approvals.reject(approval_id, reason=reason, rejected_by="naseem")
+    if not updated:
+        return utf8_json_response({"error": "approval not found or already resolved"}, status_code=404)
+    return utf8_json_response({"id": approval_id, "status": "rejected"})
 
 
 @app.on_event("startup")
