@@ -617,6 +617,7 @@ async def ask_trace(request: Request):
             running_tasks=running_tasks,
             active_projects=active_projects,
             is_first_turn=is_first_turn,
+            dry_run=True,
         )
         final_reply = conversation_result.get("reply", draft_reply)
 

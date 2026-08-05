@@ -44,6 +44,9 @@ logs/
 .ameer/state.json
 .ameer/plans.json
 .ameer/projects.json
+.ameer/decisions.json
+.ameer/approvals.json
+.ameer/conversation_memory.json
 
 # Test artifacts
 .pytest_cache/

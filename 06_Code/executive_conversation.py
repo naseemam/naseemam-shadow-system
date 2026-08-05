@@ -198,6 +198,7 @@ class ExecutiveConversationEngine:
         running_tasks: Optional[List[dict]] = None,
         active_projects: Optional[List[str]] = None,
         is_first_turn: bool = False,
+        dry_run: bool = False,
     ) -> dict:
         reply = self._enforce_style(draft_reply, planner_state)
         initiative = self._build_initiative(
@@ -205,10 +206,12 @@ class ExecutiveConversationEngine:
             running_tasks=running_tasks,
             active_projects=active_projects,
             is_first_turn=is_first_turn,
+            dry_run=dry_run,
         )
         if initiative:
             reply = f"{initiative} {reply}".strip()
-        self.memory.update_after_reply(query, reply, planner_state)
+        if not dry_run:
+            self.memory.update_after_reply(query, reply, planner_state)
         return {
             "reply": reply,
             "planner_state": planner_state.to_dict(),
@@ -224,16 +227,20 @@ class ExecutiveConversationEngine:
         running_tasks: Optional[List[dict]],
         active_projects: Optional[List[str]],
         is_first_turn: bool,
+        dry_run: bool = False,
     ) -> str:
         if pending_approvals:
             detail = str(pending_approvals[0].get("description") or pending_approvals[0].get("summary") or "قرار معلق")
-            self.memory.record_initiative("pending_approval", detail)
+            if not dry_run:
+                self.memory.record_initiative("pending_approval", detail)
             return f"راجعت الحالة قبل الرد، ويوجد طلب موافقة معلّق: {detail}."
         if is_first_turn and running_tasks:
-            self.memory.record_initiative("unfinished_conversation", "running_tasks")
+            if not dry_run:
+                self.memory.record_initiative("unfinished_conversation", "running_tasks")
             return "راجعت ما استمر مفتوحًا منذ آخر جلسة، وهناك مسار تنفيذي يحتاج إغلاقًا قبل التوسع."
         if is_first_turn and active_projects:
-            self.memory.record_initiative("project_continuity", active_projects[0])
+            if not dry_run:
+                self.memory.record_initiative("project_continuity", active_projects[0])
             return f"أتعامل مع هذه الجلسة كامتداد مباشر للعمل على {active_projects[0]}."
         return ""
 
