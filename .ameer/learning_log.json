@@ -1,0 +1,74 @@
+[
+  {
+    "cycle_at": "2026-08-05T17:49:38Z",
+    "changes": [
+      "preferences reset to defaults"
+    ],
+    "feedback_snapshot": {
+      "total": 2,
+      "by_type": {
+        "neutral": 1,
+        "positive": 1
+      },
+      "topics": [
+        "test_topic",
+        "proactive_briefing"
+      ],
+      "last_recorded_at": "2026-08-05T17:49:38Z"
+    }
+  },
+  {
+    "cycle_at": "2026-08-05T17:50:06Z",
+    "changes": [
+      "preferences reset to defaults"
+    ],
+    "feedback_snapshot": {
+      "total": 4,
+      "by_type": {
+        "neutral": 2,
+        "positive": 2
+      },
+      "topics": [
+        "proactive_briefing",
+        "test_topic"
+      ],
+      "last_recorded_at": "2026-08-05T17:50:06Z"
+    }
+  },
+  {
+    "cycle_at": "2026-08-05T17:50:30Z",
+    "changes": [
+      "added 'proactive_briefing' to proactive_topics"
+    ],
+    "feedback_snapshot": {
+      "total": 5,
+      "by_type": {
+        "neutral": 3,
+        "positive": 2
+      },
+      "topics": [
+        "proactive_briefing",
+        "test_topic"
+      ],
+      "last_recorded_at": "2026-08-05T17:50:30Z"
+    }
+  },
+  {
+    "cycle_at": "2026-08-05T17:50:31Z",
+    "changes": [
+      "preferences reset to defaults"
+    ],
+    "feedback_snapshot": {
+      "total": 6,
+      "by_type": {
+        "neutral": 3,
+        "positive": 3
+      },
+      "topics": [
+        "proactive_briefing",
+        "test_topic"
+      ],
+      "last_recorded_at": "2026-08-05T17:50:31Z"
+    }
+  }
+]

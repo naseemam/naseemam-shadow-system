@@ -964,6 +964,63 @@ async def reject_request(approval_id: str, request: Request):
     return utf8_json_response({"id": approval_id, "status": "rejected"})
 
 
+@app.post('/feedback')
+async def post_feedback(request: Request):
+    """تسجيل تغذية راجعة من المؤسسة."""
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return utf8_json_response({"error": "invalid JSON"}, status_code=400)
+    feedback_type = body.get("feedback_type", "")
+    topic = body.get("topic", "")
+    comment = body.get("comment", "")
+    context = body.get("context") or {}
+    source = body.get("source", "founder")
+    try:
+        fid = KERNEL.feedback.record(
+            feedback_type=feedback_type,
+            topic=topic,
+            comment=comment,
+            context=context,
+            source=source,
+        )
+    except ValueError as exc:
+        return utf8_json_response({"error": str(exc)}, status_code=422)
+    return utf8_json_response({"id": fid, "status": "recorded"})
+
+
+@app.get('/feedback')
+async def get_feedback():
+    """استرجاع سجل التغذية الراجعة."""
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    return utf8_json_response({"feedback": KERNEL.feedback.recent(50), "snapshot": KERNEL.feedback.snapshot()})
+
+
+@app.get('/learning/preferences')
+async def get_learning_preferences():
+    """استرجاع التفضيلات المُتعلَّمة وتشغيل دورة تعلم."""
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    cycle_result = KERNEL.learning.run_learning_cycle()
+    return utf8_json_response({
+        "preferences": KERNEL.learning.get_preferences(),
+        "learning_snapshot": KERNEL.learning.snapshot(),
+        "last_cycle": cycle_result,
+    })
+
+
+@app.post('/learning/reset')
+async def reset_learning():
+    """إعادة ضبط التفضيلات المُتعلَّمة إلى الإعدادات الافتراضية (بموافقة المؤسسة)."""
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    KERNEL.learning.reset_preferences()
+    return utf8_json_response({"status": "reset", "preferences": KERNEL.learning.get_preferences()})
+
+
 @app.on_event("startup")
 async def log_runtime_banner():
     meta = runtime_metadata(workspace_root=ROOT)

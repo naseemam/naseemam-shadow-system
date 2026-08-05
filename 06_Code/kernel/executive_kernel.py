@@ -24,6 +24,8 @@ if _CODE_ROOT not in sys.path:
 from kernel.state_manager import ExecutiveStateManager
 from kernel.decision_engine import DecisionEngine
 from kernel.approval_gate import ApprovalGate
+from kernel.feedback_engine import FeedbackEngine
+from kernel.learning_engine import LearningEngine
 from context.workspace_awareness import WorkspaceAwareness
 from context.session_context import SessionContext
 from context.founder_profile import FounderProfile
@@ -55,6 +57,8 @@ class ExecutiveKernel:
         self.state: ExecutiveStateManager = ExecutiveStateManager(self._root)
         self.decisions: DecisionEngine = DecisionEngine(self._root)
         self.approvals: ApprovalGate = ApprovalGate(self._root)
+        self.feedback: FeedbackEngine = FeedbackEngine(self._root)
+        self.learning: LearningEngine = LearningEngine(self._root, self.feedback)
         self.workspace: WorkspaceAwareness = WorkspaceAwareness(self._root)
         self.session: SessionContext = SessionContext()
         self.founder: FounderProfile = FounderProfile(self._root)
@@ -169,6 +173,22 @@ class ExecutiveKernel:
             self._health["approval_gate"] = f"error: {exc}"
             errors.append("approval_gate")
 
+        # 7. Feedback Engine
+        try:
+            _ = self.feedback.snapshot()
+            self._health["feedback_engine"] = "ok"
+        except Exception as exc:
+            self._health["feedback_engine"] = f"error: {exc}"
+            errors.append("feedback_engine")
+
+        # 8. Learning Engine
+        try:
+            _ = self.learning.snapshot()
+            self._health["learning_engine"] = "ok"
+        except Exception as exc:
+            self._health["learning_engine"] = f"error: {exc}"
+            errors.append("learning_engine")
+
         overall = "degraded" if errors else "running"
         self.state.set_runtime_status(overall)
         self._initialized = True
@@ -219,6 +239,8 @@ class ExecutiveKernel:
             "executive_assessment": self.state.executive_assessment,
             "persistent_conversation_memory": self.conversation_memory.snapshot(),
             "persistent_memory_context": self.conversation_memory.build_context_block(),
+            "learned_preferences": self.learning.get_preferences(),
+            "learned_preferences_context": self.learning.build_context_block(),
             "session_count": self.state.session_count,
             "is_follow_up": self.session.is_follow_up(),
             "is_first_turn": is_first_turn,
@@ -304,6 +326,8 @@ class ExecutiveKernel:
             "pending_approvals": len(self.state.pending_approvals),
             "pending_approval_requests": len(self.approvals.pending()),
             "pending_decisions": len(self.decisions.pending()),
+            "feedback_total": self.feedback.snapshot().get("total", 0),
+            "learning_log_entries": self.learning.snapshot().get("log_entries", 0),
             "components": self._health,
         }
 
