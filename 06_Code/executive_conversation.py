@@ -14,6 +14,13 @@ def _now_iso() -> str:
 
 @dataclass
 class ConversationPlannerState:
+    # P0.7 Planner fields — Planner outputs only these four
+    objectives: List[str] | None = None
+    priorities: List[str] | None = None
+    risks: List[str] | None = None
+    recommendations: List[str] | None = None
+
+    # Legacy fields kept for backward compatibility with existing code
     executive_objective: str = ""
     founder_objective: str = ""
     current_project_objective: str = ""
@@ -23,6 +30,10 @@ class ConversationPlannerState:
 
     def to_dict(self) -> dict:
         data = asdict(self)
+        data["objectives"] = list(self.objectives or [])
+        data["priorities"] = list(self.priorities or [])
+        data["risks"] = list(self.risks or [])
+        data["recommendations"] = list(self.recommendations or [])
         data["detected_risks"] = list(self.detected_risks or [])
         data["missing_information"] = list(self.missing_information or [])
         return data
@@ -94,6 +105,9 @@ class PersistentConversationMemory:
         workspace_summary: str = "",
         executive_assessment: str = "",
     ) -> ConversationPlannerState:
+        """
+        P0.7 — Planner outputs only: objectives, priorities, risks, recommendations.
+        """
         q = (query or "").strip()
         risks: List[str] = []
         missing: List[str] = []
@@ -118,7 +132,30 @@ class PersistentConversationMemory:
         elif running_tasks:
             next_action = "لنغلق المهمة المفتوحة الأعلى أثرًا قبل فتح مسار جديد."
 
+        # P0.7 Planner fields
+        objectives = [founder_objective]
+        if current_project and current_project != founder_objective:
+            objectives.append(f"المشروع الحالي: {current_project}")
+
+        priorities: List[str] = []
+        if pending_approvals:
+            priorities.append("حسم الموافقات المعلقة أولًا")
+        if running_tasks:
+            priorities.append("إغلاق المهام المفتوحة ذات الأولوية")
+        if not priorities:
+            priorities.append("التقدم في الطلب الحالي")
+
+        recommendations = [next_action]
+        if missing:
+            recommendations.append(missing[0])
+
         return ConversationPlannerState(
+            # P0.7 fields
+            objectives=objectives,
+            priorities=priorities,
+            risks=risks,
+            recommendations=recommendations,
+            # Legacy fields kept for backward compatibility
             executive_objective=executive_objective,
             founder_objective=founder_objective,
             current_project_objective=current_project or founder_objective,
@@ -183,6 +220,13 @@ class PersistentConversationMemory:
 
 
 class ExecutiveConversationEngine:
+    """
+    P0.7 — Executive Conversation Engine is the sole owner of the final reply.
+
+    Builds the response from an empty buffer.
+    Does NOT modify, append, prepend, or post-process any draft.
+    """
+
     def __init__(self, workspace_root: str | Path) -> None:
         self.memory = PersistentConversationMemory(workspace_root)
 
@@ -190,7 +234,7 @@ class ExecutiveConversationEngine:
         self,
         *,
         query: str,
-        draft_reply: str,
+        draft_reply: str = "",
         planner_state: ConversationPlannerState,
         conversation_context: str = "",
         persistent_memory_block: str = "",
@@ -199,26 +243,105 @@ class ExecutiveConversationEngine:
         active_projects: Optional[List[str]] = None,
         is_first_turn: bool = False,
         dry_run: bool = False,
+        reasoning_output: Optional[dict] = None,
     ) -> dict:
-        reply = self._enforce_style(draft_reply, planner_state)
-        initiative = self._build_initiative(
+        """
+        P0.7 — Builds the final reply from an empty buffer.
+        The draft_reply parameter is accepted for API compatibility but is NOT used
+        to construct the reply. The ECE owns the full response.
+        """
+        reply = self._build_from_buffer(
+            query=query,
+            planner_state=planner_state,
             pending_approvals=pending_approvals,
             running_tasks=running_tasks,
             active_projects=active_projects,
             is_first_turn=is_first_turn,
+            reasoning_output=reasoning_output,
             dry_run=dry_run,
         )
-        if initiative:
-            reply = f"{initiative} {reply}".strip()
         if not dry_run:
             self.memory.update_after_reply(query, reply, planner_state)
         return {
             "reply": reply,
             "planner_state": planner_state.to_dict(),
-            "initiative": initiative,
             "engine": "executive_conversation_engine",
+            "response_owner": "ExecutiveConversationEngine",
             "memory_context_used": bool(conversation_context or persistent_memory_block),
         }
+
+    def _build_from_buffer(
+        self,
+        *,
+        query: str,
+        planner_state: ConversationPlannerState,
+        pending_approvals: Optional[List[dict]],
+        running_tasks: Optional[List[dict]],
+        active_projects: Optional[List[str]],
+        is_first_turn: bool,
+        reasoning_output: Optional[dict],
+        dry_run: bool,
+    ) -> str:
+        """
+        Builds the reply from scratch using planner state and reasoning output.
+        No draft is used; no append/prepend/post-processing occurs.
+        """
+        parts: List[str] = []
+
+        # Situational initiative (first turn context)
+        if pending_approvals:
+            detail = str(pending_approvals[0].get("description") or pending_approvals[0].get("summary") or "قرار معلق")
+            if not dry_run:
+                self.memory.record_initiative("pending_approval", detail)
+            parts.append(f"راجعت الحالة قبل الرد، ويوجد طلب موافقة معلّق: {detail}.")
+        elif is_first_turn and running_tasks:
+            if not dry_run:
+                self.memory.record_initiative("unfinished_conversation", "running_tasks")
+            parts.append("راجعت ما استمر مفتوحًا منذ آخر جلسة، وهناك مسار تنفيذي يحتاج إغلاقًا قبل التوسع.")
+        elif is_first_turn and active_projects:
+            if not dry_run:
+                self.memory.record_initiative("project_continuity", active_projects[0])
+            parts.append(f"أتعامل مع هذه الجلسة كامتداد مباشر للعمل على {active_projects[0]}.")
+
+        # Guardian gate from reasoning
+        if reasoning_output:
+            exec_state = reasoning_output.get("executive_state", {})
+            reasoning = reasoning_output.get("reasoning", {})
+            guardian_status = reasoning.get("guardian_status", "pass")
+            if guardian_status == "needs_approval":
+                guardian_reason = reasoning.get("guardian_reason", "")
+                parts.append(
+                    f"لاحظت أن هذا الطلب يحتاج موافقة منك. السبب: {guardian_reason}. هل تؤكد المتابعة؟"
+                )
+                return " ".join(parts).strip()
+            if guardian_status == "blocked":
+                parts.append(
+                    "لا أستطيع المتابعة في هذا الطلب الآن لأنّه خارج النطاق المسموح به. "
+                    "أستطيع مساعدتك في البدائل الآمنة."
+                )
+                return " ".join(parts).strip()
+
+        # Risks from planner
+        risks = planner_state.risks or planner_state.detected_risks or []
+        if risks:
+            parts.append("المخاطر الحالية: " + "، ".join(risks[:2]) + ".")
+
+        # Core response: use recommendations from planner
+        recommendations = planner_state.recommendations or []
+        if recommendations:
+            parts.append(recommendations[0])
+        elif planner_state.next_executive_action:
+            parts.append(f"الخطوة التالية: {planner_state.next_executive_action}")
+        else:
+            parts.append("حاضر، أتابع معك على هذا الطلب.")
+
+        # Missing information
+        missing = planner_state.missing_information or []
+        if missing and "؟" not in " ".join(parts):
+            parts.append(f"ما أحتاجه الآن: {missing[0]}.")
+
+        reply = re.sub(r"\s{2,}", " ", " ".join(parts)).strip()
+        return reply or "حاضر، أتابع معك على هذا الطلب."
 
     def _build_initiative(
         self,
@@ -229,6 +352,7 @@ class ExecutiveConversationEngine:
         is_first_turn: bool,
         dry_run: bool = False,
     ) -> str:
+        """Kept for backward compatibility."""
         if pending_approvals:
             detail = str(pending_approvals[0].get("description") or pending_approvals[0].get("summary") or "قرار معلق")
             if not dry_run:
@@ -245,6 +369,7 @@ class ExecutiveConversationEngine:
         return ""
 
     def _enforce_style(self, reply: str, planner_state: ConversationPlannerState) -> str:
+        """Kept for backward compatibility — not used in P0.7 execute()."""
         text = (reply or "").strip()
         replacements = {
             "كيف أستطيع مساعدتك؟": "حددي القرار أو المسار الذي تريدين حسمه الآن.",
@@ -273,3 +398,4 @@ class ExecutiveConversationEngine:
             text = f"{text} الخطوة التالية: {planner_state.next_executive_action}"
 
         return text
+

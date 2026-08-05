@@ -343,6 +343,14 @@ async def ask(request: Request):
         guardian_result=guardian,
         routing_hint=routing,
     )
+    # P0.7 — Executive Brain is a reasoning engine only; produces reasoning + executive_state
+    reasoning_output = EXECUTIVE_BRAIN.get_reasoning_output(
+        q,
+        DOCUMENTS,
+        guardian_result=guardian,
+        routing_hint=routing,
+    )
+    reasoning_output["_plan"] = plan
     brain_plan = {
         "request_type": plan.request_type,
         "ambiguous": plan.ambiguous,
@@ -365,8 +373,8 @@ async def ask(request: Request):
         plan,
         workspace_root=ROOT,
     )
-    # ── 4. Compose final reply (Tool Bus already ran inside _execute_plan) ─────
-    final_reply, reply_source = EXECUTIVE_BRAIN.compose_final_reply(
+    # ── 4. Compose fallback reply (used only if ECE is unavailable) ─────────────
+    fallback_reply, reply_source = EXECUTIVE_BRAIN.compose_final_reply(
         q,
         orchestrator_result,
         DOCUMENTS,
@@ -380,7 +388,9 @@ async def ask(request: Request):
         running_tasks=running_tasks,
         is_first_turn=is_first_turn,
     )
+    # ── 5. P0.7 — Executive Conversation Engine is the sole response owner ──────
     conversation_result = {}
+    final_reply = fallback_reply
     if EXECUTIVE_CONVERSATION_ENGINE:
         planner_state = EXECUTIVE_CONVERSATION_ENGINE.memory.plan(
             q,
@@ -392,7 +402,6 @@ async def ask(request: Request):
         )
         conversation_result = EXECUTIVE_CONVERSATION_ENGINE.execute(
             query=q,
-            draft_reply=final_reply,
             planner_state=planner_state,
             conversation_context=conversation_context,
             persistent_memory_block=persistent_memory_context,
@@ -400,11 +409,12 @@ async def ask(request: Request):
             running_tasks=running_tasks,
             active_projects=active_projects,
             is_first_turn=is_first_turn,
+            reasoning_output=reasoning_output,
         )
-        final_reply = conversation_result.get("reply", final_reply)
+        final_reply = conversation_result.get("reply", fallback_reply)
         reply_source = conversation_result.get("engine", reply_source)
 
-    # ── 5. AOS Kernel: record assistant reply in session context ──────────────
+    # ── 6. AOS Kernel: record assistant reply in session context ──────────────
     if KERNEL:
         try:
             KERNEL.after_request(final_reply)
@@ -470,12 +480,12 @@ async def ask_trace(request: Request):
     """
     Full pipeline trace endpoint — demonstrates every stage of the runtime.
 
-    Returns, for each request:
-      1. kernel_state_before  — Kernel state snapshot before the request is processed
-      2. ece_input            — The draft reply fed into the Executive Conversation Engine
-      3. planner_output       — Planner objective, risks, and next action
-      4. final_response       — The response sent to the user after ECE modification
-      5. ece_modification     — Whether (and how) ECE changed the draft reply
+    P0.7 trace schema:
+      1. kernel_state_before           — Kernel state snapshot before the request
+      2. executive_brain_reasoning     — Executive Brain reasoning output (no visible text)
+      3. planner_output                — Planner: objectives, priorities, risks, recommendations
+      4. final_response                — Final response (owned solely by ECE)
+      5. response_owner                — Always "ExecutiveConversationEngine"
     """
     request_id = str(uuid.uuid4())
     raw = await request.body()
@@ -548,47 +558,21 @@ async def ask_trace(request: Request):
     guardian = orchestrator_result.get("guardian", {})
     routing = orchestrator_result.get("routing") or {}
 
-    # ── 3. Executive Brain think + execute ────────────────────────────────────
-    plan = EXECUTIVE_BRAIN.think(
+    # ── 3. Executive Brain → Reasoning Only (P0.7) ────────────────────────────
+    reasoning_output = EXECUTIVE_BRAIN.get_reasoning_output(
         q,
         DOCUMENTS,
         guardian_result=guardian,
         routing_hint=routing,
     )
+    plan = reasoning_output.pop("_plan")
+    reasoning_output["_plan"] = plan  # re-attach for execution
     execution_result = EXECUTIVE_BRAIN._execute_plan(q, plan, workspace_root=ROOT)
 
-    # ── 4. Compose draft reply (before ECE) ───────────────────────────────────
-    draft_reply, reply_source = EXECUTIVE_BRAIN.compose_final_reply(
-        q,
-        orchestrator_result,
-        DOCUMENTS,
-        existing_plan=plan,
-        execution_result=execution_result,
-        conversation_context=conversation_context,
-        founder_context=founder_context,
-        workspace_summary=workspace_summary,
-        pending_approvals=pending_approvals,
-        active_projects=active_projects,
-        running_tasks=running_tasks,
-        is_first_turn=is_first_turn,
-    )
-
-    ece_input = {
-        "query": q,
-        "draft_reply": draft_reply,
-        "draft_reply_source": reply_source,
-        "conversation_context": conversation_context,
-        "persistent_memory_block": persistent_memory_context,
-        "pending_approvals": pending_approvals,
-        "running_tasks": running_tasks,
-        "active_projects": active_projects,
-        "is_first_turn": is_first_turn,
-    }
-
-    # ── 5. Executive Conversation Engine ──────────────────────────────────────
+    # ── 4. Planner → Executive State (P0.7) ───────────────────────────────────
     planner_output: dict = {}
     conversation_result: dict = {}
-    final_reply = draft_reply
+    final_reply = "حاضر، أتابع معك على هذا الطلب."
 
     if EXECUTIVE_CONVERSATION_ENGINE:
         planner_state = EXECUTIVE_CONVERSATION_ENGINE.memory.plan(
@@ -599,17 +583,17 @@ async def ask_trace(request: Request):
             workspace_summary=workspace_summary,
             executive_assessment=executive_assessment,
         )
+        # P0.7 Planner output: objectives, priorities, risks, recommendations only
         planner_output = {
-            "executive_objective": planner_state.executive_objective,
-            "founder_objective": planner_state.founder_objective,
-            "current_project_objective": planner_state.current_project_objective,
-            "detected_risks": list(planner_state.detected_risks or []),
-            "missing_information": list(planner_state.missing_information or []),
-            "next_executive_action": planner_state.next_executive_action,
+            "objectives": list(planner_state.objectives or []),
+            "priorities": list(planner_state.priorities or []),
+            "risks": list(planner_state.risks or []),
+            "recommendations": list(planner_state.recommendations or []),
         }
+
+        # ── 5. Executive Conversation Engine → Final Response Owner (P0.7) ───
         conversation_result = EXECUTIVE_CONVERSATION_ENGINE.execute(
             query=q,
-            draft_reply=draft_reply,
             planner_state=planner_state,
             conversation_context=conversation_context,
             persistent_memory_block=persistent_memory_context,
@@ -618,8 +602,9 @@ async def ask_trace(request: Request):
             active_projects=active_projects,
             is_first_turn=is_first_turn,
             dry_run=True,
+            reasoning_output=reasoning_output,
         )
-        final_reply = conversation_result.get("reply", draft_reply)
+        final_reply = conversation_result.get("reply", final_reply)
 
     # ── 6. Kernel after_request ────────────────────────────────────────────────
     if KERNEL:
@@ -628,7 +613,7 @@ async def ask_trace(request: Request):
         except Exception:
             pass
 
-    # ── 7. Response Formatter ─────────────────────────────────────────────────
+    # ── 7. Response Formatter → Formatting Only (P0.7) ───────────────────────
     if not RESPONSE_FORMATTER:
         raise HTTPException(status_code=500, detail="Response Composer is unavailable")
 
@@ -648,28 +633,37 @@ async def ask_trace(request: Request):
             "assistant": "أمير",
         }
 
-    # ── 8. Build ECE modification evidence ────────────────────────────────────
-    ece_modified_reply = user_payload.get("reply", "")
-    ece_modification = {
-        "was_modified": draft_reply != ece_modified_reply,
-        "draft_before_ece": draft_reply,
-        "reply_after_ece": ece_modified_reply,
-        "initiative_injected": conversation_result.get("initiative", ""),
-        "engine": conversation_result.get("engine", "none"),
-        "memory_context_used": conversation_result.get("memory_context_used", False),
-    }
+    formatted_reply = user_payload.get("reply", "")
 
+    # ── 8. P0.7 Trace Response ────────────────────────────────────────────────
+    # Fields: executive_brain_reasoning, planner_output (objectives/priorities/risks/recommendations),
+    # final_response (ECE-owned), response_owner
+    # Removed: was_modified, draft_reply, append/prepend traces
     trace_response = {
         "request_id": request_id,
         "query": q,
         "kernel_state_before": kernel_state_before,
-        "ece_input": ece_input,
-        "planner_output": planner_output,
-        "final_response": ece_modified_reply,
-        "ece_modification": ece_modification,
+        "executive_brain_reasoning": {
+            "role": "Executive Brain → Reasoning Only",
+            "reasoning": reasoning_output.get("reasoning", {}),
+            "executive_state": reasoning_output.get("executive_state", {}),
+        },
+        "planner_output": {
+            "role": "Planner → Executive State",
+            **planner_output,
+        },
+        "final_response": {
+            "role": "Executive Conversation Engine → Final Response Owner",
+            "reply": formatted_reply,
+            "response_owner": "ExecutiveConversationEngine",
+        },
+        "formatter": {
+            "role": "Formatter → Formatting Only",
+        },
+        "response_owner": "ExecutiveConversationEngine",
     }
     trace_response.update(public_runtime_identity(workspace_root=ROOT))
-    _log("ask_trace_completed", request_id=request_id, ece_modified=ece_modification["was_modified"])
+    _log("ask_trace_completed", request_id=request_id, response_owner="ExecutiveConversationEngine")
     return utf8_json_response(trace_response, headers=runtime_headers(workspace_root=ROOT))
 
 

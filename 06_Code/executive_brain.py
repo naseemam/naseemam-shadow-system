@@ -1677,3 +1677,37 @@ class ExecutiveBrain:
             memory_note=memory_note,
             executive_message=msg,
         )
+
+    def get_reasoning_output(self, query: str, documents: list, guardian_result: dict | None = None, routing_hint: dict | None = None) -> dict:
+        """
+        P0.7 — Reasoning-only interface for the Executive Brain.
+
+        Returns structured internal state only; produces no visible user text.
+        The Executive Conversation Engine is the sole owner of the final reply.
+        """
+        plan = self.think(query, documents, guardian_result=guardian_result, routing_hint=routing_hint)
+        reasoning = {
+            "request_type": plan.request_type,
+            "plan_type": plan.plan_type,
+            "steps": plan.steps,
+            "context_summary": plan.context_summary,
+            "agent_reasoning": plan.agent_reasoning,
+            "guardian_status": plan.guardian_status,
+            "guardian_reason": plan.guardian_reason,
+            "autonomy_level": plan.autonomy_level,
+            "should_remember": plan.should_remember,
+        }
+        executive_state = {
+            "selected_agent": plan.selected_agent,
+            "supporting_agents": plan.supporting_agents,
+            "context_links": plan.context_links,
+            "ambiguous": plan.ambiguous,
+            "clarification_needed": plan.clarification_needed,
+            "clarification_question": plan.clarification_question,
+            "memory_note": plan.memory_note,
+        }
+        return {
+            "reasoning": reasoning,
+            "executive_state": executive_state,
+            "_plan": plan,
+        }
