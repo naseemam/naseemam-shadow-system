@@ -27,6 +27,7 @@ from kernel.approval_gate import ApprovalGate
 from context.workspace_awareness import WorkspaceAwareness
 from context.session_context import SessionContext
 from context.founder_profile import FounderProfile
+from executive_conversation import PersistentConversationMemory
 
 
 def _now_iso() -> str:
@@ -57,6 +58,7 @@ class ExecutiveKernel:
         self.workspace: WorkspaceAwareness = WorkspaceAwareness(self._root)
         self.session: SessionContext = SessionContext()
         self.founder: FounderProfile = FounderProfile(self._root)
+        self.conversation_memory: PersistentConversationMemory = PersistentConversationMemory(self._root)
 
     # ── Startup helpers ───────────────────────────────────────────────────────
 
@@ -144,6 +146,13 @@ class ExecutiveKernel:
             self._health["session_context"] = f"error: {exc}"
             errors.append("session_context")
 
+        try:
+            _ = self.conversation_memory.snapshot()
+            self._health["persistent_conversation_memory"] = "ok"
+        except Exception as exc:
+            self._health["persistent_conversation_memory"] = f"error: {exc}"
+            errors.append("persistent_conversation_memory")
+
         # 5. Decision Engine
         try:
             _ = self.decisions.snapshot()
@@ -208,6 +217,8 @@ class ExecutiveKernel:
             "active_projects": self.state.active_projects,
             "running_tasks": self.state.running_tasks,
             "executive_assessment": self.state.executive_assessment,
+            "persistent_conversation_memory": self.conversation_memory.snapshot(),
+            "persistent_memory_context": self.conversation_memory.build_context_block(),
             "session_count": self.state.session_count,
             "is_follow_up": self.session.is_follow_up(),
             "is_first_turn": is_first_turn,

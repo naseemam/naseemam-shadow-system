@@ -140,8 +140,8 @@ class ResponseFormatter:
         if intent == "greeting":
             mode = str(facts.get("mode", "")).strip().lower()
             if mode == "name_call":
-                return "نعم، أنا معك. كيف أساعدك الآن؟"
-            return "مرحبًا نسيم، أنا حاضر. كيف تحبين أن نبدأ؟"
+                return "أنا معك. حددي النقطة التي نحتاج حسمها الآن."
+            return "راجعت ما بقي مفتوحًا منذ آخر مرة، والأفضل أن نبدأ بالنقطة الأعلى أثرًا."
 
         if intent in {"project", "research", "memory"}:
             status = str(facts.get("status", "")).strip().lower()

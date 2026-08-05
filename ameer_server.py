@@ -83,9 +83,21 @@ def load_response_formatter():
     return module.ResponseFormatter
 
 
+def load_executive_conversation():
+    module_path = os.path.join(os.path.dirname(__file__), "06_Code", "executive_conversation.py")
+    spec = importlib.util.spec_from_file_location("executive_conversation", module_path)
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["executive_conversation"] = module
+    spec.loader.exec_module(module)
+    return module.ExecutiveConversationEngine
+
+
 AmeerOrchestrator = load_orchestrator_class()
 ExecutiveBrainClass = load_executive_brain()
 ResponseFormatterClass = load_response_formatter()
+ExecutiveConversationEngineClass = load_executive_conversation()
 
 app = FastAPI(title="Ameer Local Server")
 
@@ -117,6 +129,9 @@ def _load_executive_kernel():
 
 _ExecutiveKernelClass = _load_executive_kernel()
 KERNEL = _ExecutiveKernelClass(workspace_root=ROOT) if _ExecutiveKernelClass else None
+EXECUTIVE_CONVERSATION_ENGINE = (
+    ExecutiveConversationEngineClass(workspace_root=ROOT) if ExecutiveConversationEngineClass else None
+)
 
 def load_documents():
     # Paths (relative to ROOT) that must be excluded from the knowledge corpus.
@@ -289,6 +304,7 @@ async def ask(request: Request):
     active_projects: list = []
     running_tasks: list = []
     executive_assessment = ""
+    persistent_memory_context = ""
     is_first_turn = False
     if KERNEL:
         try:
@@ -300,6 +316,7 @@ async def ask(request: Request):
             active_projects = ctx.get("active_projects", [])
             running_tasks = ctx.get("running_tasks", [])
             executive_assessment = ctx.get("executive_assessment", "")
+            persistent_memory_context = ctx.get("persistent_memory_context", "")
             is_first_turn = ctx.get("is_first_turn", False)
         except Exception:
             pass
@@ -363,6 +380,29 @@ async def ask(request: Request):
         running_tasks=running_tasks,
         is_first_turn=is_first_turn,
     )
+    conversation_result = {}
+    if EXECUTIVE_CONVERSATION_ENGINE:
+        planner_state = EXECUTIVE_CONVERSATION_ENGINE.memory.plan(
+            q,
+            active_projects=active_projects,
+            running_tasks=running_tasks,
+            pending_approvals=pending_approvals,
+            workspace_summary=workspace_summary,
+            executive_assessment=executive_assessment,
+        )
+        conversation_result = EXECUTIVE_CONVERSATION_ENGINE.execute(
+            query=q,
+            draft_reply=final_reply,
+            planner_state=planner_state,
+            conversation_context=conversation_context,
+            persistent_memory_block=persistent_memory_context,
+            pending_approvals=pending_approvals,
+            running_tasks=running_tasks,
+            active_projects=active_projects,
+            is_first_turn=is_first_turn,
+        )
+        final_reply = conversation_result.get("reply", final_reply)
+        reply_source = conversation_result.get("engine", reply_source)
 
     # ── 5. AOS Kernel: record assistant reply in session context ──────────────
     if KERNEL:
@@ -403,6 +443,7 @@ async def ask(request: Request):
                 "reply_generated_by": reply_source,
                 "single_brain_mode": bool(getattr(EXECUTIVE_BRAIN, "_single_brain_mode", False)),
                 "aos_kernel": "active" if KERNEL else "inactive",
+                "executive_conversation_engine": conversation_result,
             },
         }
         _log("ask_debug_trace", request_id=request_id, trace=debug_trace)

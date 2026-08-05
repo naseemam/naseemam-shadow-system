@@ -443,8 +443,8 @@ class ExecutiveBrain:
         if intent == "greeting":
             mode = str(facts.get("mode", "")).strip().lower()
             if mode == "name_call":
-                return "نعم، أنا معك. كيف أساعدك الآن؟"
-            return "مرحبًا نسيم، أنا حاضر. كيف تحبين أن نبدأ؟"
+                return "أنا معك. حددي النقطة التي نحتاج حسمها الآن."
+            return "راجعت ما بقي مفتوحًا منذ آخر مرة، والأفضل أن نبدأ بالنقطة الأعلى أثرًا."
 
         return ""
 
@@ -1421,8 +1421,8 @@ class ExecutiveBrain:
             assistant_name_forms = {"أمير", "امير", "ameer"}
             normalized_name_forms = {self._normalize_for_classification(n) for n in assistant_name_forms}
             if q_words_only in normalized_name_forms:
-                return "نعم، أنا معك. كيف أساعدك؟"
-            return "مرحباً! كيف أساعدك؟"
+                return "أنا معك. حددي النقطة التي نحتاج حسمها الآن."
+            return "راجعت السياق الحالي، وأقترح أن نبدأ بما يؤثر على بقية المسار."
 
         if plan.clarification_needed and plan.clarification_question:
             return f"سؤالك يحتاج توضيح بسيط قبل المتابعة: {plan.clarification_question}"
