@@ -103,14 +103,20 @@ ExecutiveConversationEngineClass = load_executive_conversation()
 app = FastAPI(title="Ameer Local Server")
 
 
-# Load markdown documents from workspace
-ROOT = str(resolve_data_root())
-MODULES_DIR = os.path.join(ROOT, "09_Assets", "web", "modules")
+# REPO_ROOT: repository checkout directory — used for static assets and documents.
+# DATA_ROOT: parent of the .ameer state directory — may be redirected to a
+#            persistent volume via AMEER_DATA_DIR (see ameer_runtime.resolve_data_root).
+REPO_ROOT = os.path.dirname(__file__)
+DATA_ROOT = str(resolve_data_root())
+
+# Load markdown documents from workspace (always from the repo checkout)
+ROOT = DATA_ROOT
+MODULES_DIR = os.path.join(REPO_ROOT, "09_Assets", "web", "modules")
 app.mount("/modules", StaticFiles(directory=MODULES_DIR), name="modules")
-MD_GLOB = os.path.join(ROOT, "**", "*.md")
-WEB_INDEX = os.path.join(ROOT, "09_Assets", "web", "index.html")
+MD_GLOB = os.path.join(REPO_ROOT, "**", "*.md")
+WEB_INDEX = os.path.join(REPO_ROOT, "09_Assets", "web", "index.html")
 DEBUG_MODE = os.getenv("AMEER_DEBUG", "0").lower() in {"1", "true", "yes", "on"}
-RUNTIME_METADATA = runtime_metadata(workspace_root=ROOT)
+RUNTIME_METADATA = runtime_metadata(workspace_root=REPO_ROOT)
 
 # ─── Executive Operating Kernel ───────────────────────────────────────────────
 
@@ -152,7 +158,7 @@ def load_documents():
     docs = []
     for path in glob.glob(MD_GLOB, recursive=True):
         try:
-            rel = os.path.relpath(path, ROOT).replace("\\", "/")
+            rel = os.path.relpath(path, REPO_ROOT).replace("\\", "/")
             # Skip excluded prefixes
             if any(rel.startswith(prefix) for prefix in _EXCLUDED_PREFIXES):
                 continue
@@ -500,10 +506,10 @@ async def ask(request: Request):
             "message": "أنا معك.",
             "assistant": "أمير",
         }
-    user_payload.update(public_runtime_identity(workspace_root=ROOT))
+    user_payload.update(public_runtime_identity(workspace_root=REPO_ROOT))
     user_payload["request_id"] = request_id
     _log("ask_completed", request_id=request_id)
-    return utf8_json_response(user_payload, headers=runtime_headers(workspace_root=ROOT))
+    return utf8_json_response(user_payload, headers=runtime_headers(workspace_root=REPO_ROOT))
 
 @app.post('/ask/trace')
 async def ask_trace(request: Request):
@@ -721,9 +727,9 @@ async def ask_trace(request: Request):
         },
         "response_owner": "ExecutiveConversationEngine",
     }
-    trace_response.update(public_runtime_identity(workspace_root=ROOT))
+    trace_response.update(public_runtime_identity(workspace_root=REPO_ROOT))
     _log("ask_trace_completed", request_id=request_id, response_owner="ExecutiveConversationEngine")
-    return utf8_json_response(trace_response, headers=runtime_headers(workspace_root=ROOT))
+    return utf8_json_response(trace_response, headers=runtime_headers(workspace_root=REPO_ROOT))
 
 
 @app.get('/docs')
@@ -819,7 +825,7 @@ async def store_autonomy_plan(payload: AutonomyPlanRequest):
 
 @app.get('/health')
 async def health():
-    meta = runtime_metadata(workspace_root=ROOT)
+    meta = runtime_metadata(workspace_root=REPO_ROOT)
     payload = {
         "status": meta["status"],
         "build": meta["build"],
@@ -835,7 +841,7 @@ async def health():
             "Projects": "Ready",
         },
     }
-    return utf8_json_response(payload, headers=runtime_headers(workspace_root=ROOT))
+    return utf8_json_response(payload, headers=runtime_headers(workspace_root=REPO_ROOT))
 
 
 @app.get('/documents/search')
@@ -855,7 +861,7 @@ async def search_documents(q: str):
 
 @app.post('/memory')
 async def save_memory(payload: MemoryRequest):
-    memory_file = os.path.join(ROOT, "04_Memory", "Preferences.md")
+    memory_file = os.path.join(REPO_ROOT, "04_Memory", "Preferences.md")
     os.makedirs(os.path.dirname(memory_file), exist_ok=True)
     text = payload.text.strip()
     if not text:
@@ -1076,7 +1082,7 @@ async def reset_learning():
 
 @app.on_event("startup")
 async def log_runtime_banner():
-    meta = runtime_metadata(workspace_root=ROOT)
+    meta = runtime_metadata(workspace_root=REPO_ROOT)
     _log(
         "runtime_started",
         build=meta["build"],
