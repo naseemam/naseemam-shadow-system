@@ -280,16 +280,27 @@ async def ask(request: Request):
 
     _log("ask_received", request_id=request_id, build_id=RUNTIME_METADATA["build_id"])
 
-    # ── AOS Kernel: build executive context before any reasoning ──────────────
+    # ── 1. Executive Kernel: build full executive context (pipeline step 1→5) ──
+    # Pipeline: Kernel → State → Workspace → Founder → Session → Brain
     conversation_context = ""
     founder_context = ""
     workspace_summary = ""
+    pending_approvals: list = []
+    active_projects: list = []
+    running_tasks: list = []
+    executive_assessment = ""
+    is_first_turn = False
     if KERNEL:
         try:
             ctx = KERNEL.before_request(q)
             conversation_context = ctx.get("conversation_context", "")
             founder_context = ctx.get("founder_context", "")
             workspace_summary = ctx.get("workspace_summary", "")
+            pending_approvals = ctx.get("pending_approvals", [])
+            active_projects = ctx.get("active_projects", [])
+            running_tasks = ctx.get("running_tasks", [])
+            executive_assessment = ctx.get("executive_assessment", "")
+            is_first_turn = ctx.get("is_first_turn", False)
         except Exception:
             pass
 
@@ -298,7 +309,7 @@ async def ask(request: Request):
     if any(keyword in q.lower() for keyword in autonomy_keywords):
         autonomy_plan = _record_autonomy_plan(q, "autonomy")
 
-    # Run orchestrator (retrieval + guardian)
+    # ── 2. Orchestrator (retrieval + guardian) ─────────────────────────────────
     orchestrator_result = ORCHESTRATOR.answer(q, req.max_results)
 
     if not EXECUTIVE_BRAIN:
@@ -307,6 +318,8 @@ async def ask(request: Request):
     guardian = orchestrator_result.get("guardian", {})
     routing = orchestrator_result.get("routing") or {}
     project_manager = _manage_project_context(q)
+
+    # ── 3. Executive Brain think + execute ────────────────────────────────────
     plan = EXECUTIVE_BRAIN.think(
         q,
         DOCUMENTS,
@@ -335,6 +348,7 @@ async def ask(request: Request):
         plan,
         workspace_root=ROOT,
     )
+    # ── 4. Compose final reply (Tool Bus already ran inside _execute_plan) ─────
     final_reply, reply_source = EXECUTIVE_BRAIN.compose_final_reply(
         q,
         orchestrator_result,
@@ -344,9 +358,13 @@ async def ask(request: Request):
         conversation_context=conversation_context,
         founder_context=founder_context,
         workspace_summary=workspace_summary,
+        pending_approvals=pending_approvals,
+        active_projects=active_projects,
+        running_tasks=running_tasks,
+        is_first_turn=is_first_turn,
     )
 
-    # ── AOS Kernel: record assistant reply in session context ─────────────────
+    # ── 5. AOS Kernel: record assistant reply in session context ──────────────
     if KERNEL:
         try:
             KERNEL.after_request(final_reply)

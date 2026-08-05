@@ -241,6 +241,10 @@ class ExecutiveBrain:
         conversation_context: str = "",
         founder_context: str = "",
         workspace_summary: str = "",
+        pending_approvals: Optional[List[dict]] = None,
+        active_projects: Optional[List[str]] = None,
+        running_tasks: Optional[List[dict]] = None,
+        is_first_turn: bool = False,
     ) -> tuple[str, str]:
         # ── Executive Identity ──────────────────────────────────────────────
         system_prompt = (
@@ -274,6 +278,29 @@ class ExecutiveBrain:
         if workspace_summary:
             context_parts.append(workspace_summary)
 
+        # ── Active Projects ─────────────────────────────────────────────────
+        if active_projects:
+            projects_block = "[ المشاريع النشطة: " + " | ".join(active_projects[:6]) + " ]"
+            context_parts.append(projects_block)
+
+        # ── Pending Approvals ───────────────────────────────────────────────
+        if pending_approvals:
+            items = "; ".join(
+                str(a.get("summary") or a.get("title") or a.get("id") or "قرار معلّق")
+                for a in pending_approvals[:3]
+            )
+            approvals_block = f"[ قرارات تنتظر موافقتكِ ({len(pending_approvals)}): {items} ]"
+            context_parts.append(approvals_block)
+
+        # ── Running Tasks ───────────────────────────────────────────────────
+        if running_tasks:
+            task_names = "; ".join(
+                str(t.get("title") or t.get("name") or t.get("id") or "مهمة جارية")
+                for t in running_tasks[:3]
+            )
+            tasks_block = f"[ مهام قيد التنفيذ ({len(running_tasks)}): {task_names} ]"
+            context_parts.append(tasks_block)
+
         context_summary = (plan.context_summary if plan else "").strip()
         if context_summary and context_summary != "لم يُكتشف ارتباط مباشر بمشاريع أخرى.":
             context_parts.append(f"[ ارتباطات المشروع: {context_summary} ]")
@@ -283,7 +310,29 @@ class ExecutiveBrain:
 
         # ── Build user prompt ───────────────────────────────────────────────
         prefix = "\n\n".join(context_parts)
-        if prefix:
+
+        # First-turn post-startup: ask Ameer to open with a proactive executive briefing
+        if is_first_turn:
+            startup_instruction = (
+                "هذه أول رسالة بعد تشغيل النظام.\n"
+                "إذا كانت هناك تغييرات مهمة أو مهام معلّقة أو قرارات تنتظر، "
+                "ابدأ برسالة تنفيذية موجزة تُلخّص الوضع الحالي قبل الإجابة على الطلب.\n"
+                "لا تنتظر أن تُسأل — اعرض الملخص التنفيذي بشكل طبيعي."
+            )
+            if prefix:
+                user_prompt = (
+                    f"{prefix}\n\n"
+                    f"{startup_instruction}\n\n"
+                    f"طلب نسيم: {prompt}\n\n"
+                    "اكتب ردك التنفيذي واقترح الخطوة التالية."
+                )
+            else:
+                user_prompt = (
+                    f"{startup_instruction}\n\n"
+                    f"طلب نسيم: {prompt}\n\n"
+                    "اكتب ردك التنفيذي واقترح الخطوة التالية."
+                )
+        elif prefix:
             user_prompt = (
                 f"{prefix}\n\n"
                 f"طلب نسيم: {prompt}\n\n"
@@ -406,6 +455,10 @@ class ExecutiveBrain:
         conversation_context: str = "",
         founder_context: str = "",
         workspace_summary: str = "",
+        pending_approvals: Optional[List[dict]] = None,
+        active_projects: Optional[List[str]] = None,
+        running_tasks: Optional[List[dict]] = None,
+        is_first_turn: bool = False,
     ) -> Optional[str]:
         system_prompt, user_prompt = self._build_provider_prompt(
             prompt,
@@ -413,6 +466,10 @@ class ExecutiveBrain:
             conversation_context=conversation_context,
             founder_context=founder_context,
             workspace_summary=workspace_summary,
+            pending_approvals=pending_approvals,
+            active_projects=active_projects,
+            running_tasks=running_tasks,
+            is_first_turn=is_first_turn,
         )
 
         # Try providers via the formal abstraction first.
@@ -1426,6 +1483,10 @@ class ExecutiveBrain:
         conversation_context: str = "",
         founder_context: str = "",
         workspace_summary: str = "",
+        pending_approvals: Optional[List[dict]] = None,
+        active_projects: Optional[List[str]] = None,
+        running_tasks: Optional[List[dict]] = None,
+        is_first_turn: bool = False,
     ) -> tuple[str, str]:
         plan = existing_plan or self.think(
             query,
@@ -1481,6 +1542,10 @@ class ExecutiveBrain:
             conversation_context=conversation_context,
             founder_context=founder_context,
             workspace_summary=workspace_summary,
+            pending_approvals=pending_approvals,
+            active_projects=active_projects,
+            running_tasks=running_tasks,
+            is_first_turn=is_first_turn,
         )
         if provider_reply:
             return provider_reply, "executive_brain_provider"

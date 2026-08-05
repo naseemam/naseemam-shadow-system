@@ -46,12 +46,35 @@ class ExecutiveKernel:
         self._root = Path(workspace_root).resolve()
         self._initialized = False
         self._health: dict = {}
+        self._first_turn: bool = False
 
         # Component registry
         self.state: ExecutiveStateManager = ExecutiveStateManager(self._root)
         self.workspace: WorkspaceAwareness = WorkspaceAwareness(self._root)
         self.session: SessionContext = SessionContext()
         self.founder: FounderProfile = FounderProfile(self._root)
+
+    # ── Startup helpers ───────────────────────────────────────────────────────
+
+    def _extract_active_projects(self) -> list:
+        """Extract active project names from the founder's Projects.md memory file."""
+        import re
+        projects_text = self.founder.get_section("Projects.md") or ""
+        if not projects_text:
+            return self.state.active_projects  # keep existing
+
+        found: list = []
+        for line in projects_text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("---"):
+                continue
+            # Pick heading lines or bullet items that look like project names
+            name_match = re.match(r"^(?:##?\s+|[-*]\s+)(.+)$", line)
+            if name_match:
+                name = name_match.group(1).strip(" :|")
+                if name and len(name) < 80:
+                    found.append(name)
+        return found[:10] if found else self.state.active_projects
 
     # ── Startup ───────────────────────────────────────────────────────────────
 
@@ -62,6 +85,8 @@ class ExecutiveKernel:
         """
         self._health = {}
         errors = []
+        scan: dict = {}
+        summary = ""
 
         # 1. State Manager
         try:
@@ -71,10 +96,9 @@ class ExecutiveKernel:
             self._health["state_manager"] = f"error: {exc}"
             errors.append("state_manager")
 
-        # 2. Founder Profile
+        # 2. Founder Memory (Founder Profile + Goals + Projects + Preferences)
         try:
             self.founder.load()
-            # Cache founder context into state
             founder_ctx = {"loaded": True, "sections": list(self.founder.sections.keys())}
             self.state.set_founder_context(founder_ctx)
             self._health["founder_profile"] = "ok"
@@ -82,16 +106,32 @@ class ExecutiveKernel:
             self._health["founder_profile"] = f"error: {exc}"
             errors.append("founder_profile")
 
-        # 3. Workspace Awareness
+        # 3. Workspace Status + Active Projects + Pending Tasks + Pending Approvals
         try:
             scan = self.workspace.scan()
             summary = self.workspace.build_executive_summary(scan)
             self.state.set_workspace_summary(summary)
+
+            # Persist structured startup data into state so every request can read it
+            active_projects = self._extract_active_projects()
+            if active_projects:
+                self.state._state["active_projects"] = active_projects
+                self.state._persist()
+
+            pending_tasks = scan.get("tasks", {}).get("pending", [])
+            if pending_tasks:
+                # Merge new tasks without duplicating existing ones
+                existing_ids = {t.get("id") for t in self.state._state.get("running_tasks", [])}
+                for task in pending_tasks:
+                    if task.get("id") not in existing_ids:
+                        self.state.add_task(task)
+
+            # Pending approvals from workspace scan are already in state (persisted); no re-add needed.
+
             self._health["workspace_awareness"] = "ok"
         except Exception as exc:
             self._health["workspace_awareness"] = f"error: {exc}"
             errors.append("workspace_awareness")
-            summary = ""
 
         # 4. Session Context
         try:
@@ -104,13 +144,18 @@ class ExecutiveKernel:
         overall = "degraded" if errors else "running"
         self.state.set_runtime_status(overall)
         self._initialized = True
+        # Track whether this is the very first conversation after startup
+        self._first_turn = True
 
         return {
             "status": overall,
             "booted_at": _now_iso(),
             "components": self._health,
             "errors": errors,
-            "workspace_summary": summary if "workspace_awareness" not in errors else "",
+            "workspace_summary": summary,
+            "active_projects": self.state.active_projects,
+            "pending_tasks": [t for t in self.state.running_tasks],
+            "pending_approvals": self.state.pending_approvals,
         }
 
     # ── Per-Request Lifecycle ─────────────────────────────────────────────────
@@ -119,9 +164,18 @@ class ExecutiveKernel:
         """
         يُعيد السياق الكامل المطلوب قبل معالجة كل طلب.
         يُدار داخل ameer_server.py قبل استدعاء Executive Brain.
+
+        Pipeline order:
+          Executive State → Workspace Awareness → Founder Profile
+          → Session Context → (returned to Brain)
         """
         if not self._initialized:
             self.boot()
+
+        # Consume the first-turn flag so briefing fires only once per startup
+        is_first_turn = getattr(self, "_first_turn", False)
+        if is_first_turn:
+            self._first_turn = False
 
         # Record user turn in session context
         self.session.add_user_message(query)
@@ -131,8 +185,12 @@ class ExecutiveKernel:
             "founder_context": self.founder.build_context_block(),
             "workspace_summary": self.state.workspace_summary,
             "pending_approvals": self.state.pending_approvals,
+            "active_projects": self.state.active_projects,
+            "running_tasks": self.state.running_tasks,
+            "executive_assessment": self.state.executive_assessment,
             "session_count": self.state.session_count,
             "is_follow_up": self.session.is_follow_up(),
+            "is_first_turn": is_first_turn,
         }
 
     def after_request(self, reply: str) -> None:
