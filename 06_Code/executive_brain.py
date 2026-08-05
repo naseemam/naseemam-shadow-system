@@ -25,7 +25,28 @@ import json
 from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
+
+try:
+    from founder_intelligence import FounderIntelligenceLayer
+except Exception:  # pragma: no cover - fallback when package context is missing
+    FounderIntelligenceLayer = None  # type: ignore[assignment]
+
+try:
+    from document_library.service import DocumentLibraryService
+except Exception:  # pragma: no cover - fallback when package context is missing
+    DocumentLibraryService = None  # type: ignore[assignment]
+
+try:
+    from tool_bus.bus import ExecutiveToolBus, ToolInvocation
+except Exception:  # pragma: no cover - fallback when package context is missing
+    ExecutiveToolBus = None  # type: ignore[assignment]
+    ToolInvocation = None  # type: ignore[assignment]
+
+try:
+    from executive_orchestrator.orchestrator import ExecutiveOrchestrator
+except Exception:  # pragma: no cover - fallback when package context is missing
+    ExecutiveOrchestrator = None  # type: ignore[assignment]
 
 try:
     from adapters.inference_provider import InferenceProvider, OpenAIProvider, OllamaProvider
@@ -181,8 +202,20 @@ class ExecutiveBrain:
     a structured ExecutivePlan that guides the orchestrator + response.
     """
 
-    def __init__(self, normalize_fn=None):
+    def __init__(self, normalize_fn=None, knowledge_gateway: Any = None, founder_intelligence: Any = None, document_library: Any = None, tool_bus: Any = None):
         self._normalize = normalize_fn or (lambda x: x)
+        self._knowledge_gateway = knowledge_gateway
+        self._founder_intelligence = founder_intelligence
+        self._document_library = document_library
+        self._tool_bus = tool_bus
+        self._orchestrator = None
+        if ExecutiveOrchestrator is not None:
+            self._orchestrator = ExecutiveOrchestrator(
+                founder_intelligence=founder_intelligence,
+                knowledge_gateway=knowledge_gateway,
+                document_library=document_library,
+                tool_bus=tool_bus,
+            )
         self._openai_client = None
         self._single_brain_mode = os.getenv("AMEER_SINGLE_BRAIN", "1").lower() in {"1", "true", "yes", "on"}
         self._model_name = os.getenv("AMEER_MODEL", "gpt-4o-mini")
@@ -253,6 +286,210 @@ class ExecutiveBrain:
         else:
             user_prompt = f"طلب المستخدم: {prompt}\n\nاكتب الرد النهائي فقط."
         return system_prompt, user_prompt
+
+    def _is_canonical_greeting(self, query: str) -> bool:
+        normalized = self._normalize_for_classification((query or "").strip())
+        greeting_markers = {"مرحبا", "اهلا", "أهلا", "سلام", "hello", "hi", "hey", "أمير", "امير", "ameer"}
+        return any(marker in normalized for marker in greeting_markers) and len(normalized.split()) <= 3
+
+    def _should_query_knowledge_gateway(self, query: str, request_type: str) -> bool:
+        if not query:
+            return False
+        if not self._orchestrator:
+            if not self._knowledge_gateway:
+                return False
+            if request_type in {"greeting", "memory"}:
+                return False
+            if self._is_canonical_greeting(query):
+                return False
+            if any(marker in self._normalize_for_classification(query) for marker in ["من أنت", "من انت", "who are you", "what can you do"]):
+                return False
+            return True
+        return False
+
+    def _should_query_founder_intelligence(self, query: str) -> bool:
+        if not query or not self._orchestrator:
+            if not query or not self._founder_intelligence:
+                return False
+            if self._is_canonical_greeting(query):
+                return False
+            if any(marker in self._normalize_for_classification(query) for marker in ["من أنت", "من انت", "who are you", "what can you do"]):
+                return False
+            normalized = self._normalize_for_classification(query)
+            strategy_markers = ["vision", "mission", "principle", "priority", "strategy", "goal", "preference", "rule", "decision", "founder"]
+            return any(marker in normalized for marker in strategy_markers)
+        return False
+
+    def _should_query_document_library(self, query: str, request_type: str) -> bool:
+        if not query or not self._document_library:
+            return False
+        if self._orchestrator:
+            return False
+        if request_type in {"greeting", "memory"}:
+            return False
+        if self._is_canonical_greeting(query):
+            return False
+        normalized = self._normalize_for_classification(query)
+        document_markers = ["document", "documents", "library", "catalog", "trusted", "approval", "approved", "file", "files", "pull request", "pr", "release", "workflow", "issue", "branch", "repository", "github", "railway", "deployment", "health", "service", "metric", "metrics", "log", "logs"]
+        return any(marker in normalized for marker in document_markers)
+
+    def _route_tool_bus_query(self, query: str) -> List[str]:
+        if not query or not self._orchestrator:
+            return []
+        context = self._orchestrator.orchestrate(query, {})
+        if not context.excerpts and not context.capability:
+            return []
+        return context.excerpts[:3]
+
+    def _retrieve_from_document_library(self, query: str) -> List[str]:
+        if not query or not self._document_library:
+            return []
+
+        if not hasattr(self._document_library, "search") or not hasattr(self._document_library, "get_trusted_documents"):
+            return []
+
+        try:
+            matches = self._document_library.search(query)
+            if not matches:
+                trusted_docs = self._document_library.get_trusted_documents()
+                if not trusted_docs:
+                    return []
+                excerpts: List[str] = []
+                for doc in trusted_docs[:3]:
+                    title = getattr(doc, "title", "") or ""
+                    if title:
+                        excerpts.append(title)
+                return excerpts
+            excerpts: List[str] = []
+            for doc in matches[:3] or []:
+                title = getattr(doc, "title", "") or ""
+                content = getattr(doc, "content", "") or ""
+                if title and content:
+                    excerpts.append(f"{title}: {content[:160]}")
+                elif title:
+                    excerpts.append(title)
+            return excerpts
+        except Exception:
+            return []
+
+    def _retrieve_trusted_knowledge(self, query: str) -> List[str]:
+        if not query:
+            return []
+
+        if self._orchestrator is not None:
+            try:
+                context = self._orchestrator.orchestrate(query, {})
+            except Exception:
+                context = None
+            if context is not None:
+                if context.route == "founder_intelligence" and self._founder_intelligence is not None:
+                    excerpts: List[str] = []
+                    try:
+                        founder_records = self._founder_intelligence.retrieve(query)
+                    except Exception:
+                        founder_records = []
+                    for record in founder_records or []:
+                        content = getattr(record, "content", None) if not isinstance(record, dict) else record.get("content")
+                        if content:
+                            excerpts.append(str(content).strip())
+                    if excerpts:
+                        return excerpts
+                if context.route in {"document_library", "github_tool", "railway_tool"} and self._document_library is not None:
+                    try:
+                        matches = self._document_library.search(query)
+                    except Exception:
+                        matches = []
+                    excerpts: List[str] = []
+                    for doc in matches[:3] or []:
+                        title = getattr(doc, "title", "") or ""
+                        content = getattr(doc, "content", "") or ""
+                        if title and content:
+                            excerpts.append(f"{title}: {content[:160]}")
+                        elif title:
+                            excerpts.append(title)
+                    if excerpts:
+                        return excerpts
+                if context.route == "knowledge_engine" and self._knowledge_gateway is not None:
+                    try:
+                        records = self._knowledge_gateway.retrieve(query)
+                    except Exception:
+                        records = []
+                    excerpts: List[str] = []
+                    for record in records or []:
+                        if isinstance(record, dict):
+                            content = record.get("content") or record.get("excerpt") or record.get("text")
+                        else:
+                            content = getattr(record, "content", None) or getattr(record, "excerpt", None) or getattr(record, "text", None)
+                        if content:
+                            excerpts.append(str(content).strip())
+                    if excerpts:
+                        return excerpts
+
+        founder_excerpts: List[str] = []
+        if self._should_query_founder_intelligence(query):
+            try:
+                founder_records = self._founder_intelligence.retrieve(query)
+            except Exception:
+                founder_records = []
+            for record in founder_records or []:
+                content = getattr(record, "content", None) if not isinstance(record, dict) else record.get("content")
+                if content:
+                    founder_excerpts.append(str(content).strip())
+            if founder_excerpts:
+                return founder_excerpts
+
+        library_excerpts = self._retrieve_from_document_library(query)
+        if library_excerpts:
+            return library_excerpts
+
+        if self._document_library is not None and self._orchestrator is None:
+            try:
+                matches = self._document_library.search(query)
+            except Exception:
+                matches = []
+            excerpts: List[str] = []
+            for doc in matches[:3] or []:
+                title = getattr(doc, "title", "") or ""
+                content = getattr(doc, "content", "") or ""
+                if title and content:
+                    excerpts.append(f"{title}: {content[:160]}")
+                elif title:
+                    excerpts.append(title)
+            if excerpts:
+                return excerpts
+
+        tool_bus_excerpts = self._route_tool_bus_query(query)
+        if tool_bus_excerpts:
+            return tool_bus_excerpts
+
+        if not self._knowledge_gateway:
+            return []
+
+        gateway_name = getattr(self._knowledge_gateway, "__class__", type("", (), {})).__name__
+        if gateway_name not in {"KnowledgeRetrievalEngine", "GatewaySpy"} and not hasattr(self._knowledge_gateway, "retrieve"):
+            return []
+
+        try:
+            records = self._knowledge_gateway.retrieve(query)
+        except Exception:
+            return []
+
+        excerpts: List[str] = []
+        for record in records or []:
+            if record is None:
+                continue
+            if isinstance(record, dict):
+                content = record.get("content") or record.get("excerpt") or record.get("text")
+            else:
+                content = getattr(record, "content", None) or getattr(record, "excerpt", None) or getattr(record, "text", None)
+            if not content:
+                continue
+            text = str(content).strip()
+            if not text:
+                continue
+            if text not in excerpts:
+                excerpts.append(text)
+        return excerpts
 
     def _sanitize_provider_reply(self, text: str) -> str:
         cleaned = (text or "").strip()
@@ -1481,6 +1718,16 @@ class ExecutiveBrain:
 
         # 2. Context
         links, context_summary = self.link_context(query, documents)
+        should_query_trusted_knowledge = (
+            self._should_query_knowledge_gateway(query, perception.request_type)
+            or self._should_query_document_library(query, perception.request_type)
+            or self._orchestrator is not None
+        )
+        if should_query_trusted_knowledge:
+            trusted_knowledge = self._retrieve_trusted_knowledge(query)
+            if trusted_knowledge:
+                knowledge_excerpt = " | ".join(trusted_knowledge[:3])
+                context_summary = f"{context_summary}\n\nمعرفة موثوقة: {knowledge_excerpt}"
 
         # 3. Agent Selection
         if hinted_type == "identity":

@@ -95,6 +95,13 @@ class RuntimeCapabilitiesTests(unittest.TestCase):
         stored = json.loads(self.plans_file.read_text(encoding="utf-8"))
         self.assertTrue(any(item.get("query") == "Create a short plan to improve memory and planning" for item in stored))
 
+    def test_ask_runtime_bootstraps_executive_layers(self):
+        self.assertIsNotNone(ameer_server.EXECUTIVE_BRAIN)
+        self.assertIsNotNone(ameer_server.EXECUTIVE_BRAIN._knowledge_gateway)
+        self.assertIsNotNone(ameer_server.EXECUTIVE_BRAIN._founder_intelligence)
+        self.assertIsNotNone(ameer_server.EXECUTIVE_BRAIN._document_library)
+        self.assertIsNotNone(ameer_server.EXECUTIVE_BRAIN._tool_bus)
+
 
 if __name__ == "__main__":
     unittest.main()

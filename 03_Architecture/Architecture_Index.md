@@ -10,6 +10,8 @@ This index maps the core architecture documents for Ameer and highlights how the
   - High-level system blueprint for model choice, hybrid execution, memory, tools, security, and the new Intelligence Core.
 - `Ameer_Intelligence_Core_v1.md`
   - Official architecture for the Ameer Intelligence Core, including intent analysis, context assembly, agent routing, memory governance, decision support, and governance rules.
+- `Executive_Knowledge_Engine.md`
+  - P0.2 architecture foundation for a governed, provider-independent knowledge layer covering lifecycle, trust, memory boundaries, approval gates, and future connector contracts.
 - `Ameer_Operating_Model.md`
   - Operational principles, decision framework, memory handling, and founder authority rules.
 - `Ameer_Workspace_v1_Product_Spec.md`

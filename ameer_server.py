@@ -12,6 +12,21 @@ import uuid
 import importlib.util
 from datetime import datetime, timezone
 
+ROOT = os.path.dirname(__file__)
+CODE_ROOT = os.path.join(ROOT, "06_Code")
+if CODE_ROOT not in sys.path:
+    sys.path.insert(0, CODE_ROOT)
+
+from founder_intelligence.layer import FounderIntelligenceLayer
+from knowledge_engine.interfaces import KnowledgeBase, KnowledgeRecord, KnowledgeState
+from knowledge_engine.retrieval import KnowledgeRetrievalEngine
+from document_library.service import DocumentLibraryService
+from tool_bus.bus import ExecutiveToolBus
+from tool_bus.github_tool import GitHubTool
+from tool_bus.railway_tool import RailwayTool
+from github_connector.connector import GitHubConnector
+from railway_connector.connector import RailwayConnector
+
 from ameer_runtime import (
     public_runtime_identity,
     print_runtime_banner,
@@ -91,7 +106,6 @@ app = FastAPI(title="Ameer Local Server")
 
 
 # Load markdown documents from workspace
-ROOT = os.path.dirname(__file__)
 MODULES_DIR = os.path.join(ROOT, "09_Assets", "web", "modules")
 app.mount("/modules", StaticFiles(directory=MODULES_DIR), name="modules")
 MD_GLOB = os.path.join(ROOT, "**", "*.md")
@@ -144,6 +158,157 @@ def utf8_json_response(payload, headers: dict[str, str] | None = None):
 
 
 DOCUMENTS = load_documents()
+
+
+class _StubGitHubClient:
+    def get_repository(self, owner, repo):
+        return {"full_name": f"{owner}/{repo}", "description": "Demo repository", "html_url": f"https://github.com/{owner}/{repo}"}
+
+    def list_pull_requests(self, owner, repo):
+        return [{"number": 5, "title": "Improve onboarding", "state": "open", "html_url": f"https://github.com/{owner}/{repo}/pull/5", "head": {"ref": "feature/onboarding"}, "merge_commit_sha": "deadbeef"}]
+
+    def list_releases(self, owner, repo):
+        return [{"tag_name": "v1.0.0", "name": "Release 1", "html_url": f"https://github.com/{owner}/{repo}/releases/tag/v1.0.0"}]
+
+    def list_workflows(self, owner, repo):
+        return [{"name": "CI", "state": "active", "html_url": f"https://github.com/{owner}/{repo}/actions"}]
+
+    def list_issues(self, owner, repo):
+        return [{"number": 7, "title": "Tracking bug", "state": "open", "html_url": f"https://github.com/{owner}/{repo}/issues/7"}]
+
+    def list_branches(self, owner, repo):
+        return [{"name": "main", "commit": {"sha": "abc123"}}]
+
+    def list_tags(self, owner, repo):
+        return [{"name": "v1.0.0"}]
+
+
+class _StubRailwayClient:
+    def get_service_health(self, project, service, environment):
+        return {"status": "healthy", "health_score": 99, "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+    def get_latest_deployment(self, project, service, environment):
+        return {"version": "v2.1", "status": "succeeded", "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+    def get_deployment_history(self, project, service, environment):
+        return [{"version": "v2.1", "status": "succeeded", "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}]
+
+    def get_logs(self, project, service, environment):
+        return [{"message": "deployment completed", "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}]
+
+    def get_metrics(self, project, service, environment):
+        return {"cpu_usage": 42, "memory_usage": 61, "error_rate": 0.2, "response_time_ms": 180, "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+
+RUNTIME_BOOTSTRAP = None
+
+
+def _bootstrap_executive_runtime():
+    global RUNTIME_BOOTSTRAP
+    if RUNTIME_BOOTSTRAP is not None:
+        return RUNTIME_BOOTSTRAP
+
+    knowledge_base = KnowledgeBase()
+    for entry in DOCUMENTS:
+        path = entry.get("path")
+        if not path:
+            continue
+        full_path = os.path.join(ROOT, path)
+        if not os.path.exists(full_path):
+            continue
+        content = (entry.get("text") or "").strip()
+        if not content:
+            continue
+        knowledge_base.add_record(
+            KnowledgeRecord(
+                source_path=path,
+                content=content,
+                source_type="markdown",
+                state=KnowledgeState.TRUSTED,
+                approval_state=KnowledgeState.TRUSTED,
+                confidence_score=0.9,
+                import_timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                provenance={"source_path": path, "source_type": "markdown", "priority": "project"},
+                source_category="project",
+            )
+        )
+
+    knowledge_gateway = KnowledgeRetrievalEngine(knowledge_base=knowledge_base)
+
+    founder_records = []
+    for candidate_path in [
+        os.path.join(ROOT, "01_Docs", "Vision.md"),
+        os.path.join(ROOT, "01_Docs", "Requirements.md"),
+        os.path.join(ROOT, "04_Memory", "Founder.md"),
+    ]:
+        if not os.path.exists(candidate_path):
+            continue
+        with open(candidate_path, "r", encoding="utf-8") as handle:
+            content = handle.read().strip()
+        if content:
+            founder_records.append(
+                KnowledgeRecord(
+                    source_path=os.path.relpath(candidate_path, ROOT).replace("\\", "/"),
+                    content=content,
+                    source_type="markdown",
+                    state=KnowledgeState.TRUSTED,
+                    approval_state=KnowledgeState.TRUSTED,
+                    confidence_score=0.95,
+                    import_timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    provenance={"source_path": os.path.relpath(candidate_path, ROOT).replace("\\", "/"), "source_type": "markdown", "priority": "founder"},
+                    source_category="founder",
+                )
+            )
+
+    founder_intelligence = FounderIntelligenceLayer(approved_records=founder_records)
+    document_library = DocumentLibraryService(knowledge_base=knowledge_base)
+
+    for entry in DOCUMENTS:
+        path = entry.get("path")
+        if not path:
+            continue
+        full_path = os.path.join(ROOT, path)
+        if not os.path.exists(full_path):
+            continue
+        try:
+            document_library.register_document(
+                full_path,
+                title=os.path.basename(full_path),
+                source="local",
+                category="project",
+                language="ar",
+                tags=["workspace"],
+                approval_status="trusted",
+            )
+        except Exception:
+            continue
+
+    tool_bus = ExecutiveToolBus()
+    github_connector = GitHubConnector(client=_StubGitHubClient(), owner="example", repo="repo")
+    railway_connector = RailwayConnector(client=_StubRailwayClient(), project="acme", service="api", environment="production")
+    tool_bus.register_tool(GitHubTool(github_connector))
+    tool_bus.register_tool(RailwayTool(railway_connector))
+    document_library.attach_tool_bus(tool_bus)
+    document_library.attach_github_connector(github_connector)
+    document_library.attach_railway_connector(railway_connector)
+
+    brain = ExecutiveBrainClass(
+        normalize_fn=normalize_arabic,
+        knowledge_gateway=knowledge_gateway,
+        founder_intelligence=founder_intelligence,
+        document_library=document_library,
+        tool_bus=tool_bus,
+    ) if ExecutiveBrainClass else None
+
+    RUNTIME_BOOTSTRAP = {
+        "brain": brain,
+        "knowledge_gateway": knowledge_gateway,
+        "founder_intelligence": founder_intelligence,
+        "document_library": document_library,
+        "tool_bus": tool_bus,
+    }
+    return RUNTIME_BOOTSTRAP
+
 
 class AskRequest(BaseModel):
     query: str
@@ -236,7 +401,8 @@ ORCHESTRATOR = AmeerOrchestrator(
     normalize_fn=normalize_arabic,
 )
 
-EXECUTIVE_BRAIN = ExecutiveBrainClass(normalize_fn=normalize_arabic) if ExecutiveBrainClass else None
+RUNTIME_STACK = _bootstrap_executive_runtime()
+EXECUTIVE_BRAIN = RUNTIME_STACK["brain"] if RUNTIME_STACK else None
 RESPONSE_FORMATTER = ResponseFormatterClass() if ResponseFormatterClass else None
 
 @app.post('/ask')
