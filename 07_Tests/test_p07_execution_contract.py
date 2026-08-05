@@ -183,11 +183,12 @@ class ECESoleResponseOwnerTests(unittest.TestCase):
         result = self.ece.execute(query="اختبار", planner_state=state, dry_run=True)
         self.assertEqual(result.get("response_owner"), "ExecutiveConversationEngine")
 
-    def test_execute_ignores_draft_reply(self):
+    def test_execute_uses_draft_reply_when_no_executive_signals(self):
+        """ECE uses draft_reply as primary reply when there are no executive signals (risks, approvals, tasks)."""
         state = self._planner_state()
-        sentinel = "هذا_نص_مسودة_يجب_تجاهله_123456"
-        result = self.ece.execute(query="اختبار", draft_reply=sentinel, planner_state=state, dry_run=True)
-        self.assertNotIn(sentinel, result.get("reply", ""))
+        draft = "أنا أمير، شريكك التنفيذي."
+        result = self.ece.execute(query="من أنت؟", draft_reply=draft, planner_state=state, dry_run=True)
+        self.assertEqual(result.get("reply", ""), draft)
 
     def test_execute_does_not_return_was_modified(self):
         state = self._planner_state()

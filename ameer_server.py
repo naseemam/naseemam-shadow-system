@@ -402,6 +402,7 @@ async def ask(request: Request):
         )
         conversation_result = EXECUTIVE_CONVERSATION_ENGINE.execute(
             query=q,
+            draft_reply=fallback_reply,
             planner_state=planner_state,
             conversation_context=conversation_context,
             persistent_memory_block=persistent_memory_context,
@@ -466,8 +467,8 @@ async def ask(request: Request):
         user_payload = RESPONSE_FORMATTER.format_payload(composer_payload)
     except Exception:
         user_payload = {
-            "reply": "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني.",
-            "message": "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني.",
+            "reply": "أنا معك.",
+            "message": "أنا معك.",
             "assistant": "أمير",
         }
     user_payload.update(public_runtime_identity(workspace_root=ROOT))
@@ -572,7 +573,7 @@ async def ask_trace(request: Request):
     # ── 4. Planner → Executive State (P0.7) ───────────────────────────────────
     planner_output: dict = {}
     conversation_result: dict = {}
-    final_reply = "حاضر، أتابع معك على هذا الطلب."
+    final_reply = "أنا معك."
 
     if EXECUTIVE_CONVERSATION_ENGINE:
         planner_state = EXECUTIVE_CONVERSATION_ENGINE.memory.plan(
@@ -628,8 +629,8 @@ async def ask_trace(request: Request):
         user_payload = RESPONSE_FORMATTER.format_payload(composer_payload)
     except Exception:
         user_payload = {
-            "reply": "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني.",
-            "message": "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني.",
+            "reply": "أنا معك.",
+            "message": "أنا معك.",
             "assistant": "أمير",
         }
 

@@ -4,7 +4,7 @@ import re
 
 class GreetingAgent(BaseAgent):
     name = "greeting_agent"
-    capabilities = ["التحية", "بدء الحوار", "تأكيد الجاهزية"]
+    capabilities = ["استئناف العمل", "بدء الحوار التنفيذي"]
     primary_sources = []
 
     _assistant_name_forms = {"أمير", "امير", "ameer"}
@@ -13,9 +13,9 @@ class GreetingAgent(BaseAgent):
         q_words_only = re.sub(r"[^\u0621-\u064Aa-zA-Z0-9]", "", (context.query or "").lower()).strip()
         is_name_call = q_words_only in self._assistant_name_forms
         reply = (
-            "أنا معك. حددي النقطة التي نحتاج حسمها الآن."
+            "أنا هنا. من أين نبدأ؟"
             if is_name_call
-            else "راجعت السياق المفتوح، والأفضل أن نبدأ بأعلى نقطة تؤثر على بقية العمل."
+            else "نبدأ من أعلى نقطة أثرًا — ما الذي يحتاج قرارًا أو تقدمًا الآن؟"
         )
         return AgentOutput(
             agent=self.name,
@@ -23,7 +23,7 @@ class GreetingAgent(BaseAgent):
             reply_draft=reply,
             sources=self.primary_sources,
             actions=["open_conversation"],
-            message="تم تجهيز رد ترحيبي مبدئي.",
+            message="استئناف الحوار التنفيذي.",
             response_data={
                 "intent": "greeting",
                 "facts": {
