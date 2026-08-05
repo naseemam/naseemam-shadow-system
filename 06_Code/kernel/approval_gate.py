@@ -141,6 +141,7 @@ class ApprovalGate:
             "context": context or {},
             "status": "pending",
             "approved_by": None,
+            "rejected_by": None,
             "rejection_reason": None,
             "requested_at": _now_iso(),
             "resolved_at": None,
@@ -173,7 +174,7 @@ class ApprovalGate:
         for approval in self._approvals:
             if approval["id"] == approval_id and approval["status"] == "pending":
                 approval["status"] = "rejected"
-                approval["approved_by"] = (rejected_by or "naseem").strip()
+                approval["rejected_by"] = (rejected_by or "naseem").strip()
                 approval["rejection_reason"] = (reason or "").strip()
                 approval["resolved_at"] = _now_iso()
                 self._save()

@@ -70,5 +70,44 @@
     "rejection_reason": "لا يجوز الآن",
     "requested_at": "2026-08-05T14:46:26Z",
     "resolved_at": "2026-08-05T14:46:26Z"
+  },
+  {
+    "id": "39d6fef1-598d-4a09-8cac-ef2dc18e2654",
+    "action": "publish",
+    "description": "نشر تجريبي",
+    "requested_by": "executive_brain",
+    "context": {},
+    "status": "approved",
+    "approved_by": "naseem",
+    "rejected_by": null,
+    "rejection_reason": null,
+    "requested_at": "2026-08-05T14:48:27Z",
+    "resolved_at": "2026-08-05T14:48:27Z"
+  },
+  {
+    "id": "ca44b37b-11cc-4263-a36b-8806468de9eb",
+    "action": "delete",
+    "description": "حذف ملف اختباري",
+    "requested_by": "executive_brain",
+    "context": {},
+    "status": "pending",
+    "approved_by": null,
+    "rejected_by": null,
+    "rejection_reason": null,
+    "requested_at": "2026-08-05T14:48:27Z",
+    "resolved_at": null
+  },
+  {
+    "id": "c0f53f5d-16cc-4a4b-aaf0-d8af351023a7",
+    "action": "external",
+    "description": "استدعاء API خارجي",
+    "requested_by": "executive_brain",
+    "context": {},
+    "status": "rejected",
+    "approved_by": null,
+    "rejected_by": "naseem",
+    "rejection_reason": "لا يجوز الآن",
+    "requested_at": "2026-08-05T14:48:27Z",
+    "resolved_at": "2026-08-05T14:48:27Z"
   }
 ]
