@@ -343,14 +343,42 @@ async def ask(request: Request):
         guardian_result=guardian,
         routing_hint=routing,
     )
-    # P0.7 — Executive Brain is a reasoning engine only; produces reasoning + executive_state
+    # P0.2 — pass existing plan so get_reasoning_output does NOT call think() again
     reasoning_output = EXECUTIVE_BRAIN.get_reasoning_output(
         q,
         DOCUMENTS,
         guardian_result=guardian,
         routing_hint=routing,
+        existing_plan=plan,
     )
     reasoning_output["_plan"] = plan
+
+    # ── P0.1 — Governance wiring: route plan outcomes into Kernel automatically ──
+    # Every high-impact outcome is now recorded in DecisionEngine or ApprovalGate
+    # so the governance layer is populated without manual API calls.
+    if KERNEL:
+        try:
+            g_status = getattr(plan, "guardian_status", "pass")
+            req_type = getattr(plan, "request_type", "")
+
+            # 1. Needs-approval requests → create an ApprovalGate record
+            if g_status == "needs_approval":
+                KERNEL.request_approval(
+                    action="other",
+                    description=q[:240],
+                    requested_by="executive_brain",
+                )
+
+            # 2. Decision and planning requests → record in DecisionEngine
+            if req_type in {"decision", "planning"}:
+                KERNEL.record_decision(
+                    title=q[:120],
+                    reason=getattr(plan, "guardian_reason", "") or req_type,
+                    category="task" if req_type == "planning" else "other",
+                    expected_outcome=getattr(plan, "executive_message", ""),
+                )
+        except Exception:
+            pass
     brain_plan = {
         "request_type": plan.request_type,
         "ambiguous": plan.ambiguous,
@@ -560,14 +588,43 @@ async def ask_trace(request: Request):
     routing = orchestrator_result.get("routing") or {}
 
     # ── 3. Executive Brain → Reasoning Only (P0.7) ────────────────────────────
-    reasoning_output = EXECUTIVE_BRAIN.get_reasoning_output(
+    # P0.2 — compute plan once and pass it to get_reasoning_output
+    plan = EXECUTIVE_BRAIN.think(
         q,
         DOCUMENTS,
         guardian_result=guardian,
         routing_hint=routing,
     )
-    plan = reasoning_output.pop("_plan")
-    reasoning_output["_plan"] = plan  # re-attach for execution
+    reasoning_output = EXECUTIVE_BRAIN.get_reasoning_output(
+        q,
+        DOCUMENTS,
+        guardian_result=guardian,
+        routing_hint=routing,
+        existing_plan=plan,
+    )
+    reasoning_output["_plan"] = plan
+
+    # ── P0.1 — Governance wiring (trace endpoint mirrors /ask) ────────────────
+    if KERNEL:
+        try:
+            g_status = getattr(plan, "guardian_status", "pass")
+            req_type = getattr(plan, "request_type", "")
+            if g_status == "needs_approval":
+                KERNEL.request_approval(
+                    action="other",
+                    description=q[:240],
+                    requested_by="executive_brain",
+                )
+            if req_type in {"decision", "planning"}:
+                KERNEL.record_decision(
+                    title=q[:120],
+                    reason=getattr(plan, "guardian_reason", "") or req_type,
+                    category="task" if req_type == "planning" else "other",
+                    expected_outcome=getattr(plan, "executive_message", ""),
+                )
+        except Exception:
+            pass
+
     execution_result = EXECUTIVE_BRAIN._execute_plan(q, plan, workspace_root=ROOT)
 
     # ── 4. Planner → Executive State (P0.7) ───────────────────────────────────

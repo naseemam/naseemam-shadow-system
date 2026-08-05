@@ -1656,14 +1656,26 @@ class ExecutiveBrain:
             executive_message=msg,
         )
 
-    def get_reasoning_output(self, query: str, documents: list, guardian_result: dict | None = None, routing_hint: dict | None = None) -> dict:
+    def get_reasoning_output(
+        self,
+        query: str,
+        documents: list,
+        guardian_result: dict | None = None,
+        routing_hint: dict | None = None,
+        existing_plan: "ExecutivePlan | None" = None,
+    ) -> dict:
         """
         P0.7 — Reasoning-only interface for the Executive Brain.
 
         Returns structured internal state only; produces no visible user text.
         The Executive Conversation Engine is the sole owner of the final reply.
+
+        Pass ``existing_plan`` to reuse a plan already produced by ``think()``
+        in the same request cycle and avoid a second full reasoning pass (P0.2).
         """
-        plan = self.think(query, documents, guardian_result=guardian_result, routing_hint=routing_hint)
+        plan = existing_plan if existing_plan is not None else self.think(
+            query, documents, guardian_result=guardian_result, routing_hint=routing_hint
+        )
         reasoning = {
             "request_type": plan.request_type,
             "plan_type": plan.plan_type,
