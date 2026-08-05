@@ -1,4 +1,5 @@
 import os
+import importlib.util
 import socket
 import subprocess
 import sys
@@ -16,9 +17,21 @@ def port_is_busy(host: str, port: int) -> bool:
         return sock.connect_ex((host, port)) == 0
 
 
+def ensure_runtime_dependency(module_name: str, package_name: str | None = None) -> None:
+    if importlib.util.find_spec(module_name) is not None:
+        return
+
+    package = package_name or module_name
+    raise SystemExit(
+        f"Missing required dependency '{package}'. "
+        f"Install project dependencies first with: {sys.executable} -m pip install -r requirements.txt"
+    )
+
+
 host = "0.0.0.0"
 port = resolve_port()
 os.environ["AMEER_PORT"] = str(port)
+ensure_runtime_dependency("uvicorn", "uvicorn[standard]")
 cmd = [
     sys.executable,
     "-m",
