@@ -41,21 +41,27 @@ class InferenceProvider(ABC):
 
 
 class OpenAIProvider(InferenceProvider):
-    """Adapter for the OpenAI chat completions API."""
+    """Adapter for the OpenAI chat completions API (and compatible endpoints)."""
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini") -> None:
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini", base_url: str | None = None) -> None:
         self._api_key = api_key
         self._model = model
+        self._base_url = base_url
         self._client = None
         if api_key:
             try:
                 from openai import OpenAI  # type: ignore[import]
-                self._client = OpenAI(api_key=api_key)
+                kwargs: dict = {"api_key": api_key}
+                if base_url:
+                    kwargs["base_url"] = base_url
+                self._client = OpenAI(**kwargs)
             except Exception:
                 self._client = None
 
     @property
     def name(self) -> str:
+        if self._base_url:
+            return f"openai-compat/{self._model}"
         return f"openai/{self._model}"
 
     def is_available(self) -> bool:

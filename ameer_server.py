@@ -99,6 +99,25 @@ WEB_INDEX = os.path.join(ROOT, "09_Assets", "web", "index.html")
 DEBUG_MODE = os.getenv("AMEER_DEBUG", "0").lower() in {"1", "true", "yes", "on"}
 RUNTIME_METADATA = runtime_metadata(workspace_root=ROOT)
 
+# ─── Executive Operating Kernel ───────────────────────────────────────────────
+
+def _load_executive_kernel():
+    try:
+        kernel_path = os.path.join(os.path.dirname(__file__), "06_Code", "kernel", "executive_kernel.py")
+        spec = importlib.util.spec_from_file_location("executive_kernel", kernel_path)
+        if spec is None or spec.loader is None:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["executive_kernel"] = module
+        spec.loader.exec_module(module)
+        return module.ExecutiveKernel
+    except Exception:
+        return None
+
+
+_ExecutiveKernelClass = _load_executive_kernel()
+KERNEL = _ExecutiveKernelClass(workspace_root=ROOT) if _ExecutiveKernelClass else None
+
 def load_documents():
     # Paths (relative to ROOT) that must be excluded from the knowledge corpus.
     # Backups may contain outdated or conflicting information; root junk files are not
@@ -260,12 +279,37 @@ async def ask(request: Request):
         raise HTTPException(status_code=400, detail="Empty query")
 
     _log("ask_received", request_id=request_id, build_id=RUNTIME_METADATA["build_id"])
+
+    # ── 1. Executive Kernel: build full executive context (pipeline step 1→5) ──
+    # Pipeline: Kernel → State → Workspace → Founder → Session → Brain
+    conversation_context = ""
+    founder_context = ""
+    workspace_summary = ""
+    pending_approvals: list = []
+    active_projects: list = []
+    running_tasks: list = []
+    executive_assessment = ""
+    is_first_turn = False
+    if KERNEL:
+        try:
+            ctx = KERNEL.before_request(q)
+            conversation_context = ctx.get("conversation_context", "")
+            founder_context = ctx.get("founder_context", "")
+            workspace_summary = ctx.get("workspace_summary", "")
+            pending_approvals = ctx.get("pending_approvals", [])
+            active_projects = ctx.get("active_projects", [])
+            running_tasks = ctx.get("running_tasks", [])
+            executive_assessment = ctx.get("executive_assessment", "")
+            is_first_turn = ctx.get("is_first_turn", False)
+        except Exception:
+            pass
+
     autonomy_plan = None
     autonomy_keywords = ["plan", "planning", "memory", "autonom", "workspace", "document", "tool", "improve", "self", "reason"]
     if any(keyword in q.lower() for keyword in autonomy_keywords):
         autonomy_plan = _record_autonomy_plan(q, "autonomy")
 
-    # Run orchestrator (retrieval + guardian)
+    # ── 2. Orchestrator (retrieval + guardian) ─────────────────────────────────
     orchestrator_result = ORCHESTRATOR.answer(q, req.max_results)
 
     if not EXECUTIVE_BRAIN:
@@ -274,6 +318,8 @@ async def ask(request: Request):
     guardian = orchestrator_result.get("guardian", {})
     routing = orchestrator_result.get("routing") or {}
     project_manager = _manage_project_context(q)
+
+    # ── 3. Executive Brain think + execute ────────────────────────────────────
     plan = EXECUTIVE_BRAIN.think(
         q,
         DOCUMENTS,
@@ -302,13 +348,28 @@ async def ask(request: Request):
         plan,
         workspace_root=ROOT,
     )
+    # ── 4. Compose final reply (Tool Bus already ran inside _execute_plan) ─────
     final_reply, reply_source = EXECUTIVE_BRAIN.compose_final_reply(
         q,
         orchestrator_result,
         DOCUMENTS,
         existing_plan=plan,
         execution_result=execution_result,
+        conversation_context=conversation_context,
+        founder_context=founder_context,
+        workspace_summary=workspace_summary,
+        pending_approvals=pending_approvals,
+        active_projects=active_projects,
+        running_tasks=running_tasks,
+        is_first_turn=is_first_turn,
     )
+
+    # ── 5. AOS Kernel: record assistant reply in session context ──────────────
+    if KERNEL:
+        try:
+            KERNEL.after_request(final_reply)
+        except Exception:
+            pass
 
     if not RESPONSE_FORMATTER:
         raise HTTPException(status_code=500, detail="Response Composer is unavailable")
@@ -341,6 +402,7 @@ async def ask(request: Request):
                 "selected_agent": executive_agent,
                 "reply_generated_by": reply_source,
                 "single_brain_mode": bool(getattr(EXECUTIVE_BRAIN, "_single_brain_mode", False)),
+                "aos_kernel": "active" if KERNEL else "inactive",
             },
         }
         _log("ask_debug_trace", request_id=request_id, trace=debug_trace)
@@ -543,6 +605,23 @@ async def home():
         return HTMLResponse(content="<h1>Ameer</h1><p>Web UI not found. Create 09_Assets/web/index.html</p>", media_type="text/html; charset=utf-8")
 
 
+@app.get('/kernel/health')
+async def kernel_health():
+    """حالة Ameer Operating System Kernel."""
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable", "kernel": "inactive"})
+    return utf8_json_response(KERNEL.health())
+
+
+@app.get('/kernel/workspace')
+async def kernel_workspace():
+    """ملخص بيئة العمل الحالي."""
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable"})
+    summary = KERNEL.refresh_workspace()
+    return utf8_json_response({"workspace_summary": summary})
+
+
 @app.on_event("startup")
 async def log_runtime_banner():
     meta = runtime_metadata(workspace_root=ROOT)
@@ -556,6 +635,18 @@ async def log_runtime_banner():
         started_at=meta["started_at"],
         documents=len(DOCUMENTS),
     )
+    # Boot the Executive Operating Kernel
+    if KERNEL:
+        try:
+            boot_result = KERNEL.boot()
+            _log(
+                "aos_kernel_booted",
+                status=boot_result.get("status"),
+                components=boot_result.get("components"),
+                errors=boot_result.get("errors"),
+            )
+        except Exception as exc:
+            _log("aos_kernel_boot_failed", level="error", error=str(exc))
 
 if __name__ == '__main__':
     import uvicorn
