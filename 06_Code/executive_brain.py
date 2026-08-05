@@ -192,9 +192,19 @@ class ExecutiveBrain:
         # Build ordered provider chain via the formal abstraction when available.
         self._providers: List[object] = []
         if OpenAIProvider is not None:
+            # Primary: explicit OPENAI_API_KEY (standard OpenAI or any compatible API).
             api_key = os.getenv("OPENAI_API_KEY")
+            base_url = os.getenv("OPENAI_BASE_URL") or None
+            if not api_key:
+                # Fallback: use the GitHub Copilot token with the Copilot chat endpoint,
+                # which is fully OpenAI-API-compatible (no extra headers required).
+                api_key = os.getenv("GITHUB_COPILOT_API_TOKEN") or os.getenv("GITHUB_TOKEN")
+                if api_key and not base_url:
+                    base_url = "https://api.githubcopilot.com"
             if api_key:
-                self._providers.append(OpenAIProvider(api_key=api_key, model=self._model_name))
+                self._providers.append(
+                    OpenAIProvider(api_key=api_key, model=self._model_name, base_url=base_url)
+                )
         if OllamaProvider is not None and os.getenv("OLLAMA_ENABLED", "1").lower() in {"1", "true", "yes", "on"}:
             self._providers.append(OllamaProvider(host=self._ollama_host, model=self._ollama_model))
 
