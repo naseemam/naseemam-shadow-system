@@ -465,6 +465,213 @@ async def ask(request: Request):
     _log("ask_completed", request_id=request_id)
     return utf8_json_response(user_payload, headers=runtime_headers(workspace_root=ROOT))
 
+@app.post('/ask/trace')
+async def ask_trace(request: Request):
+    """
+    Full pipeline trace endpoint — demonstrates every stage of the runtime.
+
+    Returns, for each request:
+      1. kernel_state_before  — Kernel state snapshot before the request is processed
+      2. ece_input            — The draft reply fed into the Executive Conversation Engine
+      3. planner_output       — Planner objective, risks, and next action
+      4. final_response       — The response sent to the user after ECE modification
+      5. ece_modification     — Whether (and how) ECE changed the draft reply
+    """
+    request_id = str(uuid.uuid4())
+    raw = await request.body()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty body")
+
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid UTF-8 JSON body") from exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Expected JSON object")
+
+    req = AskRequest(**payload)
+    q = req.query.strip() if isinstance(req.query, str) else ''
+    if not q:
+        raise HTTPException(status_code=400, detail="Empty query")
+
+    _log("ask_trace_received", request_id=request_id)
+
+    # ── 1. Capture Kernel state BEFORE the request ─────────────────────────────
+    kernel_state_before: dict = {}
+    conversation_context = ""
+    founder_context = ""
+    workspace_summary = ""
+    pending_approvals: list = []
+    active_projects: list = []
+    running_tasks: list = []
+    executive_assessment = ""
+    persistent_memory_context = ""
+    is_first_turn = False
+
+    if KERNEL:
+        try:
+            # Ensure kernel is booted so state is populated before we snapshot it
+            if not KERNEL._initialized:
+                KERNEL.boot()
+            # Snapshot state *before* before_request mutates session context
+            kernel_state_before = {
+                "active_projects": list(KERNEL.state.active_projects),
+                "pending_approvals": list(KERNEL.state.pending_approvals),
+                "running_tasks": list(KERNEL.state.running_tasks),
+                "executive_assessment": KERNEL.state.executive_assessment,
+                "workspace_summary": KERNEL.state.workspace_summary,
+                "session_count": KERNEL.state.session_count,
+                "runtime_status": KERNEL.state.runtime_status,
+                "last_session_at": KERNEL.state.last_session_at,
+                "conversation_memory_snapshot": KERNEL.conversation_memory.snapshot(),
+            }
+            ctx = KERNEL.before_request(q)
+            conversation_context = ctx.get("conversation_context", "")
+            founder_context = ctx.get("founder_context", "")
+            workspace_summary = ctx.get("workspace_summary", "")
+            pending_approvals = ctx.get("pending_approvals", [])
+            active_projects = ctx.get("active_projects", [])
+            running_tasks = ctx.get("running_tasks", [])
+            executive_assessment = ctx.get("executive_assessment", "")
+            persistent_memory_context = ctx.get("persistent_memory_context", "")
+            is_first_turn = ctx.get("is_first_turn", False)
+        except Exception as exc:
+            kernel_state_before["error"] = str(exc)
+
+    # ── 2. Orchestrator ────────────────────────────────────────────────────────
+    orchestrator_result = ORCHESTRATOR.answer(q, req.max_results)
+
+    if not EXECUTIVE_BRAIN:
+        raise HTTPException(status_code=500, detail="Executive Brain is unavailable")
+
+    guardian = orchestrator_result.get("guardian", {})
+    routing = orchestrator_result.get("routing") or {}
+
+    # ── 3. Executive Brain think + execute ────────────────────────────────────
+    plan = EXECUTIVE_BRAIN.think(
+        q,
+        DOCUMENTS,
+        guardian_result=guardian,
+        routing_hint=routing,
+    )
+    execution_result = EXECUTIVE_BRAIN._execute_plan(q, plan, workspace_root=ROOT)
+
+    # ── 4. Compose draft reply (before ECE) ───────────────────────────────────
+    draft_reply, reply_source = EXECUTIVE_BRAIN.compose_final_reply(
+        q,
+        orchestrator_result,
+        DOCUMENTS,
+        existing_plan=plan,
+        execution_result=execution_result,
+        conversation_context=conversation_context,
+        founder_context=founder_context,
+        workspace_summary=workspace_summary,
+        pending_approvals=pending_approvals,
+        active_projects=active_projects,
+        running_tasks=running_tasks,
+        is_first_turn=is_first_turn,
+    )
+
+    ece_input = {
+        "query": q,
+        "draft_reply": draft_reply,
+        "draft_reply_source": reply_source,
+        "conversation_context": conversation_context,
+        "persistent_memory_block": persistent_memory_context,
+        "pending_approvals": pending_approvals,
+        "running_tasks": running_tasks,
+        "active_projects": active_projects,
+        "is_first_turn": is_first_turn,
+    }
+
+    # ── 5. Executive Conversation Engine ──────────────────────────────────────
+    planner_output: dict = {}
+    conversation_result: dict = {}
+    final_reply = draft_reply
+
+    if EXECUTIVE_CONVERSATION_ENGINE:
+        planner_state = EXECUTIVE_CONVERSATION_ENGINE.memory.plan(
+            q,
+            active_projects=active_projects,
+            running_tasks=running_tasks,
+            pending_approvals=pending_approvals,
+            workspace_summary=workspace_summary,
+            executive_assessment=executive_assessment,
+        )
+        planner_output = {
+            "executive_objective": planner_state.executive_objective,
+            "founder_objective": planner_state.founder_objective,
+            "current_project_objective": planner_state.current_project_objective,
+            "detected_risks": list(planner_state.detected_risks or []),
+            "missing_information": list(planner_state.missing_information or []),
+            "next_executive_action": planner_state.next_executive_action,
+        }
+        conversation_result = EXECUTIVE_CONVERSATION_ENGINE.execute(
+            query=q,
+            draft_reply=draft_reply,
+            planner_state=planner_state,
+            conversation_context=conversation_context,
+            persistent_memory_block=persistent_memory_context,
+            pending_approvals=pending_approvals,
+            running_tasks=running_tasks,
+            active_projects=active_projects,
+            is_first_turn=is_first_turn,
+        )
+        final_reply = conversation_result.get("reply", draft_reply)
+
+    # ── 6. Kernel after_request ────────────────────────────────────────────────
+    if KERNEL:
+        try:
+            KERNEL.after_request(final_reply)
+        except Exception:
+            pass
+
+    # ── 7. Response Formatter ─────────────────────────────────────────────────
+    if not RESPONSE_FORMATTER:
+        raise HTTPException(status_code=500, detail="Response Composer is unavailable")
+
+    composer_payload = {
+        "reply": final_reply,
+        "message": final_reply,
+        "intent": orchestrator_result.get("intent"),
+        "agent_result": orchestrator_result.get("agent_result"),
+        "agent_brain_payload": orchestrator_result.get("agent_brain_payload"),
+    }
+    try:
+        user_payload = RESPONSE_FORMATTER.format_payload(composer_payload)
+    except Exception:
+        user_payload = {
+            "reply": "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني.",
+            "message": "حاضر، تمت معالجة طلبك. إذا أردت تفاصيل إضافية أخبرني.",
+            "assistant": "أمير",
+        }
+
+    # ── 8. Build ECE modification evidence ────────────────────────────────────
+    ece_modified_reply = user_payload.get("reply", "")
+    ece_modification = {
+        "was_modified": draft_reply != ece_modified_reply,
+        "draft_before_ece": draft_reply,
+        "reply_after_ece": ece_modified_reply,
+        "initiative_injected": conversation_result.get("initiative", ""),
+        "engine": conversation_result.get("engine", "none"),
+        "memory_context_used": conversation_result.get("memory_context_used", False),
+    }
+
+    trace_response = {
+        "request_id": request_id,
+        "query": q,
+        "kernel_state_before": kernel_state_before,
+        "ece_input": ece_input,
+        "planner_output": planner_output,
+        "final_response": ece_modified_reply,
+        "ece_modification": ece_modification,
+    }
+    trace_response.update(public_runtime_identity(workspace_root=ROOT))
+    _log("ask_trace_completed", request_id=request_id, ece_modified=ece_modification["was_modified"])
+    return utf8_json_response(trace_response, headers=runtime_headers(workspace_root=ROOT))
+
+
 @app.get('/docs')
 async def docs():
     return {"count": len(DOCUMENTS)}

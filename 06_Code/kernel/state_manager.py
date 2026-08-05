@@ -199,6 +199,10 @@ class ExecutiveStateManager:
         return self._state.get("workspace_summary", "")
 
     @property
+    def runtime_status(self) -> str:
+        return self._state.get("runtime_status", "initializing")
+
+    @property
     def last_session_at(self) -> Optional[str]:
         return self._state.get("last_session_at")
 
