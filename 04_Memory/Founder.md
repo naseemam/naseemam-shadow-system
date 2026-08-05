@@ -1,21 +1,20 @@
 # Founder
 
-## Identity
+## Founder Memory
 
-Name: Naseem
+## Confirmed Facts
+- Name: Naseem
+- Role: Founder of Project Ameer
 
-Role: Founder of Project Ameer
+## Unknown / TODO
+- Personal background: TODO
+- Preferences: TODO
+- Routine: TODO
+- Health: TODO
+- Financial information: TODO
+- Relationships: TODO
+- Travel: TODO
 
----
-
-## Purpose
-
-This file describes the founder of Ameer.
-
-It evolves only with the founder's approval.
-
-## Arabic Support / دعم اللغة العربية
-- This document supports Arabic interaction and bilingual system design.
-- يجب أن يدعم هذا المستند الحوار والمفاهيم باللغة العربية.
-- Arabic responses and interfaces should follow founder-approved consent, security, and partner-first behavior.
-- يجب أن تبقى المبادئ نفسها ثابتة في التعامل باللغة العربية.
+## Verified Sources
+- `01_Docs/Ameer_Constitution_v0.1.md`
+- Existing founder identity already present in prior `04_Memory/Founder.md`

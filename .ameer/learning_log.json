@@ -250,5 +250,113 @@
       ],
       "last_recorded_at": "2026-08-05T18:37:01Z"
     }
+  },
+  {
+    "cycle_at": "2026-08-05T21:26:31Z",
+    "changes": [
+      "added 'proactive_briefing' to proactive_topics"
+    ],
+    "feedback_snapshot": {
+      "total": 17,
+      "by_type": {
+        "neutral": 9,
+        "positive": 8
+      },
+      "topics": [
+        "proactive_briefing",
+        "test_topic"
+      ],
+      "last_recorded_at": "2026-08-05T21:26:31Z"
+    }
+  },
+  {
+    "cycle_at": "2026-08-05T21:26:31Z",
+    "changes": [
+      "preferences reset to defaults"
+    ],
+    "feedback_snapshot": {
+      "total": 18,
+      "by_type": {
+        "neutral": 9,
+        "positive": 9
+      },
+      "topics": [
+        "proactive_briefing",
+        "test_topic"
+      ],
+      "last_recorded_at": "2026-08-05T21:26:31Z"
+    }
+  },
+  {
+    "cycle_at": "2026-08-05T22:06:57Z",
+    "changes": [
+      "added 'proactive_briefing' to proactive_topics"
+    ],
+    "feedback_snapshot": {
+      "total": 19,
+      "by_type": {
+        "neutral": 10,
+        "positive": 9
+      },
+      "topics": [
+        "proactive_briefing",
+        "test_topic"
+      ],
+      "last_recorded_at": "2026-08-05T22:06:57Z"
+    }
+  },
+  {
+    "cycle_at": "2026-08-05T22:06:57Z",
+    "changes": [
+      "preferences reset to defaults"
+    ],
+    "feedback_snapshot": {
+      "total": 20,
+      "by_type": {
+        "neutral": 10,
+        "positive": 10
+      },
+      "topics": [
+        "proactive_briefing",
+        "test_topic"
+      ],
+      "last_recorded_at": "2026-08-05T22:06:57Z"
+    }
+  },
+  {
+    "cycle_at": "2026-08-05T22:09:44Z",
+    "changes": [
+      "added 'proactive_briefing' to proactive_topics"
+    ],
+    "feedback_snapshot": {
+      "total": 21,
+      "by_type": {
+        "neutral": 11,
+        "positive": 10
+      },
+      "topics": [
+        "proactive_briefing",
+        "test_topic"
+      ],
+      "last_recorded_at": "2026-08-05T22:09:44Z"
+    }
+  },
+  {
+    "cycle_at": "2026-08-05T22:09:44Z",
+    "changes": [
+      "preferences reset to defaults"
+    ],
+    "feedback_snapshot": {
+      "total": 22,
+      "by_type": {
+        "neutral": 11,
+        "positive": 11
+      },
+      "topics": [
+        "proactive_briefing",
+        "test_topic"
+      ],
+      "last_recorded_at": "2026-08-05T22:09:44Z"
+    }
   }
 ]
