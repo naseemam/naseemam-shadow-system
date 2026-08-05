@@ -1,7 +1,23 @@
-## Arabic Support / دعم اللغة العربية
-- This document supports Arabic interaction and bilingual system design.
-- يجب أن يدعم هذا المستند الحوار والمفاهيم باللغة العربية.
-- Arabic responses and interfaces should follow founder-approved consent, security, and partner-first behavior.
-- يجب أن تبقى المبادئ نفسها ثابتة في التعامل باللغة العربية.
-- The Founder is Naseem, and memory content in this file is governed by her final authority and approval for impactful use.
-- المؤسس هي نسيم، ويخضع محتوى الذاكرة في هذا الملف لسلطتها النهائية وموافقتها على الاستخدام المؤثر.
+# Project Memory — Knowledge
+
+## Confirmed Architecture / Runtime Knowledge
+- Runtime server: FastAPI-based server documented in `ameer_server.py` and `10_Documentation/Production_Roadmap.md`.
+- Startup entrypoint: `start_ameer.py`.
+- Current runtime identity and orchestration include `AmeerOrchestrator`, `ExecutiveBrain`, and `ResponseFormatter`.
+- Inference provider adapters exist for OpenAI and Ollama, but the roadmap states no real LLM is fully activated yet.
+- Frontend workspace includes modules for chat, projects, memory, system, and home, with stubs for bots, business, development, investment, and websites.
+- Memory governance in project documents distinguishes Temporary, Project, Founder, and Core memory.
+
+## Confirmed Governance Knowledge
+- Founder authority is final.
+- Important actions require explicit founder approval.
+- Permanent memory entries should include source, confidence, approval state, and timestamp metadata according to architecture/governance docs.
+- Project documents require Arabic support to preserve the same consent, privacy, and partner-first principles as English.
+
+## Sources
+- `01_Docs/Ameer_Constitution_v0.1.md`
+- `03_Architecture/Ameer_Architecture_Overview.md`
+- `10_Documentation/Development_Guide_v1.0.md`
+- `10_Documentation/Production_Roadmap.md`
+- `06_Code/adapters/inference_provider.py`
+- `06_Code/executive_brain.py`

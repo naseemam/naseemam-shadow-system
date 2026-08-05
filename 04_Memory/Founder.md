@@ -1,21 +1,17 @@
-# Founder
+# Founder Personal Memory
 
-## Identity
+## Confirmed Information
+- Name: Naseem
+- Role: Founder of Project Ameer
 
-Name: Naseem
+## Unconfirmed / Approval Required
+- Personal background: TODO
+- Personal preferences: TODO
+- Health information: TODO
+- Financial information: TODO
+- Relationship information: TODO
+- Travel information: TODO
+- Routine information: TODO
 
-Role: Founder of Project Ameer
-
----
-
-## Purpose
-
-This file describes the founder of Ameer.
-
-It evolves only with the founder's approval.
-
-## Arabic Support / دعم اللغة العربية
-- This document supports Arabic interaction and bilingual system design.
-- يجب أن يدعم هذا المستند الحوار والمفاهيم باللغة العربية.
-- Arabic responses and interfaces should follow founder-approved consent, security, and partner-first behavior.
-- يجب أن تبقى المبادئ نفسها ثابتة في التعامل باللغة العربية.
+## Note
+- This file should only be expanded with confirmed information from current project materials or explicit founder approval.

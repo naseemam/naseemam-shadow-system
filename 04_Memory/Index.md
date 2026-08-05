@@ -1,7 +1,25 @@
-## Arabic Support / دعم اللغة العربية
-- This document supports Arabic interaction and bilingual system design.
-- يجب أن يدعم هذا المستند الحوار والمفاهيم باللغة العربية.
-- Arabic responses and interfaces should follow founder-approved consent, security, and partner-first behavior.
-- يجب أن تبقى المبادئ نفسها ثابتة في التعامل باللغة العربية.
-- The Founder is Naseem, and memory content in this file is governed by her final authority and approval for impactful use.
-- المؤسس هي نسيم، ويخضع محتوى الذاكرة في هذا الملف لسلطتها النهائية وموافقتها على الاستخدام المؤثر.
+# Memory Index
+
+## Scope
+- `04_Memory/` currently separates confirmed project memory from founder personal memory.
+- Project memory may be filled from repository code, documentation, and existing confirmed memory only.
+- Founder personal memory must remain empty unless explicitly confirmed in current project materials or approved by the founder.
+
+## Project Memory
+- `Projects.md`
+- `Goals.md`
+- `Knowledge.md`
+
+## Founder Personal Memory
+- `Founder.md`
+- `Preferences.md`
+- `Routine.md`
+- `Health.md`
+- `Finance.md`
+- `Relationships.md`
+- `Travel.md`
+
+## Rules
+- Do not invent personal, health, financial, relationship, or preference information.
+- If a field is not confirmed, leave it empty and mark it as `TODO`.
+- Permanent founder memory requires explicit founder approval.
