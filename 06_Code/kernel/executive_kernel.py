@@ -115,13 +115,12 @@ class ExecutiveKernel:
             # Persist structured startup data into state so every request can read it
             active_projects = self._extract_active_projects()
             if active_projects:
-                self.state._state["active_projects"] = active_projects
-                self.state._persist()
+                self.state.set_active_projects(active_projects)
 
             pending_tasks = scan.get("tasks", {}).get("pending", [])
             if pending_tasks:
                 # Merge new tasks without duplicating existing ones
-                existing_ids = {t.get("id") for t in self.state._state.get("running_tasks", [])}
+                existing_ids = {t.get("id") for t in self.state.running_tasks}
                 for task in pending_tasks:
                     if task.get("id") not in existing_ids:
                         self.state.add_task(task)

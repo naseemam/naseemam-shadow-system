@@ -101,6 +101,11 @@ class ExecutiveStateManager:
         self._state["updated_at"] = _now_iso()
         self._persist()
 
+    def set_active_projects(self, projects: List[str]) -> None:
+        self._state["active_projects"] = projects
+        self._state["updated_at"] = _now_iso()
+        self._persist()
+
     def set_workspace_summary(self, summary: str) -> None:
         self._state["workspace_summary"] = summary
         self._state["updated_at"] = _now_iso()

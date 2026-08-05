@@ -41,6 +41,9 @@ logs/
 # Runtime state
 *.pid
 .ameer/session_*.json
+.ameer/state.json
+.ameer/plans.json
+.ameer/projects.json
 
 # Test artifacts
 .pytest_cache/
