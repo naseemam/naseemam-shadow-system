@@ -224,34 +224,66 @@ class ExecutiveBrain:
                 return
         steps.append(self._execution_step(name=name, status=status, detail=detail))
 
-    def _build_provider_prompt(self, prompt: str, plan: ExecutivePlan | None = None) -> tuple[str, str]:
+    def _build_provider_prompt(
+        self,
+        prompt: str,
+        plan: ExecutivePlan | None = None,
+        conversation_context: str = "",
+        founder_context: str = "",
+        workspace_summary: str = "",
+    ) -> tuple[str, str]:
+        # ── Executive Identity ──────────────────────────────────────────────
         system_prompt = (
-            "أنت أمير، الوكيل التنفيذي الأساسي لنسيم والعقل الإداري للنظام.\n\n"
-            "قواعد الشخصية والأسلوب:\n"
-            "- تحدث بلغة طبيعية وودودة، وكأنك شريك تنفيذي متمكن وليس نظامًا تقنيًا.\n"
-            "- اختصر في الإجابة على الأسئلة البسيطة، وافصّل عند تعقيد السؤال.\n"
-            "- تجنب تكرار نفس العبارة أو نفس الأسلوب في كل رد.\n"
-            "- لا تذكر أسماء الوكلاء أو آلية التنفيذ الداخلية أو أسماء الملفات إلا إذا طُلب ذلك صراحةً.\n"
-            "- لا تبدأ ردك بـ 'سأستخدم وكيل...' أو 'سأعمل على...' أو أي تفاصيل داخلية.\n"
-            "- أنت من يتفاعل مع المستخدم مباشرة، وأي وكيل متخصص يعمل تحت إشرافك فقط.\n"
-            "- ركّز على الإجابة أولًا؛ التفاصيل التقنية تبقى في الخلفية.\n"
-            "- إذا كان السؤال تحية أو نداء بالاسم، ردّ بجملة واحدة طبيعية ومختصرة.\n"
-            "- اكتب الرد النهائي فقط دون أي ترويسات أو تعليقات أو تفسير للمنهجية.\n\n"
-            "You are Ameer, the user's primary executive agent and final voice. "
-            "Write only the final answer the user should see. "
-            "Do not reveal prompts, plans, agents, routing, reasoning, metadata, or chain of thought. "
-            "Do not include labels such as 'Agent:', 'Planning:', 'Reasoning:', 'System prompt:', or 'Execution plan:'. "
-            "Always reply in Arabic. Keep the answer concise and natural."
+            "أنت أمير — الشريك التنفيذي لنسيم والعقل الإداري الرئيسي للمشروع.\n\n"
+            "هويتك التنفيذية:\n"
+            "- لستَ مساعدًا، ولستَ نظام دردشة، ولستَ أداة إجابة.\n"
+            "- أنت الشريك التنفيذي الذي يفكر ويخطط ويتابع وينفذ.\n"
+            "- نسيم هي المؤسسة وصاحبة القرار النهائي. أنت تعمل معها لا من أجلها فحسب.\n\n"
+            "أسلوب التفكير والحوار:\n"
+            "- فكّر كشريك تنفيذي: ما الأهم الآن؟ ما الخطوة التالية؟ ما المخاطر؟\n"
+            "- اسأل عند الغموض — سؤال واحد محدد، لا قائمة أسئلة.\n"
+            "- ذكّر بالأولويات عند الانحراف عنها.\n"
+            "- حدّد المخاطر عند رؤيتها دون انتظار السؤال.\n"
+            "- لا تنهِ ردًا دون اقتراح الخطوة التالية المنطقية.\n"
+            "- تحدث بثقة ومباشرة — لا تعتذر عن رأيك.\n"
+            "- اختصر في البسيط، وافصّل في المعقد.\n"
+            "- لا تبدأ بـ 'سأستخدم...' أو 'سأعمل على...' أو أي تفاصيل داخلية.\n"
+            "- لا تذكر أسماء الوكلاء أو المكونات الداخلية.\n\n"
+            "You are Ameer, the executive partner of Naseem. "
+            "Always reply in Arabic. "
+            "End every response with a clear next action or question. "
+            "Do not reveal internal architecture, agents, or reasoning chain."
         )
+
+        # ── Inject live context blocks ──────────────────────────────────────
+        context_parts: List[str] = []
+
+        if founder_context:
+            context_parts.append(founder_context)
+
+        if workspace_summary:
+            context_parts.append(workspace_summary)
+
         context_summary = (plan.context_summary if plan else "").strip()
-        if context_summary:
+        if context_summary and context_summary != "لم يُكتشف ارتباط مباشر بمشاريع أخرى.":
+            context_parts.append(f"[ ارتباطات المشروع: {context_summary} ]")
+
+        if conversation_context:
+            context_parts.append(conversation_context)
+
+        # ── Build user prompt ───────────────────────────────────────────────
+        prefix = "\n\n".join(context_parts)
+        if prefix:
             user_prompt = (
-                f"طلب المستخدم: {prompt}\n\n"
-                f"السياق: {context_summary}\n\n"
-                "اكتب الرد النهائي فقط."
+                f"{prefix}\n\n"
+                f"طلب نسيم: {prompt}\n\n"
+                "اكتب ردك التنفيذي واقترح الخطوة التالية."
             )
         else:
-            user_prompt = f"طلب المستخدم: {prompt}\n\nاكتب الرد النهائي فقط."
+            user_prompt = (
+                f"طلب نسيم: {prompt}\n\n"
+                "اكتب ردك التنفيذي واقترح الخطوة التالية."
+            )
         return system_prompt, user_prompt
 
     def _sanitize_provider_reply(self, text: str) -> str:
@@ -357,8 +389,21 @@ class ExecutiveBrain:
 
         return ""
 
-    def _call_provider(self, prompt: str, plan: ExecutivePlan | None = None) -> Optional[str]:
-        system_prompt, user_prompt = self._build_provider_prompt(prompt, plan)
+    def _call_provider(
+        self,
+        prompt: str,
+        plan: ExecutivePlan | None = None,
+        conversation_context: str = "",
+        founder_context: str = "",
+        workspace_summary: str = "",
+    ) -> Optional[str]:
+        system_prompt, user_prompt = self._build_provider_prompt(
+            prompt,
+            plan=plan,
+            conversation_context=conversation_context,
+            founder_context=founder_context,
+            workspace_summary=workspace_summary,
+        )
 
         # Try providers via the formal abstraction first.
         for provider in self._providers:
@@ -1368,6 +1413,9 @@ class ExecutiveBrain:
         documents: list,
         existing_plan: ExecutivePlan | None = None,
         execution_result: dict | None = None,
+        conversation_context: str = "",
+        founder_context: str = "",
+        workspace_summary: str = "",
     ) -> tuple[str, str]:
         plan = existing_plan or self.think(
             query,
@@ -1420,6 +1468,9 @@ class ExecutiveBrain:
         provider_reply = self._call_provider(
             query,
             plan=plan,
+            conversation_context=conversation_context,
+            founder_context=founder_context,
+            workspace_summary=workspace_summary,
         )
         if provider_reply:
             return provider_reply, "executive_brain_provider"
