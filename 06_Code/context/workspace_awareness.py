@@ -93,7 +93,7 @@ class WorkspaceAwareness:
                     fpath = os.path.join(dirpath, fname)
                     try:
                         mtime = os.path.getmtime(fpath)
-                        age_days = (datetime.now().timestamp() - mtime) / 86400
+                        age_days = (datetime.now(timezone.utc).timestamp() - mtime) / 86400
                         if age_days <= max_age_days:
                             modified.append(
                                 os.path.relpath(fpath, self._root).replace("\\", "/")

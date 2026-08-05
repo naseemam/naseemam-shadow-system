@@ -145,7 +145,7 @@ class ExecutiveKernel:
     def health(self) -> dict:
         return {
             "initialized": self._initialized,
-            "status": self.state._state.get("runtime_status", "unknown"),
+            "status": self.state.snapshot().get("runtime_status", "unknown"),
             "session_turns": len(self.session),
             "founder_loaded": self.founder.is_loaded,
             "pending_approvals": len(self.state.pending_approvals),
