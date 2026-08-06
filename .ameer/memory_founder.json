@@ -52,5 +52,59 @@
     "approved_by": "naseem",
     "approved_at": "2026-08-06T02:21:22Z",
     "stored_at": "2026-08-06T02:21:22Z"
+  },
+  {
+    "id": "f16be165-f39f-45ff-a5a0-ff7cf6663608",
+    "memory_type": "founder_memory",
+    "content": "هدفي هذا الأسبوع هو إغلاق P0.5",
+    "source": "founder",
+    "timestamp": "2026-08-06T20:37:58Z",
+    "confidence": 0.7,
+    "approval_state": "approved",
+    "importance_score": 0.68,
+    "sensitive_categories": [],
+    "origin_context": {
+      "endpoint": "/memory"
+    },
+    "approval_id": "d18803cc-aad8-4fb3-b29f-84b81246f939",
+    "approved_by": "naseem",
+    "approved_at": "2026-08-06T20:37:58Z",
+    "stored_at": "2026-08-06T20:37:58Z"
+  },
+  {
+    "id": "a27a2336-f70e-4e7d-8511-1c3ef030f248",
+    "memory_type": "founder_memory",
+    "content": "هدفي هذا الأسبوع هو إغلاق P0.5",
+    "source": "founder",
+    "timestamp": "2026-08-06T20:38:32Z",
+    "confidence": 0.7,
+    "approval_state": "approved",
+    "importance_score": 0.68,
+    "sensitive_categories": [],
+    "origin_context": {
+      "endpoint": "/memory"
+    },
+    "approval_id": "3afa7dba-c705-441e-8a05-9b277a85724e",
+    "approved_by": "naseem",
+    "approved_at": "2026-08-06T20:38:32Z",
+    "stored_at": "2026-08-06T20:38:32Z"
+  },
+  {
+    "id": "ba3f82e7-229d-41b1-9c6b-28704f25c395",
+    "memory_type": "founder_memory",
+    "content": "هدفي هذا الأسبوع هو إغلاق P0.5",
+    "source": "founder",
+    "timestamp": "2026-08-06T20:45:18Z",
+    "confidence": 0.7,
+    "approval_state": "approved",
+    "importance_score": 0.68,
+    "sensitive_categories": [],
+    "origin_context": {
+      "endpoint": "/memory"
+    },
+    "approval_id": "082c974b-a380-40f2-9105-fe98a34f5d99",
+    "approved_by": "naseem",
+    "approved_at": "2026-08-06T20:45:18Z",
+    "stored_at": "2026-08-06T20:45:18Z"
   }
 ]
