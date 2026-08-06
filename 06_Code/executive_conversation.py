@@ -259,6 +259,24 @@ class ExecutiveConversationEngine:
         executive context to add (no risks, no pending approvals, no initiative signals).
         When the ECE has real context to surface, it builds from scratch.
         """
+        # Identity questions must always receive the constitutional identity reply
+        # and must not be overridden by project-continuity or initiative text.
+        _identity_tokens = {"من أنت", "من انت", "عرف بنفسك", "who are you", "what are you"}
+        _q_lower = (query or "").strip().lower()
+        _is_identity_query = any(tok in _q_lower for tok in _identity_tokens)
+        if _is_identity_query:
+            clean_draft = (draft_reply or "").strip()
+            reply = clean_draft if clean_draft else "أنا أمير، شريكك التنفيذي."
+            if not dry_run:
+                self.memory.update_after_reply(query, reply, planner_state)
+            return {
+                "reply": reply,
+                "planner_state": planner_state.to_dict(),
+                "engine": "executive_conversation_engine",
+                "response_owner": "ExecutiveConversationEngine",
+                "memory_context_used": bool(conversation_context or persistent_memory_block),
+            }
+
         has_executive_signals = bool(
             pending_approvals
             or running_tasks

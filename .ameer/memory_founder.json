@@ -16,5 +16,23 @@
     "approved_by": "naseem",
     "approved_at": "2026-08-06T01:47:24Z",
     "stored_at": "2026-08-06T01:47:24Z"
+  },
+  {
+    "id": "8928ee7f-f8ab-49db-a910-11013830408e",
+    "memory_type": "founder_memory",
+    "content": "هدفي هذا الأسبوع هو إغلاق P0.5",
+    "source": "founder",
+    "timestamp": "2026-08-06T01:50:35Z",
+    "confidence": 0.7,
+    "approval_state": "approved",
+    "importance_score": 0.68,
+    "sensitive_categories": [],
+    "origin_context": {
+      "endpoint": "/memory"
+    },
+    "approval_id": "7533712a-45ad-4867-917c-5372666d2ec9",
+    "approved_by": "naseem",
+    "approved_at": "2026-08-06T01:50:35Z",
+    "stored_at": "2026-08-06T01:50:35Z"
   }
 ]
