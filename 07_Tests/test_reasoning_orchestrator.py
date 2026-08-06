@@ -104,7 +104,7 @@ class AmeerOrchestratorIdentityTests(unittest.TestCase):
         self.assertEqual(result["selected_agent"], "memory_agent")
         self.assertEqual(result["routing"]["intent"], "onboarding")
 
-    def test_personal_information_requests_persist_memory_to_workspace_files(self):
+    def test_personal_information_requests_create_pending_founder_memory_candidate(self):
         orchestrator = reasoning_orchestrator.AmeerOrchestrator(
             documents=[],
             score_fn=lambda query, text: 0,
@@ -112,11 +112,13 @@ class AmeerOrchestratorIdentityTests(unittest.TestCase):
         )
 
         result = orchestrator.answer("أريد أن أخبرك عني وأحب أن تتذكر أنني أفضل العمل في الليل", max_results=3)
-        self.assertTrue(result["memory_update"]["saved"])
-        self.assertEqual(result["memory_update"]["file"], "04_Memory/Preferences.md")
+        self.assertFalse(result["memory_update"]["saved"])
+        self.assertEqual(result["memory_update"]["reason"], "pending_approval")
+        self.assertEqual(result["memory_update"]["approval_state"], "pending")
+        self.assertEqual(result["memory_update"]["file"], ".ameer/onboarding_candidates.json")
 
-        memory_path = os.path.join(ROOT, "04_Memory", "Preferences.md")
-        with open(memory_path, "r", encoding="utf-8") as handle:
+        candidate_path = os.path.join(ROOT, ".ameer", "onboarding_candidates.json")
+        with open(candidate_path, "r", encoding="utf-8") as handle:
             stored = handle.read()
         self.assertIn("أفضل العمل في الليل", stored)
 

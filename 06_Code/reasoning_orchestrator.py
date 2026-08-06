@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 import os
 import re
 import sys
+import uuid
 from typing import Callable, Dict, List
 
 
@@ -13,6 +15,10 @@ if CODE_ROOT not in sys.path:
 from agents.base import AgentContext, AgentOutput
 from agents.registry import AGENTS, AGENT_CAPABILITIES
 from adapters.agent_brain_adapter import AgentBrainAdapter
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 ROUTE_AGENT_MAP = {
@@ -469,30 +475,40 @@ class AmeerOrchestrator:
             return {"saved": False, "file": None, "fact": None, "reason": "no_fact_extracted"}
 
         workspace_root = os.path.abspath(os.path.join(CODE_ROOT, ".."))
-        memory_file = os.path.join(workspace_root, "04_Memory", "Preferences.md")
-        os.makedirs(os.path.dirname(memory_file), exist_ok=True)
+        pending_file = os.path.join(workspace_root, ".ameer", "onboarding_candidates.json")
+        os.makedirs(os.path.dirname(pending_file), exist_ok=True)
+        candidates: List[Dict[str, object]] = []
+        if os.path.exists(pending_file):
+            try:
+                with open(pending_file, "r", encoding="utf-8") as handle:
+                    loaded = json.load(handle)
+                    if isinstance(loaded, list):
+                        candidates = loaded
+            except Exception:
+                candidates = []
 
-        if not os.path.exists(memory_file):
-            with open(memory_file, "w", encoding="utf-8") as handle:
-                handle.write("# Preferences\n\n")
+        candidate = {
+            "id": str(uuid.uuid4()),
+            "fact": fact,
+            "source": "onboarding_query",
+            "timestamp": _now_iso(),
+            "confidence": 0.7,
+            "approval_state": "pending",
+            "target_layer": "founder_memory",
+            "reason": "onboarding_requires_explicit_approval",
+        }
+        candidates.append(candidate)
+        with open(pending_file, "w", encoding="utf-8") as handle:
+            json.dump(candidates[-300:], handle, ensure_ascii=False, indent=2)
 
-        with open(memory_file, "r", encoding="utf-8") as handle:
-            content = handle.read()
-
-        note = f"- {datetime.now(timezone.utc).strftime('%Y-%m-%d')} — {fact}"
-        if note in content:
-            return {"saved": True, "file": "04_Memory/Preferences.md", "fact": fact, "reason": "already_present"}
-
-        if "## User Notes" not in content:
-            content = content.rstrip() + "\n\n## User Notes\n"
-        else:
-            content = content.rstrip() + "\n"
-
-        content += note + "\n"
-        with open(memory_file, "w", encoding="utf-8") as handle:
-            handle.write(content)
-
-        return {"saved": True, "file": "04_Memory/Preferences.md", "fact": fact, "reason": "saved"}
+        return {
+            "saved": False,
+            "file": ".ameer/onboarding_candidates.json",
+            "fact": fact,
+            "reason": "pending_approval",
+            "approval_state": "pending",
+            "candidate_id": candidate["id"],
+        }
 
     def route_query(self, query: str) -> Dict[str, str | bool | float | List[str]]:
         q = self.normalize_fn(query.lower())

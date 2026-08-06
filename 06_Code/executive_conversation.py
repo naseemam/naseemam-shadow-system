@@ -118,12 +118,13 @@ class PersistentConversationMemory:
         missing: List[str] = []
         current_project = active_projects[0] if active_projects else ""
 
+        _stalled_statuses = {"pending", "blocked"}
+        stalled_tasks = [t for t in (running_tasks or []) if str(t.get("status", "")).lower() in _stalled_statuses]
+
         if pending_approvals:
             risks.append("هناك موافقات معلقة قد تعطل المسار إذا لم تُحسم أولًا")
-        if running_tasks:
-            stalled = [t for t in running_tasks if str(t.get("status", "")).lower() in {"pending", "blocked"}]
-            if stalled:
-                risks.append("مهام مفتوحة تشغل موارد وتحتاج إغلاقًا قبل فتح مسار جديد")
+        if stalled_tasks:
+            risks.append("مهام مفتوحة تشغل موارد وتحتاج إغلاقًا قبل فتح مسار جديد")
         if "fail" in workspace_summary.lower() or "error" in workspace_summary.lower():
             risks.append("بيئة العمل تحمل مؤشرات فشل تستحق مراجعة سريعة")
         if len(q) < 4:
@@ -132,10 +133,11 @@ class PersistentConversationMemory:
         founder_objective = q or "متابعة العمل الجاري"
         executive_objective = executive_assessment or founder_objective
 
-        # Core recommendation — natural, direct, no mechanical prefix
+        # Core recommendation — natural, direct, no mechanical prefix.
+        # Only stalled/blocked tasks warrant interrupting the flow.
         if pending_approvals:
             next_action = "الأجدى أن نحسم طلب الموافقة أولًا حتى لا يتوقف كل شيء خلفه."
-        elif running_tasks:
+        elif stalled_tasks:
             next_action = "نغلق المهمة المفتوحة الأعلى أثرًا أولًا، ثم نفتح المسار الجديد."
         else:
             next_action = "أكمل على هذا."
@@ -148,7 +150,7 @@ class PersistentConversationMemory:
         priorities: List[str] = []
         if pending_approvals:
             priorities.append("حسم الموافقات المعلقة أولًا")
-        if running_tasks:
+        if stalled_tasks:
             priorities.append("إغلاق المهام المفتوحة ذات الأثر الأعلى")
         if not priorities:
             priorities.append("التقدم في الطلب الحالي")
@@ -259,9 +261,34 @@ class ExecutiveConversationEngine:
         executive context to add (no risks, no pending approvals, no initiative signals).
         When the ECE has real context to surface, it builds from scratch.
         """
+        # Identity questions must always receive the constitutional identity reply
+        # and must not be overridden by project-continuity or initiative text.
+        _identity_tokens = {"من أنت", "من انت", "عرف بنفسك", "who are you", "what are you"}
+        _q_lower = (query or "").strip().lower()
+        _is_identity_query = any(tok in _q_lower for tok in _identity_tokens)
+        if _is_identity_query:
+            clean_draft = (draft_reply or "").strip()
+            reply = clean_draft if clean_draft else "أنا أمير، شريكك التنفيذي."
+            if not dry_run:
+                self.memory.update_after_reply(query, reply, planner_state)
+            return {
+                "reply": reply,
+                "planner_state": planner_state.to_dict(),
+                "engine": "executive_conversation_engine",
+                "response_owner": "ExecutiveConversationEngine",
+                "memory_context_used": bool(conversation_context or persistent_memory_block),
+            }
+
+        # Only stalled/blocked tasks count as executive signals that justify
+        # overriding the AI-generated reply.  Normal in-progress tasks do not
+        # require proactive interruption.
+        _stalled = [
+            t for t in (running_tasks or [])
+            if str(t.get("status", "")).lower() in {"pending", "blocked"}
+        ]
         has_executive_signals = bool(
             pending_approvals
-            or running_tasks
+            or _stalled
             or (planner_state.risks or planner_state.detected_risks)
             or (is_first_turn and active_projects)
             or (reasoning_output and reasoning_output.get("reasoning", {}).get("guardian_status") != "pass")

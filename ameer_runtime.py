@@ -13,6 +13,31 @@ DEFAULT_PORT = int(os.getenv("PORT", "8000"))
 START_TIME = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def resolve_data_root() -> Path:
+    """Return the directory that contains the ``.ameer`` state folder.
+
+    When ``AMEER_DATA_DIR`` is set it must point to the ``.ameer`` directory
+    itself (e.g. ``/app/.ameer`` on Railway with a persistent volume mounted
+    there).  The function returns the *parent* of that path so that all
+    downstream code can continue to use the ``workspace_root / ".ameer"``
+    convention unchanged.
+
+    When ``AMEER_DATA_DIR`` is **not** set the function falls back to
+    ``WORKSPACE_ROOT`` (the repository checkout directory), which is the
+    original behaviour.
+    """
+    raw = os.getenv("AMEER_DATA_DIR", "").strip()
+    if raw:
+        data_dir = Path(raw).resolve()
+        # AMEER_DATA_DIR is expected to BE the .ameer directory.
+        # Return its parent so that `parent / ".ameer"` resolves correctly.
+        if data_dir.name == ".ameer":
+            return data_dir.parent
+        # If the caller passed the parent directly, honour that too.
+        return data_dir
+    return WORKSPACE_ROOT
+
+
 def resolve_host() -> str:
     # AMEER_HOST overrides everything; fall back to 0.0.0.0 when a PORT
     # env var is present (Railway, Render, Fly.io set PORT automatically).

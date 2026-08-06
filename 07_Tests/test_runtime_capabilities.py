@@ -13,19 +13,12 @@ class RuntimeCapabilitiesTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(ameer_server.app)
         self.workspace_root = Path(ameer_server.ROOT)
-        self.memory_file = self.workspace_root / "04_Memory" / "Preferences.md"
         self.projects_file = self.workspace_root / ".ameer" / "projects.json"
         self.plans_file = self.workspace_root / ".ameer" / "plans.json"
-        self.original_memory = self.memory_file.read_text(encoding="utf-8") if self.memory_file.exists() else None
         self.original_projects = self.projects_file.read_text(encoding="utf-8") if self.projects_file.exists() else None
         self.original_plans = self.plans_file.read_text(encoding="utf-8") if self.plans_file.exists() else None
 
     def tearDown(self):
-        if self.original_memory is None and self.memory_file.exists():
-            self.memory_file.unlink()
-        elif self.original_memory is not None:
-            self.memory_file.write_text(self.original_memory, encoding="utf-8")
-
         if self.original_projects is None and self.projects_file.exists():
             self.projects_file.unlink()
         elif self.original_projects is not None:
@@ -47,8 +40,9 @@ class RuntimeCapabilitiesTests(unittest.TestCase):
         response = self.client.post("/memory", json={"text": "test memory from runtime capability"})
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertTrue(payload["saved"])
-        self.assertIn("test memory from runtime capability", self.memory_file.read_text(encoding="utf-8"))
+        self.assertFalse(payload["saved"])
+        self.assertEqual(payload["status"], "pending_approval")
+        self.assertIn("approval_id", payload)
 
     def test_projects_endpoint_creates_project(self):
         response = self.client.post("/projects", json={"name": "Runtime Project"})
@@ -57,13 +51,13 @@ class RuntimeCapabilitiesTests(unittest.TestCase):
         self.assertTrue(payload["created"])
         self.assertTrue(any(item["name"] == "Runtime Project" for item in payload["projects"]))
 
-    def test_documents_search_refreshes_after_memory_update(self):
+    def test_memory_candidate_visible_in_candidates_endpoint(self):
         response = self.client.post("/memory", json={"text": "اسم مشروعي هو حلم الندى"})
         self.assertEqual(response.status_code, 200)
-        payload = self.client.get("/documents/search", params={"q": "حلم الندى"})
+        payload = self.client.get("/memory/candidates")
         self.assertEqual(payload.status_code, 200)
-        results = payload.json()["results"]
-        self.assertTrue(any(item["path"].endswith("Preferences.md") for item in results))
+        results = payload.json()["pending_candidates"]
+        self.assertTrue(any("حلم الندى" in item.get("content", "") for item in results))
 
     def test_execution_engine_appends_to_existing_file(self):
         target = self.workspace_root / "04_Memory" / "runtime_edit_test.md"

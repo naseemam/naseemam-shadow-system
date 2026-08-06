@@ -216,6 +216,58 @@ class ECESoleResponseOwnerTests(unittest.TestCase):
         result = self.ece.execute(query="اختبار", planner_state=state, dry_run=True)
         self.assertEqual(result.get("engine"), "executive_conversation_engine")
 
+    def test_normal_running_tasks_do_not_override_draft_reply(self):
+        """
+        Running tasks with status 'in_progress' (not stalled/blocked) must NOT
+        cause the ECE to replace the OpenAI draft_reply with a local template.
+
+        This is the regression test for the architectural bug:
+        any non-empty running_tasks list triggered has_executive_signals=True
+        even when no task required attention, discarding the AI-generated reply.
+        """
+        normal_tasks = [{"id": "t1", "title": "نشر النسخة", "status": "in_progress"}]
+        state = PersistentConversationMemory(self.tmp).plan(
+            "ما أولويات هذا الأسبوع؟",
+            running_tasks=normal_tasks,
+        )
+        openai_draft = "أولويات هذا الأسبوع: إطلاق النسخة وإغلاق المراجعة المالية."
+        result = self.ece.execute(
+            query="ما أولويات هذا الأسبوع؟",
+            draft_reply=openai_draft,
+            planner_state=state,
+            running_tasks=normal_tasks,
+            dry_run=True,
+        )
+        self.assertEqual(
+            result.get("reply"),
+            openai_draft,
+            "المهام الطبيعية (in_progress) يجب ألا تستبدل رد OpenAI بنص قالبي محلي.",
+        )
+
+    def test_stalled_running_tasks_do_override_draft_reply(self):
+        """
+        Running tasks with status 'blocked' or 'pending' (stalled) MUST still
+        trigger executive intervention — the ECE should surface them proactively.
+        """
+        stalled_tasks = [{"id": "t2", "title": "مراجعة مالية", "status": "blocked"}]
+        state = PersistentConversationMemory(self.tmp).plan(
+            "ما أولويات هذا الأسبوع؟",
+            running_tasks=stalled_tasks,
+        )
+        openai_draft = "أولويات هذا الأسبوع: إطلاق النسخة وإغلاق المراجعة المالية."
+        result = self.ece.execute(
+            query="ما أولويات هذا الأسبوع؟",
+            draft_reply=openai_draft,
+            planner_state=state,
+            running_tasks=stalled_tasks,
+            dry_run=True,
+        )
+        self.assertNotEqual(
+            result.get("reply"),
+            openai_draft,
+            "المهام المتوقفة (blocked/pending) يجب أن تُفعّل التدخل التنفيذي وتستبدل رد OpenAI.",
+        )
+
 
 class ResponseFormatterContractTests(unittest.TestCase):
     """8: ResponseFormatter performs formatting only, no semantic change"""
