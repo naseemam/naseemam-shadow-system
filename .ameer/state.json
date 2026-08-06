@@ -32,9 +32,9 @@
   },
   "executive_assessment": "",
   "runtime_status": "running",
-  "last_session_at": "2026-08-06T20:38:32Z",
-  "session_count": 70,
-  "workspace_summary": "[ وضع المشروع الآن: الفرع: copilot/permissions-structure-update | Commit: f67acdf | آخر commit: f67acdf Merge pull request #15 from naseemam/copilot/p06-executive-capability-governance | ملفات تغيّرت: 01_Governance/ADR.md, 03_Architecture/Executive_Capability_Governance.md, 06_Code/kernel/capability_registry.py, 06_Code/kernel/execution_authorization.py وأخرى | وثائق محدَّثة مؤخرًا: CHANGELOG.md, CONTRIBUTING.md, AMEER_GUIDE.md ]",
+  "last_session_at": "2026-08-06T20:45:19Z",
+  "session_count": 78,
+  "workspace_summary": "[ وضع المشروع الآن: الفرع: copilot/permissions-structure-update | Commit: e2e2cd6 | آخر commit: e2e2cd6 Apply remaining changes | ملفات تغيّرت: .ameer/capabilities.json, .ameer/feedback_log.json, .ameer/governance_log.json, .ameer/learned_preferences.json وأخرى | وثائق محدَّثة مؤخرًا: CHANGELOG.md, CONTRIBUTING.md, AMEER_GUIDE.md ]",
   "created_at": "2026-08-05T12:53:45Z",
-  "updated_at": "2026-08-06T20:38:32Z"
+  "updated_at": "2026-08-06T20:45:19Z"
 }

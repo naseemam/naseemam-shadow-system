@@ -538,5 +538,41 @@
       ],
       "last_recorded_at": "2026-08-06T20:38:32Z"
     }
+  },
+  {
+    "cycle_at": "2026-08-06T20:45:18Z",
+    "changes": [
+      "added 'proactive_briefing' to proactive_topics"
+    ],
+    "feedback_snapshot": {
+      "total": 33,
+      "by_type": {
+        "neutral": 17,
+        "positive": 16
+      },
+      "topics": [
+        "proactive_briefing",
+        "test_topic"
+      ],
+      "last_recorded_at": "2026-08-06T20:45:18Z"
+    }
+  },
+  {
+    "cycle_at": "2026-08-06T20:45:18Z",
+    "changes": [
+      "preferences reset to defaults"
+    ],
+    "feedback_snapshot": {
+      "total": 34,
+      "by_type": {
+        "neutral": 17,
+        "positive": 17
+      },
+      "topics": [
+        "proactive_briefing",
+        "test_topic"
+      ],
+      "last_recorded_at": "2026-08-06T20:45:18Z"
+    }
   }
 ]
