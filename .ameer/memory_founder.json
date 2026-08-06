@@ -1,0 +1,20 @@
+[
+  {
+    "id": "b0e70a66-cdc6-4afa-9578-776f8165258d",
+    "memory_type": "founder_memory",
+    "content": "هدفي هذا الأسبوع هو إغلاق P0.5",
+    "source": "founder",
+    "timestamp": "2026-08-06T01:47:24Z",
+    "confidence": 0.7,
+    "approval_state": "approved",
+    "importance_score": 0.68,
+    "sensitive_categories": [],
+    "origin_context": {
+      "endpoint": "/memory"
+    },
+    "approval_id": "7842e598-147f-4529-9e23-b9781379d74e",
+    "approved_by": "naseem",
+    "approved_at": "2026-08-06T01:47:24Z",
+    "stored_at": "2026-08-06T01:47:24Z"
+  }
+]

@@ -1,20 +1,40 @@
 {
   "active_goals": [],
-  "active_projects": [],
+  "active_projects": [
+    "Type: Personal AI / executive platform project.",
+    "Founder: Naseem.",
+    "Verified Sources",
+    "`01_Docs/Ameer_Constitution_v0.1.md`",
+    "`01_Docs/Vision.md`",
+    "`10_Documentation/Production_Roadmap.md`",
+    "The current runtime includes `/ask`, `/docs`, and `/projects` endpoints.",
+    "The repository includes agent/runtime components documented for identity,"
+  ],
   "pending_approvals": [],
   "running_tasks": [],
   "recent_decisions": [],
   "founder_context": {
     "loaded": true,
     "sections": [
-      "Founder.md"
+      "Founder.md",
+      "Goals.md",
+      "Projects.md",
+      "Finance.md",
+      "Preferences.md",
+      "Routine.md",
+      "Health.md",
+      "Relationships.md",
+      "Index.md",
+      "Knowledge.md",
+      "P0.3_REVIEW_REPORT.md",
+      "Travel.md"
     ]
   },
   "executive_assessment": "",
   "runtime_status": "running",
-  "last_session_at": "2026-08-05T22:09:46Z",
-  "session_count": 55,
-  "workspace_summary": "[ وضع المشروع الآن: الفرع: copilot/audit-ammer-project | Commit: 72a9413 | آخر commit: 72a9413 Apply remaining changes | ملفات تغيّرت: .ameer/feedback_log.json, .ameer/learned_preferences.json, .ameer/learning_log.json, .ameer/plans.json وأخرى | وثائق محدَّثة مؤخرًا: CHANGELOG.md, CONTRIBUTING.md, AMEER_GUIDE.md ]",
+  "last_session_at": "2026-08-06T01:47:25Z",
+  "session_count": 58,
+  "workspace_summary": "[ وضع المشروع الآن: الفرع: copilot/implement-data-continuity-layer | Commit: ce27746 | آخر commit: ce27746 feat: implement P0.5 memory and knowledge governance | ملفات تغيّرت: 06_Code/kernel/executive_kernel.py, 06_Code/kernel/memory_governance.py, 06_Code/reasoning_orchestrator.py, 07_Tests/test_p05_memory_governance.py وأخرى | وثائق محدَّثة مؤخرًا: CHANGELOG.md, CONTRIBUTING.md, AMEER_GUIDE.md ]",
   "created_at": "2026-08-05T12:53:45Z",
-  "updated_at": "2026-08-05T22:09:46Z"
+  "updated_at": "2026-08-06T01:47:25Z"
 }
