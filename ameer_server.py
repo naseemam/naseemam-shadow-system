@@ -94,10 +94,22 @@ def load_task_contract_module():
     return module
 
 
+def load_executive_kernel_module():
+    module_path = os.path.join(os.path.dirname(__file__), "06_Code", "executive_kernel.py")
+    spec = importlib.util.spec_from_file_location("executive_kernel", module_path)
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["executive_kernel"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 AmeerOrchestrator = load_orchestrator_class()
 ExecutiveBrainClass = load_executive_brain()
 ResponseFormatterClass = load_response_formatter()
 TaskContractModule = load_task_contract_module()
+ExecutiveKernelModule = load_executive_kernel_module()
 
 app = FastAPI(title="Ameer Local Server")
 
@@ -258,27 +270,16 @@ ORCHESTRATOR = AmeerOrchestrator(
 
 EXECUTIVE_BRAIN = ExecutiveBrainClass(normalize_fn=normalize_arabic) if ExecutiveBrainClass else None
 RESPONSE_FORMATTER = ResponseFormatterClass() if ResponseFormatterClass else None
-
-
-def _run_executive_kernel(query: str, max_results: int = 5) -> dict:
-    orchestrator_result = ORCHESTRATOR.answer(query, max_results)
-    if not EXECUTIVE_BRAIN:
-        raise RuntimeError("Executive Brain is unavailable")
-
-    guardian = orchestrator_result.get("guardian", {})
-    routing = orchestrator_result.get("routing") or {}
-    plan = EXECUTIVE_BRAIN.think(
-        query,
-        DOCUMENTS,
-        guardian_result=guardian,
-        routing_hint=routing,
+EXECUTIVE_KERNEL = (
+    ExecutiveKernelModule.ExecutiveKernel(
+        documents=DOCUMENTS,
+        orchestrator=ORCHESTRATOR,
+        executive_brain=EXECUTIVE_BRAIN,
+        task_batch_builder=(TaskContractModule.build_execution_task_batch if TaskContractModule else None),
     )
-    return {
-        "orchestrator_result": orchestrator_result,
-        "guardian": guardian,
-        "routing": routing,
-        "plan": plan,
-    }
+    if ExecutiveKernelModule is not None
+    else None
+)
 
 @app.post('/ask')
 async def ask(request: Request):
@@ -306,7 +307,10 @@ async def ask(request: Request):
     if any(keyword in q.lower() for keyword in autonomy_keywords):
         autonomy_plan = _record_autonomy_plan(q, "autonomy")
 
-    kernel_result = _run_executive_kernel(q, req.max_results)
+    if not EXECUTIVE_KERNEL:
+        raise HTTPException(status_code=500, detail="Executive Kernel is unavailable")
+
+    kernel_result = EXECUTIVE_KERNEL.analyze(q, req.max_results)
     orchestrator_result = kernel_result["orchestrator_result"]
     guardian = kernel_result["guardian"]
     routing = kernel_result["routing"]
@@ -416,18 +420,18 @@ async def execute(request: Request):
     if not q:
         raise HTTPException(status_code=400, detail="Empty task")
 
-    if TaskContractModule is None:
-        raise HTTPException(status_code=500, detail="Task contract module is unavailable")
+    if not EXECUTIVE_KERNEL:
+        raise HTTPException(status_code=500, detail="Executive Kernel is unavailable")
 
     _log("execute_received", request_id=request_id, build_id=RUNTIME_METADATA["build_id"])
     try:
-        kernel_result = _run_executive_kernel(q, req.max_results)
+        kernel_result = EXECUTIVE_KERNEL.execute_task(q, req.max_results)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     plan = kernel_result["plan"]
     orchestrator_result = kernel_result["orchestrator_result"]
-    task_batch = TaskContractModule.build_execution_task_batch(q, plan=plan)
+    task_batch = kernel_result["task_batch"]
 
     response_payload = {
         "request_id": request_id,
