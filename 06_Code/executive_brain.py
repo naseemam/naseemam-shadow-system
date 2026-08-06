@@ -109,6 +109,81 @@ AGENT_CATALOG = {
 
 AUTONOMY_LEVELS = ["inform", "suggest", "act_with_approval", "act_autonomously"]
 
+# P0.6 — Executive Permission & Policy System
+# Capability metadata is intentionally separate from permission grants and
+# runtime execution authorization.
+CAPABILITY_REGISTRY: Dict[str, Dict[str, str]] = {
+    "memory.save": {
+        "layer": "capability",
+        "permission_mode": "policy",
+        "description": "Persist governed memory notes in approved memory paths.",
+    },
+    "file.create": {
+        "layer": "capability",
+        "permission_mode": "policy",
+        "description": "Create files in governance-approved write prefixes.",
+    },
+    "file.update": {
+        "layer": "capability",
+        "permission_mode": "policy",
+        "description": "Append/update files in governance-approved write prefixes.",
+    },
+    "file.read": {
+        "layer": "capability",
+        "permission_mode": "policy",
+        "description": "Read files from workspace.",
+    },
+    "workspace.page.create": {
+        "layer": "capability",
+        "permission_mode": "policy",
+        "description": "Create workspace web page modules in approved paths.",
+    },
+    "plan.create": {
+        "layer": "capability",
+        "permission_mode": "policy",
+        "description": "Generate an execution plan output.",
+    },
+    "system.destructive.execute": {
+        "layer": "capability",
+        "permission_mode": "approval_required",
+        "description": "High-impact destructive/system-level execution capability.",
+    },
+}
+
+_FOUNDER_APPROVAL_TERMS = {
+    "approved",
+    "approve",
+    "i approve",
+    "founder approved",
+    "approved by founder",
+    "موافق",
+    "وافق",
+    "موافقة",
+    "موافقه",
+    "اعتماد",
+    "بموافقة المؤسس",
+    "موافقه المؤسس",
+}
+
+_PERMANENT_PERMISSION_TERMS = {
+    "always allow",
+    "permanent",
+    "persist permission",
+    "don't ask again",
+    "dont ask again",
+    "never ask again",
+    "allow forever",
+    "صلاحية دائمة",
+    "اذن دائم",
+    "إذن دائم",
+    "لا تسال مرة اخرى",
+    "لا تسأل مرة أخرى",
+    "لا تسالني مرة اخرى",
+    "لا تسألني مرة أخرى",
+    "دائم",
+    "دائما",
+}
+
 
 # ─── Data Classes ─────────────────────────────────────────────────────────────
 
@@ -194,9 +269,15 @@ class ExecutiveBrain:
         if OpenAIProvider is not None:
             api_key = os.getenv("OPENAI_API_KEY")
             if api_key:
-                self._providers.append(OpenAIProvider(api_key=api_key, model=self._model_name))
+                try:
+                    self._providers.append(OpenAIProvider(api_key=api_key, model=self._model_name))
+                except Exception:
+                    pass
         if OllamaProvider is not None and os.getenv("OLLAMA_ENABLED", "1").lower() in {"1", "true", "yes", "on"}:
-            self._providers.append(OllamaProvider(host=self._ollama_host, model=self._ollama_model))
+            try:
+                self._providers.append(OllamaProvider(host=self._ollama_host, model=self._ollama_model))
+            except Exception:
+                pass
 
         # Legacy direct openai client kept for backwards compat with tests that
         # patch _openai_client directly.
@@ -814,6 +895,250 @@ class ExecutiveBrain:
             return False
         return any(rel == prefix or rel.startswith(prefix + "/") for prefix in self._ALLOWED_WRITE_PREFIXES)
 
+    def _permission_registry_path(self, workspace_root: str | None = None) -> Path:
+        root = Path(workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        return root / ".ameer" / "permission_registry.json"
+
+    def _permission_audit_path(self, workspace_root: str | None = None) -> Path:
+        root = Path(workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        return root / ".ameer" / "permission_audit.jsonl"
+
+    def _default_permission_registry(self) -> dict:
+        return {
+            "version": "p0.6",
+            "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "grants": {
+                "permanent": {},
+            },
+            "policy": {
+                "modes": {
+                    capability: meta.get("permission_mode", "policy")
+                    for capability, meta in CAPABILITY_REGISTRY.items()
+                }
+            },
+        }
+
+    def _load_permission_registry(self, workspace_root: str | None = None) -> dict:
+        registry_path = self._permission_registry_path(workspace_root)
+        default_registry = self._default_permission_registry()
+
+        try:
+            if not registry_path.exists():
+                registry_path.parent.mkdir(parents=True, exist_ok=True)
+                registry_path.write_text(
+                    json.dumps(default_registry, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                return default_registry
+
+            loaded = json.loads(registry_path.read_text(encoding="utf-8"))
+            if not isinstance(loaded, dict):
+                return default_registry
+            loaded.setdefault("version", "p0.6")
+            loaded.setdefault("updated_at", default_registry["updated_at"])
+            loaded.setdefault("grants", {}).setdefault("permanent", {})
+            loaded.setdefault("policy", {}).setdefault("modes", default_registry["policy"]["modes"])
+            return loaded
+        except Exception:
+            return default_registry
+
+    def _save_permission_registry(self, registry: dict, workspace_root: str | None = None) -> None:
+        registry_path = self._permission_registry_path(workspace_root)
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        registry["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        registry_path.write_text(json.dumps(registry, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _has_explicit_founder_approval(self, query: str, guardian_result: dict | None = None) -> bool:
+        q = (query or "").lower()
+        if any(term in q for term in _FOUNDER_APPROVAL_TERMS):
+            return True
+
+        approval_token = ((guardian_result or {}).get("approval_token") or "").strip().lower()
+        return approval_token == "founder_explicit_approval"
+
+    def _query_requests_permanent_permission(self, query: str) -> bool:
+        q = (query or "").lower()
+        return any(term in q for term in _PERMANENT_PERMISSION_TERMS)
+
+    def _grant_permanent_permission(self, capability: str, reason: str, workspace_root: str | None = None) -> dict:
+        registry = self._load_permission_registry(workspace_root)
+        grants = registry.setdefault("grants", {}).setdefault("permanent", {})
+        grants[capability] = {
+            "granted": True,
+            "granted_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "reason": reason,
+        }
+        self._save_permission_registry(registry, workspace_root)
+        return grants[capability]
+
+    def _is_policy_allowed(
+        self,
+        capability: str,
+        target_path: str | None = None,
+        workspace_root: str | None = None,
+    ) -> bool:
+        if capability.startswith("file.") or capability == "memory.save":
+            if not target_path:
+                return False
+            root = workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+            return self._check_write_allowed(target_path, root) if capability != "file.read" else True
+
+        # Non-file policy capabilities are pre-approved by policy definition.
+        return capability in CAPABILITY_REGISTRY
+
+    def _record_permission_audit(self, audit_entry: dict, workspace_root: str | None = None) -> None:
+        try:
+            path = self._permission_audit_path(workspace_root)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(audit_entry, ensure_ascii=False) + "\n")
+        except Exception:
+            # Auditing should never break the execution flow.
+            return
+
+    def _authorize_execution_action(
+        self,
+        capability: str,
+        query: str,
+        plan: ExecutivePlan | None,
+        guardian_result: dict | None = None,
+        target_path: str | None = None,
+        workspace_root: str | None = None,
+    ) -> dict:
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        guardian_status = (guardian_result or {}).get("status") or getattr(plan, "guardian_status", "pass")
+        explicit_approval = self._has_explicit_founder_approval(query, guardian_result=guardian_result)
+        permanent_requested = self._query_requests_permanent_permission(query)
+
+        capability_meta = CAPABILITY_REGISTRY.get(capability)
+        if not capability_meta:
+            return {
+                "timestamp": timestamp,
+                "capability": capability,
+                "allowed": False,
+                "decision": "denied",
+                "layer": "execution_authorization",
+                "reason": "capability_not_registered",
+                "guardian_status": guardian_status,
+                "permission_source": "none",
+                "target_path": target_path,
+            }
+
+        registry = self._load_permission_registry(workspace_root)
+        permanent_grants = registry.get("grants", {}).get("permanent", {})
+        has_permanent_grant = bool(permanent_grants.get(capability, {}).get("granted"))
+        permission_mode = capability_meta.get("permission_mode", "policy")
+
+        # A blocked guardian state is always a hard stop.
+        if guardian_status == "blocked":
+            return {
+                "timestamp": timestamp,
+                "capability": capability,
+                "allowed": False,
+                "decision": "blocked",
+                "layer": "execution_authorization",
+                "reason": "guardian_blocked",
+                "guardian_status": guardian_status,
+                "permission_source": "none",
+                "target_path": target_path,
+            }
+
+        if has_permanent_grant:
+            return {
+                "timestamp": timestamp,
+                "capability": capability,
+                "allowed": True,
+                "decision": "allowed",
+                "layer": "execution_authorization",
+                "reason": "permanent_permission_grant",
+                "guardian_status": guardian_status,
+                "permission_source": "permanent",
+                "target_path": target_path,
+            }
+
+        # If guardian flagged a request as needs approval, no execution proceeds
+        # unless explicit founder approval is present.
+        if guardian_status == "needs_approval" and not explicit_approval:
+            return {
+                "timestamp": timestamp,
+                "capability": capability,
+                "allowed": False,
+                "decision": "needs_approval",
+                "layer": "execution_authorization",
+                "reason": "guardian_requires_explicit_founder_approval",
+                "guardian_status": guardian_status,
+                "permission_source": "none",
+                "target_path": target_path,
+            }
+
+        if permission_mode == "approval_required":
+            if not explicit_approval:
+                return {
+                    "timestamp": timestamp,
+                    "capability": capability,
+                    "allowed": False,
+                    "decision": "needs_approval",
+                    "layer": "execution_authorization",
+                    "reason": "approval_required_capability",
+                    "guardian_status": guardian_status,
+                    "permission_source": "none",
+                    "target_path": target_path,
+                }
+
+            granted = None
+            if permanent_requested:
+                granted = self._grant_permanent_permission(
+                    capability,
+                    reason="founder_explicit_approval_permanent_request",
+                    workspace_root=workspace_root,
+                )
+            return {
+                "timestamp": timestamp,
+                "capability": capability,
+                "allowed": True,
+                "decision": "allowed",
+                "layer": "execution_authorization",
+                "reason": "explicit_founder_approval",
+                "guardian_status": guardian_status,
+                "permission_source": "approval_required",
+                "target_path": target_path,
+                "permanent_grant": granted,
+            }
+
+        # Policy permission mode.
+        if self._is_policy_allowed(capability, target_path=target_path, workspace_root=workspace_root):
+            granted = None
+            if explicit_approval and permanent_requested:
+                granted = self._grant_permanent_permission(
+                    capability,
+                    reason="founder_explicit_approval_permanent_request",
+                    workspace_root=workspace_root,
+                )
+            return {
+                "timestamp": timestamp,
+                "capability": capability,
+                "allowed": True,
+                "decision": "allowed",
+                "layer": "execution_authorization",
+                "reason": "policy_rule_allowed",
+                "guardian_status": guardian_status,
+                "permission_source": "policy",
+                "target_path": target_path,
+                "permanent_grant": granted,
+            }
+
+        return {
+            "timestamp": timestamp,
+            "capability": capability,
+            "allowed": False,
+            "decision": "blocked",
+            "layer": "execution_authorization",
+            "reason": "policy_rule_denied",
+            "guardian_status": guardian_status,
+            "permission_source": "policy",
+            "target_path": target_path,
+        }
+
     def _create_file(self, filename: str, content: str, workspace_root: str | None = None) -> dict:
         root = workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         target_path = os.path.abspath(os.path.join(root, filename))
@@ -1117,7 +1442,13 @@ class ExecutiveBrain:
                 "verified": verified,
             }
 
-    def _execute_plan(self, query: str, plan: ExecutivePlan | None = None, workspace_root: str | None = None) -> dict:
+    def _execute_plan(
+        self,
+        query: str,
+        plan: ExecutivePlan | None = None,
+        workspace_root: str | None = None,
+        guardian_result: dict | None = None,
+    ) -> dict:
         result = {
             "status": "idle",
             "actions": [],
@@ -1129,6 +1460,7 @@ class ExecutiveBrain:
             "progress": [],
             "verification": [],
             "execution": None,
+            "permission_audit": [],
         }
 
         if not plan:
@@ -1147,6 +1479,19 @@ class ExecutiveBrain:
         result["progress"] = progress
         self._update_step(progress, "analyze_request", "succeeded", "تم تحديد نوع التنفيذ المطلوب")
 
+        def _authorize(capability: str, target_path: str | None = None) -> dict:
+            decision = self._authorize_execution_action(
+                capability=capability,
+                query=query,
+                plan=plan,
+                guardian_result=guardian_result,
+                target_path=target_path,
+                workspace_root=workspace_root,
+            )
+            result["permission_audit"].append(decision)
+            self._record_permission_audit(decision, workspace_root=workspace_root)
+            return decision
+
         # Only auto-save when the user explicitly asks to save/remember something.
         # We use whole-word matching to avoid false positives like "سجلتها" → "سجل".
         # plan.should_remember may be set by classifier heuristics that can fire on
@@ -1164,11 +1509,27 @@ class ExecutiveBrain:
             self._update_step(progress, "persist_request_memory", "running", "جارٍ حفظ سجل الطلب")
             fact = self._extract_memory_fact(query, plan) or f"محادثة: {(query or '').strip()[:80]}"
             if fact:
-                memory_result = self._persist_memory_fact(fact, workspace_root=workspace_root)
-                result["memory"] = memory_result
-                result["actions"].append({"tool": "memory.save", "status": "completed" if memory_result.get("saved") else "failed"})
-                result["tool_calls"].append("memory.save")
-                self._update_step(progress, "persist_request_memory", "succeeded" if memory_result.get("saved") else "failed", memory_result.get("reason", ""))
+                memory_file_path = os.path.join(
+                    workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), "..")),
+                    "04_Memory",
+                    "Preferences.md",
+                )
+                auth = _authorize("memory.save", target_path=memory_file_path)
+                if auth.get("allowed"):
+                    memory_result = self._persist_memory_fact(fact, workspace_root=workspace_root)
+                    result["memory"] = memory_result
+                    result["actions"].append({"tool": "memory.save", "status": "completed" if memory_result.get("saved") else "failed"})
+                    result["tool_calls"].append("memory.save")
+                    self._update_step(progress, "persist_request_memory", "succeeded" if memory_result.get("saved") else "failed", memory_result.get("reason", ""))
+                else:
+                    result["memory"] = {
+                        "saved": False,
+                        "file": "04_Memory/Preferences.md",
+                        "fact": fact,
+                        "reason": auth.get("reason", "authorization_denied"),
+                    }
+                    result["actions"].append({"tool": "memory.save", "status": "blocked", "reason": auth.get("reason")})
+                    self._update_step(progress, "persist_request_memory", "failed", auth.get("reason", "authorization_denied"))
 
         # EC-002: Memory Governance — WRITE only on explicit save intent.
         # has_memory_intent fires on read words like "تذكر" (recall/remember).
@@ -1177,46 +1538,83 @@ class ExecutiveBrain:
             fact = self._extract_memory_fact(query, plan)
             if fact and not result["memory"]:
                 self._update_step(progress, "persist_memory_fact", "running", "جارٍ حفظ المعلومة المطلوبة")
-                memory_result = self._persist_memory_fact(fact, workspace_root=workspace_root)
-                result["memory"] = memory_result
-                result["actions"].append({"tool": "memory.save", "status": "completed" if memory_result.get("saved") else "failed"})
-                result["tool_calls"].append("memory.save")
-                self._update_step(progress, "persist_memory_fact", "succeeded" if memory_result.get("saved") else "failed", memory_result.get("reason", ""))
+                memory_file_path = os.path.join(
+                    workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), "..")),
+                    "04_Memory",
+                    "Preferences.md",
+                )
+                auth = _authorize("memory.save", target_path=memory_file_path)
+                if auth.get("allowed"):
+                    memory_result = self._persist_memory_fact(fact, workspace_root=workspace_root)
+                    result["memory"] = memory_result
+                    result["actions"].append({"tool": "memory.save", "status": "completed" if memory_result.get("saved") else "failed"})
+                    result["tool_calls"].append("memory.save")
+                    self._update_step(progress, "persist_memory_fact", "succeeded" if memory_result.get("saved") else "failed", memory_result.get("reason", ""))
+                else:
+                    result["memory"] = {
+                        "saved": False,
+                        "file": "04_Memory/Preferences.md",
+                        "fact": fact,
+                        "reason": auth.get("reason", "authorization_denied"),
+                    }
+                    result["actions"].append({"tool": "memory.save", "status": "blocked", "reason": auth.get("reason")})
+                    self._update_step(progress, "persist_memory_fact", "failed", auth.get("reason", "authorization_denied"))
 
         if has_page_intent and any(token in query_lower for token in ["أضف", "add", "التنقل", "navigation", "الموقع", "site", "website", "صفحة", "page"]):
             self._update_step(progress, "create_workspace_page", "running", "جارٍ إنشاء الصفحة وربطها بالواجهة")
-            execution_result = self._execute_workspace_page_creation(query, workspace_root=workspace_root)
-            result["execution"] = execution_result
-            execution_status = execution_result.get("status", "failed")
-            detail = execution_result.get("detail") or execution_result.get("page_key") or ""
-            self._update_step(progress, "create_workspace_page", "succeeded" if execution_status == "completed" else "failed", detail)
-            result["actions"].append({"tool": "workspace.page.create", "status": execution_status, "result": execution_result})
-            result["tool_calls"].append("workspace.page.create")
-            if execution_status == "completed":
-                result["verification"].append({
-                    "name": "workspace_page_files_exist",
-                    "status": "succeeded",
-                    "checked": execution_result.get("verified", []),
-                })
+            auth = _authorize("workspace.page.create")
+            if auth.get("allowed"):
+                execution_result = self._execute_workspace_page_creation(query, workspace_root=workspace_root)
+                result["execution"] = execution_result
+                execution_status = execution_result.get("status", "failed")
+                detail = execution_result.get("detail") or execution_result.get("page_key") or ""
+                self._update_step(progress, "create_workspace_page", "succeeded" if execution_status == "completed" else "failed", detail)
+                result["actions"].append({"tool": "workspace.page.create", "status": execution_status, "result": execution_result})
+                result["tool_calls"].append("workspace.page.create")
+                if execution_status == "completed":
+                    result["verification"].append({
+                        "name": "workspace_page_files_exist",
+                        "status": "succeeded",
+                        "checked": execution_result.get("verified", []),
+                    })
+                else:
+                    result["verification"].append({
+                        "name": "workspace_page_files_exist",
+                        "status": "failed",
+                        "checked": execution_result.get("verified", []),
+                        "detail": execution_result.get("detail") or execution_result.get("reason"),
+                    })
             else:
-                result["verification"].append({
-                    "name": "workspace_page_files_exist",
-                    "status": "failed",
-                    "checked": execution_result.get("verified", []),
-                    "detail": execution_result.get("detail") or execution_result.get("reason"),
-                })
+                result["execution"] = {
+                    "status": "blocked",
+                    "reason": auth.get("reason", "authorization_denied"),
+                }
+                result["actions"].append({"tool": "workspace.page.create", "status": "blocked", "reason": auth.get("reason")})
+                self._update_step(progress, "create_workspace_page", "failed", auth.get("reason", "authorization_denied"))
 
         elif has_file_intent or any(token in " ".join(steps) for token in ["file", "create", "ملف", "أنشئ"]):
             self._update_step(progress, "create_file", "running", "جارٍ تنفيذ العملية على الملف المطلوب")
             filename, content, operation = self._extract_file_operation(query)
             if filename:
-                if operation == "read":
-                    target_path = Path(workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))) / filename
+                workspace_base = workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+                target_path = Path(workspace_base) / filename
+                capability = "file.read" if operation == "read" else "file.update" if operation == "update" else "file.create"
+                auth = _authorize(capability, target_path=str(target_path))
+
+                if not auth.get("allowed"):
+                    file_result = {
+                        "status": "blocked",
+                        "path": str(target_path),
+                        "relative_path": filename,
+                        "content_preview": "",
+                        "reason": auth.get("reason", "authorization_denied"),
+                    }
+                elif operation == "read":
                     if target_path.exists():
                         file_result = {
                             "status": "read",
                             "path": str(target_path),
-                            "relative_path": os.path.relpath(target_path, workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))).replace("\\", "/"),
+                            "relative_path": os.path.relpath(target_path, workspace_base).replace("\\", "/"),
                             "content_preview": target_path.read_text(encoding="utf-8")[:240],
                         }
                     else:
@@ -1225,6 +1623,7 @@ class ExecutiveBrain:
                     file_result = self._append_to_existing_file(filename, content or "", workspace_root=workspace_root)
                 else:
                     file_result = self._create_file(filename, content or "", workspace_root=workspace_root)
+
                 result["file"] = file_result
                 result["actions"].append({"tool": "file.create", "status": file_result.get("status", "created")})
                 result["tool_calls"].append("file.create")
@@ -1238,17 +1637,28 @@ class ExecutiveBrain:
 
         if has_planning_intent or any(token in " ".join(steps) for token in ["plan", "planning", "خطة", "خطوات"]):
             self._update_step(progress, "create_plan", "running", "جارٍ تجهيز خطة التنفيذ")
-            result["plan"] = {
-                "status": "planned",
-                "steps": list(plan.steps or []),
-                "goal": getattr(plan, "executive_message", "") or "إجراء خطة عملية",
-            }
-            result["actions"].append({"tool": "plan.create", "status": "completed"})
-            result["tool_calls"].append("plan.create")
-            self._update_step(progress, "create_plan", "succeeded", "تم تجهيز خطة قابلة للتنفيذ")
+            auth = _authorize("plan.create")
+            if auth.get("allowed"):
+                result["plan"] = {
+                    "status": "planned",
+                    "steps": list(plan.steps or []),
+                    "goal": getattr(plan, "executive_message", "") or "إجراء خطة عملية",
+                }
+                result["actions"].append({"tool": "plan.create", "status": "completed"})
+                result["tool_calls"].append("plan.create")
+                self._update_step(progress, "create_plan", "succeeded", "تم تجهيز خطة قابلة للتنفيذ")
+            else:
+                result["plan"] = {
+                    "status": "blocked",
+                    "steps": list(plan.steps or []),
+                    "goal": getattr(plan, "executive_message", "") or "إجراء خطة عملية",
+                    "reason": auth.get("reason", "authorization_denied"),
+                }
+                result["actions"].append({"tool": "plan.create", "status": "blocked", "reason": auth.get("reason")})
+                self._update_step(progress, "create_plan", "failed", auth.get("reason", "authorization_denied"))
 
         if result["actions"]:
-            failed_actions = [action for action in result["actions"] if action.get("status") in {"failed"}]
+            failed_actions = [action for action in result["actions"] if action.get("status") in {"failed", "blocked", "denied", "needs_approval"}]
             result["status"] = "failed" if failed_actions else "completed"
             execution_payload = result.get("execution") or {}
             if execution_payload.get("status") == "completed":
@@ -1267,9 +1677,23 @@ class ExecutiveBrain:
             )
             if has_outcome_worthy_action:
                 self._update_step(progress, "persist_execution_outcome", "running", "جارٍ حفظ نتيجة التنفيذ")
-                outcome_memory = self._persist_execution_outcome(query, result, workspace_root=workspace_root)
-                result["outcome_memory"] = outcome_memory
-                self._update_step(progress, "persist_execution_outcome", "succeeded" if outcome_memory.get("saved") else "failed", outcome_memory.get("reason", ""))
+                memory_file_path = os.path.join(
+                    workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), "..")),
+                    "04_Memory",
+                    "Preferences.md",
+                )
+                auth = _authorize("memory.save", target_path=memory_file_path)
+                if auth.get("allowed"):
+                    outcome_memory = self._persist_execution_outcome(query, result, workspace_root=workspace_root)
+                    result["outcome_memory"] = outcome_memory
+                    self._update_step(progress, "persist_execution_outcome", "succeeded" if outcome_memory.get("saved") else "failed", outcome_memory.get("reason", ""))
+                else:
+                    result["outcome_memory"] = {
+                        "saved": False,
+                        "reason": auth.get("reason", "authorization_denied"),
+                        "file": "04_Memory/Preferences.md",
+                    }
+                    self._update_step(progress, "persist_execution_outcome", "failed", auth.get("reason", "authorization_denied"))
 
         return result
 

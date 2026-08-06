@@ -301,6 +301,7 @@ async def ask(request: Request):
         q,
         plan,
         workspace_root=ROOT,
+        guardian_result=guardian,
     )
     final_reply, reply_source = EXECUTIVE_BRAIN.compose_final_reply(
         q,

@@ -1,5 +1,16 @@
 # Ameer Roadmap
 
+## Executive Delivery Status
+
+- P0.6 Executive Capability Governance: **Completed**.
+- تم اعتماد طبقات الحوكمة التنفيذية (Capability + Permission + Execution Authorization) كقاعدة تشغيل ثابتة.
+
+## P1 Baseline Rule
+
+- P1 (Executive Runtime) يبدأ من قاعدة P0.6 الحالية.
+- لا يُعاد بناء الحوكمة أو نظام الصلاحيات داخل P1.
+- تركيز P1 يكون على تشغيل أمير فعليًا للتنفيذ الكامل لسير العمل (تحليل، تخطيط، بناء، اختبار، إصلاح، وتحديث GitHub/Railway) مع الرجوع للمؤسس فقط عند قرارات تتطلب موافقة.
+
 ## نظرة عامة
 
 هذه الخطة تحدد الطريق لبناء Ameer كوكيل شريك ينمو مع المؤسس، ويعمل بناءً على الموافقة، ويدعم النمو والتطور.
