@@ -202,6 +202,48 @@ A single runtime simplifies operations, reduces fragmentation, preserves archite
 
 ---
 
+## ADR-008 — Executive Capability Governance (P0.6)
+
+- **Status:** Accepted
+- **Date:** 2026-08-06
+
+### Decision
+
+Introduce a three-layer Capability Governance system consisting of:
+1. **CapabilityRegistry** — tracks capability lifecycle (core/extended/experimental/suspended/deprecated/retired) with conflict detection
+2. **PermissionRegistry** — separates capability ownership from execution permission (owned / enabled / permission_status)
+3. **ExecutionAuthorization** — provides per-action runtime authorization (approved / denied / pending)
+
+Core capabilities (engineering, programming, system_design, project_management, analysis, planning) are seeded at boot and sealed permanently. All other capability expansion requires Founder approval, conflict-check pass, and simulation before activation.
+
+### Rationale
+
+Ameer must be able to grow its executive toolkit over time without risking identity drift or unauthorized execution. Separating "what Ameer knows" from "what Ameer is allowed to do" enables:
+- Permanent capability knowledge (capabilities are never deleted, only lifecycle-transitioned)
+- Controlled, per-action execution gating
+- Full audit trail for every permission grant, revocation, and execution
+
+This also enforces the Founder Authority Contract at the implementation level: no capability can be activated, no permission can be granted, and no execution can be authorized without going through the governed pipeline.
+
+### Consequences
+
+- Three new kernel components boot with ExecutiveKernel.
+- `.ameer/` gains three new JSON stores: `capabilities.json`, `permissions.json`, `execution_auth.json`.
+- `before_request` context now includes `capability_governance` snapshot and `pending_execution_requests`.
+- `health()` now reports `active_capabilities` and `pending_execution_requests`.
+- 39 new acceptance tests cover all three components and their kernel integration.
+
+### Related Documents
+
+- `01_Docs/Executive_Constitution_v1.0.md`
+- `03_Architecture/Executive_Capability_Governance.md`
+- `06_Code/kernel/capability_registry.py`
+- `06_Code/kernel/permission_registry.py`
+- `06_Code/kernel/execution_authorization.py`
+- `07_Tests/test_p06_capability_governance.py`
+
+---
+
 ## Relationship to Other Documents
 
 - `01_Docs/Executive_Constitution_v1.0.md` is the supreme governing document above this ADR. Constitutional Contracts defined there are non-negotiable and take precedence over any architectural decision.

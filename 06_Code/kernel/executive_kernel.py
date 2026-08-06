@@ -27,6 +27,9 @@ from kernel.approval_gate import ApprovalGate
 from kernel.feedback_engine import FeedbackEngine
 from kernel.learning_engine import LearningEngine
 from kernel.memory_governance import MemoryGovernanceEngine
+from kernel.capability_registry import CapabilityRegistry
+from kernel.permission_registry import PermissionRegistry
+from kernel.execution_authorization import ExecutionAuthorization
 from context.workspace_awareness import WorkspaceAwareness
 from context.session_context import SessionContext
 from context.founder_profile import FounderProfile
@@ -65,6 +68,12 @@ class ExecutiveKernel:
         self.session: SessionContext = SessionContext()
         self.founder: FounderProfile = FounderProfile(self._root)
         self.conversation_memory: PersistentConversationMemory = PersistentConversationMemory(self._root)
+        # P0.6 — Executive Capability Governance
+        self.capabilities: CapabilityRegistry = CapabilityRegistry(self._root)
+        self.permissions: PermissionRegistry = PermissionRegistry(self._root)
+        self.execution_auth: ExecutionAuthorization = ExecutionAuthorization(
+            self._root, self.capabilities, self.permissions
+        )
 
     # ── Startup helpers ───────────────────────────────────────────────────────
 
@@ -199,6 +208,30 @@ class ExecutiveKernel:
             self._health["memory_governance"] = f"error: {exc}"
             errors.append("memory_governance")
 
+        # 10. Capability Registry (P0.6)
+        try:
+            _ = self.capabilities.snapshot()
+            self._health["capability_registry"] = "ok"
+        except Exception as exc:
+            self._health["capability_registry"] = f"error: {exc}"
+            errors.append("capability_registry")
+
+        # 11. Permission Registry (P0.6)
+        try:
+            _ = self.permissions.snapshot()
+            self._health["permission_registry"] = "ok"
+        except Exception as exc:
+            self._health["permission_registry"] = f"error: {exc}"
+            errors.append("permission_registry")
+
+        # 12. Execution Authorization (P0.6)
+        try:
+            _ = self.execution_auth.snapshot()
+            self._health["execution_authorization"] = "ok"
+        except Exception as exc:
+            self._health["execution_authorization"] = f"error: {exc}"
+            errors.append("execution_authorization")
+
         overall = "degraded" if errors else "running"
         self.state.set_runtime_status(overall)
         self._initialized = True
@@ -256,6 +289,8 @@ class ExecutiveKernel:
             "is_follow_up": self.session.is_follow_up(),
             "is_first_turn": is_first_turn,
             "proactive_briefing": self._build_proactive_briefing() if is_first_turn else "",
+            "capability_governance": self.capabilities.snapshot(),
+            "pending_execution_requests": len(self.execution_auth.pending_requests()),
         }
 
     def after_request(self, reply: str) -> None:
@@ -329,6 +364,7 @@ class ExecutiveKernel:
     # ── Health ────────────────────────────────────────────────────────────────
 
     def health(self) -> dict:
+        mem_snap = self.memory_governance.snapshot()
         return {
             "initialized": self._initialized,
             "status": self.state.snapshot().get("runtime_status", "unknown"),
@@ -339,10 +375,12 @@ class ExecutiveKernel:
             "pending_decisions": len(self.decisions.pending()),
             "feedback_total": self.feedback.snapshot().get("total", 0),
             "learning_log_entries": self.learning.snapshot().get("log_entries", 0),
-            "founder_memory_items": self.memory_governance.snapshot()["layers"]["founder_memory"]["count"],
-            "learned_knowledge_items": self.memory_governance.snapshot()["layers"]["learned_knowledge"]["count"],
-            "memory_pending_approvals": self.memory_governance.snapshot().get("pending_candidates", 0),
+            "founder_memory_items": mem_snap["layers"]["founder_memory"]["count"],
+            "learned_knowledge_items": mem_snap["layers"]["learned_knowledge"]["count"],
+            "memory_pending_approvals": mem_snap.get("pending_candidates", 0),
             "components": self._health,
+            "active_capabilities": self.capabilities.snapshot()["by_status"],
+            "pending_execution_requests": self.execution_auth.snapshot()["pending_count"],
         }
 
     # ── Workspace refresh ─────────────────────────────────────────────────────
