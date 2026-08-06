@@ -5,6 +5,155 @@
 This document defines the practical execution plan for building Ameer as a trusted growth partner.
 It translates the roadmap into concrete implementation phases, milestones, and success criteria.
 
+## P1 Executive Runtime Baseline (Founder-Approved)
+
+This section is the approved baseline for P1 and must be treated as implementation constraints.
+
+### P1 Mission
+
+- Move Ameer from think-only behavior to controlled execution behavior.
+- Reuse P0.6 governance as-is.
+- Do not rebuild capability governance or permissions in P1.
+- Treat P0.6 as the last governance-layer modification before runtime delivery.
+
+### P1 Entry Gate (Must Pass Before Build)
+
+- Capability Registry is complete and active.
+- Permission Registry is complete and active.
+- Execution Authorization is complete and active.
+- Executive Kernel integration is active for governed execution.
+- Regression status is clean in the approved test scope.
+
+If any gate item is not true, P1 implementation must pause and return to Founder for decision.
+
+### Core Runtime Flow
+
+1. Parse
+2. Plan
+3. Validate Plan
+4. Schedule
+5. Execute
+6. Verify
+7. Reflect
+8. Report
+
+### Plan Validation Requirements
+
+Validate Plan must check before execution starts:
+
+- dependencies
+- permissions and policy boundaries
+- runtime resources
+- step conflicts and ordering violations
+- blocked or forbidden operations
+
+### Execution Engine Topology (Extensible from Day 1)
+
+Execution Runtime must be executor-based, not web-only:
+
+- File Executor
+- Git Executor
+- Terminal Executor
+- Browser Executor
+- Preview Executor
+- Railway Executor
+- Cloudflare Executor
+- Supabase Executor
+- Memory Executor
+- Plugin Executor
+
+### Task Decomposer Contract
+
+Task Decomposer must output structured task objects, not plain numbered text steps.
+Canonical schema definitions are maintained in `03_Architecture/P1_Runtime_Contracts.md`.
+
+Example:
+
+```json
+{
+	"id": 1,
+	"action": "create_file",
+	"target": "index.html",
+	"executor": "file",
+	"approval": false
+}
+```
+
+### Scheduler Requirement
+
+Scheduler is mandatory before execution and is responsible for:
+
+- Priority ordering
+- Dependency graph resolution
+- Parallelization of safe independent tasks
+
+### Verification and Git Gate Requirement
+
+Git operations must happen only after Verify succeeds:
+
+1. Execute
+2. Verify
+3. Git Stage
+4. Git Commit
+
+### Preview Service Boundary
+
+Preview must be modeled as a separate service boundary, not embedded in core execution loop.
+The runtime may resolve Preview targets such as local preview, Railway preview, or Cloudflare preview.
+
+### API Entry Requirement
+
+Runtime uses two entry points only:
+
+- POST /ask
+- POST /execute
+
+Both entry points must route through the same Executive Kernel.
+
+### Single Brain Requirement
+
+Conversation and execution must run under the same Executive Brain identity and authority.
+No split-brain runtime is allowed.
+
+Path contract:
+
+- /ask -> Executive Kernel
+- /execute -> Executive Kernel
+
+Then Executive Kernel routes by intent to Conversation Engine or Execution Runtime.
+
+### Runtime State Requirement
+
+Runtime state tracking is required through a dedicated module: runtime_state.py
+
+Minimum tracked fields:
+
+- Current Task
+- Current Step
+- Running Executors
+- Progress
+- Estimated Time
+- Paused
+- Cancelled
+- Completed
+
+Full runtime object contracts are defined in `03_Architecture/P1_Runtime_Contracts.md`.
+
+### Reflection Requirement
+
+Execution does not end at report generation.
+Executive Reflection must append manager-level analysis:
+
+- discovered problems
+- improvement opportunities
+- refactoring opportunities
+- operational risks
+
+### Approval Boundary
+
+- Continue without interruption for non-approval tasks.
+- Ask Founder only when approval-required decisions are reached.
+
 ## Scope
 
 - Defines the MVP scope.

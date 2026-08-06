@@ -40,8 +40,11 @@ This index maps the core architecture documents for Ameer and highlights how the
   - قواعد التواصل باللغة العربية ودعم الحوار العربي.
 - `Execution_Plan.md`
   - Practical execution path for MVP and deployment stages.
+  - Includes the Founder-approved P1 Executive Runtime baseline (P0.6 governance freeze, single ExecutiveKernel for `/ask` and `/execute`, plan validation, scheduler, executor interface, runtime state, verify/reflection/report loop).
 - `Execution_Plan_AR.md`
   - خطة تنفيذ عربية ودعم حوار باللغة العربية.
+- `P1_Runtime_Contracts.md`
+  - Contract-only schema for P1 runtime objects: Task, ValidatedTask, ScheduledTask, ExecutionResult, ExecutionReport, runtime state, and executor interface.
 
 ## Notes
 
