@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
+_SCHEMA_VERSION = 1
+
 _REQUIRED_FIELDS = {
     "run_id",
     "current_task_id",
@@ -59,6 +61,33 @@ class RuntimeStateStore:
             "events": [],
         }
 
+    def _default_envelope(self) -> Dict[str, Any]:
+        timestamp = self._now()
+        return {
+            "schema_version": _SCHEMA_VERSION,
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "runtime": self._default_state(),
+        }
+
+    def _normalize_envelope(self, loaded: Dict[str, Any]) -> Dict[str, Any]:
+        envelope = self._default_envelope()
+        envelope.update(loaded or {})
+        runtime_payload = loaded.get("runtime") if isinstance(loaded, dict) else None
+
+        # Backward compatibility: accept legacy flat runtime state files.
+        if runtime_payload is None and any(key in loaded for key in _REQUIRED_FIELDS):
+            runtime_payload = dict(loaded)
+
+        if not isinstance(runtime_payload, dict):
+            runtime_payload = self._default_state()
+
+        envelope["schema_version"] = int(envelope.get("schema_version") or _SCHEMA_VERSION)
+        envelope["created_at"] = envelope.get("created_at") or self._now()
+        envelope["updated_at"] = self._now()
+        envelope["runtime"] = self._normalize_state(runtime_payload)
+        return envelope
+
     def _normalize_state(self, loaded: Dict[str, Any]) -> Dict[str, Any]:
         state = self._default_state()
         state.update(loaded or {})
@@ -75,25 +104,40 @@ class RuntimeStateStore:
         return state
 
     def _load_or_init(self) -> Dict[str, Any]:
-        default_state = self._default_state()
+        default_envelope = self._default_envelope()
         try:
             if not self.state_path.exists():
                 self.state_path.parent.mkdir(parents=True, exist_ok=True)
-                self.state_path.write_text(json.dumps(default_state, ensure_ascii=False, indent=2), encoding="utf-8")
-                return default_state
+                self.state_path.write_text(json.dumps(default_envelope, ensure_ascii=False, indent=2), encoding="utf-8")
+                return default_envelope["runtime"]
             loaded = json.loads(self.state_path.read_text(encoding="utf-8"))
             if not isinstance(loaded, dict):
-                return default_state
-            normalized = self._normalize_state(loaded)
-            self._state = normalized
+                return default_envelope["runtime"]
+            normalized = self._normalize_envelope(loaded)
+            self._state = normalized["runtime"]
             self._persist()
-            return normalized
+            return normalized["runtime"]
         except Exception:
-            return default_state
+            return default_envelope["runtime"]
 
     def _persist(self) -> None:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        self.state_path.write_text(json.dumps(self._state, ensure_ascii=False, indent=2), encoding="utf-8")
+        existing_created_at = None
+        if self.state_path.exists():
+            try:
+                payload = json.loads(self.state_path.read_text(encoding="utf-8"))
+                if isinstance(payload, dict):
+                    existing_created_at = payload.get("created_at")
+            except Exception:
+                existing_created_at = None
+
+        envelope = {
+            "schema_version": _SCHEMA_VERSION,
+            "created_at": existing_created_at or self._now(),
+            "updated_at": self._now(),
+            "runtime": self._state,
+        }
+        self.state_path.write_text(json.dumps(envelope, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _record_event(self, event: str, details: Optional[Dict[str, Any]] = None) -> None:
         self._state.setdefault("events", []).append(
@@ -106,6 +150,31 @@ class RuntimeStateStore:
 
     def snapshot(self) -> Dict[str, Any]:
         return deepcopy(self._state)
+
+    def envelope_snapshot(self) -> Dict[str, Any]:
+        if self.state_path.exists():
+            try:
+                payload = json.loads(self.state_path.read_text(encoding="utf-8"))
+                if isinstance(payload, dict):
+                    return payload
+            except Exception:
+                pass
+        return self._default_envelope()
+
+    def recover(self) -> Dict[str, Any]:
+        runtime = self.snapshot()
+        resumable = bool(runtime.get("run_id")) and not runtime.get("completed") and not runtime.get("cancelled")
+        recovery_payload = {
+            "resumable": resumable,
+            "run_id": runtime.get("run_id"),
+            "current_step": runtime.get("current_step"),
+            "current_task_id": runtime.get("current_task_id"),
+            "active_tasks": deepcopy(runtime.get("active_tasks", [])),
+            "running_executors": list(runtime.get("running_executors", [])),
+        }
+        self._record_event("recovery_checked", {"resumable": resumable, "run_id": runtime.get("run_id")})
+        self._persist()
+        return recovery_payload
 
     def begin_run(self, run_id: str, initial_step: str = "parse", eta_seconds: int | None = None) -> Dict[str, Any]:
         self._state = self._default_state()

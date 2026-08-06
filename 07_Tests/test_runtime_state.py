@@ -101,7 +101,72 @@ class RuntimeStateTests(unittest.TestCase):
             self.assertTrue(os.path.exists(state_path))
             with open(state_path, "r", encoding="utf-8") as handle:
                 payload = json.loads(handle.read())
-            self.assertEqual(payload.get("run_id"), "run-json")
+            self.assertEqual(payload.get("schema_version"), 1)
+            self.assertIn("created_at", payload)
+            self.assertIn("updated_at", payload)
+            self.assertIn("runtime", payload)
+            self.assertEqual(payload["runtime"].get("run_id"), "run-json")
+
+    def test_recovery_restores_run_and_can_continue_from_last_step(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = RuntimeStateStore(workspace_root=tmpdir)
+            store.begin_run("run-recovery", initial_step="plan")
+            store.set_current_step("execute")
+            store.set_running_executors(["file"])
+            store.add_active_task("task-resume", executor="file")
+            store.set_progress(40)
+
+            restarted = RuntimeStateStore(workspace_root=tmpdir)
+            recovery = restarted.recover()
+
+            self.assertTrue(recovery["resumable"])
+            self.assertEqual(recovery["run_id"], "run-recovery")
+            self.assertEqual(recovery["current_step"], "execute")
+            self.assertEqual(recovery["current_task_id"], "task-resume")
+            self.assertEqual(recovery["active_tasks"][0]["task_id"], "task-resume")
+
+            restarted.complete_task("task-resume", status="succeeded")
+            restarted.set_current_step("verify")
+            final = restarted.complete()
+
+            self.assertTrue(final["completed"])
+            self.assertEqual(final["completed_tasks"][0]["task_id"], "task-resume")
+
+    def test_legacy_flat_state_is_migrated_to_versioned_envelope(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_dir = os.path.join(tmpdir, ".ameer")
+            os.makedirs(state_dir, exist_ok=True)
+            state_path = os.path.join(state_dir, "runtime_state.json")
+            with open(state_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "run_id": "legacy-run",
+                        "current_task_id": "legacy-task",
+                        "current_step": "execute",
+                        "running_executors": ["file"],
+                        "progress_percent": 20,
+                        "eta_seconds": 30,
+                        "paused": False,
+                        "cancelled": False,
+                        "completed": False,
+                        "last_update_at": "2026-08-07T00:00:00Z",
+                        "active_tasks": [{"task_id": "legacy-task", "executor": "file"}],
+                        "completed_tasks": [],
+                        "events": [],
+                    },
+                    handle,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+
+            store = RuntimeStateStore(workspace_root=tmpdir)
+            snap = store.snapshot()
+            envelope = store.envelope_snapshot()
+
+            self.assertEqual(snap["run_id"], "legacy-run")
+            self.assertEqual(envelope["schema_version"], 1)
+            self.assertIn("runtime", envelope)
+            self.assertEqual(envelope["runtime"]["current_task_id"], "legacy-task")
 
 
 if __name__ == "__main__":

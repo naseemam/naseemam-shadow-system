@@ -25,6 +25,8 @@ A phase is complete only if:
 - Runtime state persists between tasks in the same run.
 - Runtime state is restored after server restart.
 - Active task list is not lost across reload.
+- On-disk state uses explicit schema versioning and timestamps.
+- Recovery scenario can resume from the last persisted step after forced restart.
 - State includes required fields from runtime contract.
 - All runtime_state unit tests pass.
 
