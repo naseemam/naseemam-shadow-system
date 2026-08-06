@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import glob
@@ -179,9 +179,23 @@ def refresh_documents():
     return DOCUMENTS
 
 
+def _sanitize_response_payload(value):
+    if isinstance(value, dict):
+        clean = {}
+        for k, v in value.items():
+            key = str(k).lower()
+            if "traceback" in key or "stack" in key:
+                continue
+            clean[k] = _sanitize_response_payload(v)
+        return clean
+    if isinstance(value, list):
+        return [_sanitize_response_payload(v) for v in value]
+    return value
+
+
 def utf8_json_response(payload, headers: dict[str, str] | None = None, status_code: int = 200):
-    body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-    return Response(content=body, media_type="application/json; charset=utf-8", headers=headers or {}, status_code=status_code)
+    safe_payload = _sanitize_response_payload(payload)
+    return JSONResponse(content=safe_payload, headers=headers or {}, status_code=status_code)
 
 
 DOCUMENTS = load_documents()
@@ -196,6 +210,15 @@ class AskRequest(BaseModel):
 
 class MemoryRequest(BaseModel):
     text: str
+    source: str = "founder"
+    target_layer: str = "founder_memory"
+    confidence: float = 0.7
+
+
+class KnowledgePromotionRequest(BaseModel):
+    item_id: str
+    reason: str
+    approved_by: str = "naseem"
 
 
 class ProjectRequest(BaseModel):
@@ -583,7 +606,7 @@ async def ask_trace(request: Request):
             persistent_memory_context = ctx.get("persistent_memory_context", "")
             is_first_turn = ctx.get("is_first_turn", False)
         except Exception as exc:
-            kernel_state_before["error"] = str(exc)
+            kernel_state_before["error"] = "kernel_context_unavailable"
 
     # ── 2. Orchestrator ────────────────────────────────────────────────────────
     orchestrator_result = ORCHESTRATOR.answer(q, req.max_results)
@@ -861,28 +884,74 @@ async def search_documents(q: str):
 
 @app.post('/memory')
 async def save_memory(payload: MemoryRequest):
-    memory_file = os.path.join(REPO_ROOT, "04_Memory", "Preferences.md")
-    os.makedirs(os.path.dirname(memory_file), exist_ok=True)
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
     text = payload.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Empty memory text")
-    if not os.path.exists(memory_file):
-        with open(memory_file, "w", encoding="utf-8") as handle:
-            handle.write("# Preferences\n\n")
-    with open(memory_file, "r", encoding="utf-8") as handle:
-        content = handle.read()
-    note = f"- {datetime.now(timezone.utc).strftime('%Y-%m-%d')} — {text}"
-    if note in content:
-        return {"saved": True, "updated": False, "note": note, "file": "04_Memory/Preferences.md"}
-    if "## User Notes" not in content:
-        content = content.rstrip() + "\n\n## User Notes\n"
-    else:
-        content = content.rstrip() + "\n"
-    content += note + "\n"
-    with open(memory_file, "w", encoding="utf-8") as handle:
-        handle.write(content)
-    refresh_documents()
-    return {"saved": True, "updated": True, "note": note, "file": "04_Memory/Preferences.md"}
+
+    try:
+        result = KERNEL.memory_governance.submit_candidate(
+            content=text,
+            source=(payload.source or "founder"),
+            requested_layer=(payload.target_layer or "founder_memory"),
+            confidence=payload.confidence,
+            origin_context={"endpoint": "/memory"},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid memory candidate")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="memory policy violation")
+
+    if result.get("saved"):
+        refresh_documents()
+    return utf8_json_response(result)
+
+
+@app.get('/memory/governance')
+async def get_memory_governance_snapshot():
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    return utf8_json_response(KERNEL.memory_governance.snapshot())
+
+
+@app.get('/memory/candidates')
+async def get_memory_candidates():
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    return utf8_json_response({"pending_candidates": KERNEL.memory_governance.pending_candidates()})
+
+
+@app.get('/memory/items/{layer}')
+async def get_memory_items(layer: str):
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    return utf8_json_response({"layer": layer, "items": KERNEL.memory_governance.list_items(layer)})
+
+
+@app.delete('/memory/items/{layer}/{item_id}')
+async def delete_memory_item(layer: str, item_id: str):
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    deleted = KERNEL.memory_governance.delete_item(layer, item_id)
+    if not deleted:
+        return utf8_json_response({"error": "item not found or cannot be deleted"}, status_code=404)
+    return utf8_json_response({"deleted": True, "layer": layer, "item_id": item_id})
+
+
+@app.post('/knowledge/promote')
+async def promote_learned_knowledge(payload: KnowledgePromotionRequest):
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    try:
+        promoted = KERNEL.memory_governance.promote_learned_to_core(
+            payload.item_id,
+            reason=payload.reason,
+            approved_by=payload.approved_by,
+        )
+    except ValueError as exc:
+        return utf8_json_response({"error": "invalid feedback payload"}, status_code=422)
+    return utf8_json_response({"promoted": True, "record": promoted})
 
 
 @app.get('/projects')
@@ -1002,7 +1071,10 @@ async def approve_request(approval_id: str, request: Request):
     updated = KERNEL.approvals.approve(approval_id, approved_by=approved_by)
     if not updated:
         return utf8_json_response({"error": "approval not found or already resolved"}, status_code=404)
-    return utf8_json_response({"id": approval_id, "status": "approved"})
+    governance_result = KERNEL.memory_governance.finalize_approval(approval_id, approved_by=approved_by)
+    return utf8_json_response(
+        {"id": approval_id, "status": "approved", "memory_governance": governance_result}
+    )
 
 
 @app.post('/approvals/{approval_id}/reject')
@@ -1020,7 +1092,14 @@ async def reject_request(approval_id: str, request: Request):
     updated = KERNEL.approvals.reject(approval_id, reason=reason, rejected_by=rejected_by)
     if not updated:
         return utf8_json_response({"error": "approval not found or already resolved"}, status_code=404)
-    return utf8_json_response({"id": approval_id, "status": "rejected"})
+    discard_result = KERNEL.memory_governance.discard_candidate(
+        approval_id,
+        rejected_by=rejected_by,
+        reason=reason,
+    )
+    return utf8_json_response(
+        {"id": approval_id, "status": "rejected", "memory_governance": discard_result}
+    )
 
 
 @app.post('/feedback')
@@ -1046,7 +1125,7 @@ async def post_feedback(request: Request):
             source=source,
         )
     except ValueError as exc:
-        return utf8_json_response({"error": str(exc)}, status_code=422)
+        return utf8_json_response({"error": "invalid promotion request"}, status_code=422)
     return utf8_json_response({"id": fid, "status": "recorded"})
 
 

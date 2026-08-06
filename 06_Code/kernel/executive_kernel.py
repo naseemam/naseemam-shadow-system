@@ -26,6 +26,7 @@ from kernel.decision_engine import DecisionEngine
 from kernel.approval_gate import ApprovalGate
 from kernel.feedback_engine import FeedbackEngine
 from kernel.learning_engine import LearningEngine
+from kernel.memory_governance import MemoryGovernanceEngine
 from context.workspace_awareness import WorkspaceAwareness
 from context.session_context import SessionContext
 from context.founder_profile import FounderProfile
@@ -59,6 +60,7 @@ class ExecutiveKernel:
         self.approvals: ApprovalGate = ApprovalGate(self._root)
         self.feedback: FeedbackEngine = FeedbackEngine(self._root)
         self.learning: LearningEngine = LearningEngine(self._root, self.feedback)
+        self.memory_governance: MemoryGovernanceEngine = MemoryGovernanceEngine(self._root, self.approvals)
         self.workspace: WorkspaceAwareness = WorkspaceAwareness(self._root)
         self.session: SessionContext = SessionContext()
         self.founder: FounderProfile = FounderProfile(self._root)
@@ -189,6 +191,14 @@ class ExecutiveKernel:
             self._health["learning_engine"] = f"error: {exc}"
             errors.append("learning_engine")
 
+        # 9. Memory Governance
+        try:
+            _ = self.memory_governance.snapshot()
+            self._health["memory_governance"] = "ok"
+        except Exception as exc:
+            self._health["memory_governance"] = f"error: {exc}"
+            errors.append("memory_governance")
+
         overall = "degraded" if errors else "running"
         self.state.set_runtime_status(overall)
         self._initialized = True
@@ -241,6 +251,7 @@ class ExecutiveKernel:
             "persistent_memory_context": self.conversation_memory.build_context_block(),
             "learned_preferences": self.learning.get_preferences(),
             "learned_preferences_context": self.learning.build_context_block(),
+            "memory_governance": self.memory_governance.snapshot(),
             "session_count": self.state.session_count,
             "is_follow_up": self.session.is_follow_up(),
             "is_first_turn": is_first_turn,
@@ -328,6 +339,9 @@ class ExecutiveKernel:
             "pending_decisions": len(self.decisions.pending()),
             "feedback_total": self.feedback.snapshot().get("total", 0),
             "learning_log_entries": self.learning.snapshot().get("log_entries", 0),
+            "founder_memory_items": self.memory_governance.snapshot()["layers"]["founder_memory"]["count"],
+            "learned_knowledge_items": self.memory_governance.snapshot()["layers"]["learned_knowledge"]["count"],
+            "memory_pending_approvals": self.memory_governance.snapshot().get("pending_candidates", 0),
             "components": self._health,
         }
 
