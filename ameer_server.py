@@ -83,9 +83,21 @@ def load_response_formatter():
     return module.ResponseFormatter
 
 
+def load_task_contract_module():
+    module_path = os.path.join(os.path.dirname(__file__), "06_Code", "task_contract.py")
+    spec = importlib.util.spec_from_file_location("task_contract", module_path)
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["task_contract"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 AmeerOrchestrator = load_orchestrator_class()
 ExecutiveBrainClass = load_executive_brain()
 ResponseFormatterClass = load_response_formatter()
+TaskContractModule = load_task_contract_module()
 
 app = FastAPI(title="Ameer Local Server")
 
@@ -167,6 +179,14 @@ class AutonomyPlanRequest(BaseModel):
     goal: str | None = None
 
 
+class ExecuteRequest(BaseModel):
+    task: str
+    max_results: int = 5
+
+    class Config:
+        extra = 'allow'
+
+
 def normalize_arabic(text: str) -> str:
     # Normalize common Arabic letter variants and remove diacritics/tatweel.
     t = text
@@ -239,6 +259,27 @@ ORCHESTRATOR = AmeerOrchestrator(
 EXECUTIVE_BRAIN = ExecutiveBrainClass(normalize_fn=normalize_arabic) if ExecutiveBrainClass else None
 RESPONSE_FORMATTER = ResponseFormatterClass() if ResponseFormatterClass else None
 
+
+def _run_executive_kernel(query: str, max_results: int = 5) -> dict:
+    orchestrator_result = ORCHESTRATOR.answer(query, max_results)
+    if not EXECUTIVE_BRAIN:
+        raise RuntimeError("Executive Brain is unavailable")
+
+    guardian = orchestrator_result.get("guardian", {})
+    routing = orchestrator_result.get("routing") or {}
+    plan = EXECUTIVE_BRAIN.think(
+        query,
+        DOCUMENTS,
+        guardian_result=guardian,
+        routing_hint=routing,
+    )
+    return {
+        "orchestrator_result": orchestrator_result,
+        "guardian": guardian,
+        "routing": routing,
+        "plan": plan,
+    }
+
 @app.post('/ask')
 async def ask(request: Request):
     request_id = str(uuid.uuid4())
@@ -265,21 +306,12 @@ async def ask(request: Request):
     if any(keyword in q.lower() for keyword in autonomy_keywords):
         autonomy_plan = _record_autonomy_plan(q, "autonomy")
 
-    # Run orchestrator (retrieval + guardian)
-    orchestrator_result = ORCHESTRATOR.answer(q, req.max_results)
-
-    if not EXECUTIVE_BRAIN:
-        raise HTTPException(status_code=500, detail="Executive Brain is unavailable")
-
-    guardian = orchestrator_result.get("guardian", {})
-    routing = orchestrator_result.get("routing") or {}
+    kernel_result = _run_executive_kernel(q, req.max_results)
+    orchestrator_result = kernel_result["orchestrator_result"]
+    guardian = kernel_result["guardian"]
+    routing = kernel_result["routing"]
     project_manager = _manage_project_context(q)
-    plan = EXECUTIVE_BRAIN.think(
-        q,
-        DOCUMENTS,
-        guardian_result=guardian,
-        routing_hint=routing,
-    )
+    plan = kernel_result["plan"]
     brain_plan = {
         "request_type": plan.request_type,
         "ambiguous": plan.ambiguous,
@@ -362,6 +394,62 @@ async def ask(request: Request):
     user_payload["request_id"] = request_id
     _log("ask_completed", request_id=request_id)
     return utf8_json_response(user_payload, headers=runtime_headers(workspace_root=ROOT))
+
+
+@app.post('/execute')
+async def execute(request: Request):
+    request_id = str(uuid.uuid4())
+    raw = await request.body()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty body")
+
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid UTF-8 JSON body") from exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Expected JSON object")
+
+    req = ExecuteRequest(**payload)
+    q = req.task.strip() if isinstance(req.task, str) else ""
+    if not q:
+        raise HTTPException(status_code=400, detail="Empty task")
+
+    if TaskContractModule is None:
+        raise HTTPException(status_code=500, detail="Task contract module is unavailable")
+
+    _log("execute_received", request_id=request_id, build_id=RUNTIME_METADATA["build_id"])
+    try:
+        kernel_result = _run_executive_kernel(q, req.max_results)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    plan = kernel_result["plan"]
+    orchestrator_result = kernel_result["orchestrator_result"]
+    task_batch = TaskContractModule.build_execution_task_batch(q, plan=plan)
+
+    response_payload = {
+        "request_id": request_id,
+        "mode": "execute",
+        "goal": task_batch.get("goal"),
+        "run_id": task_batch.get("run_id"),
+        "task_count": task_batch.get("task_count"),
+        "tasks": task_batch.get("tasks", []),
+        "sandbox_root": task_batch.get("sandbox_root"),
+        "guardian": {
+            "status": getattr(plan, "guardian_status", "pass"),
+            "reason": getattr(plan, "guardian_reason", ""),
+        },
+        "kernel": {
+            "selected_agent": getattr(plan, "selected_agent", None),
+            "request_type": getattr(plan, "request_type", None),
+            "intent": orchestrator_result.get("intent"),
+        },
+    }
+    response_payload.update(public_runtime_identity(workspace_root=ROOT))
+    _log("execute_completed", request_id=request_id, task_count=task_batch.get("task_count", 0))
+    return utf8_json_response(response_payload, headers=runtime_headers(workspace_root=ROOT))
 
 @app.get('/docs')
 async def docs():

@@ -126,6 +126,22 @@ class AskEndpointSmokeTests(unittest.TestCase):
         self.assertNotIn("host", data)
         self.assertNotIn("entrypoint", data)
 
+    def test_execute_endpoint_returns_task_object_for_home_page(self):
+        status_code, data = _http_post_json(
+            f"{self.base_url}/execute",
+            {"task": "أنشئ صفحة home", "max_results": 3},
+        )
+        self.assertEqual(status_code, 200)
+        self.assertEqual(data.get("mode"), "execute")
+        self.assertEqual(data.get("task_count"), 1)
+        self.assertEqual(data.get("sandbox_root"), "09_Assets/runtime_workspace")
+        self.assertIn("tasks", data)
+        self.assertEqual(data["tasks"][0]["action"], "create_file")
+        self.assertEqual(data["tasks"][0]["executor"], "file")
+        self.assertEqual(data["tasks"][0]["target"], "09_Assets/runtime_workspace/home/index.html")
+        self.assertTrue(data["tasks"][0]["metadata"]["sandboxed"])
+        self.assertIn("<html", data["tasks"][0]["inputs"]["content"].lower())
+
 
 if __name__ == "__main__":
     unittest.main()
