@@ -26,6 +26,8 @@ This section is the approved baseline for P1 and must be treated as implementati
 
 If any gate item is not true, P1 implementation must pause and return to Founder for decision.
 
+Acceptance criteria per phase are defined in `03_Architecture/P1_Acceptance_Criteria.md` and are mandatory for phase completion.
+
 ### Core Runtime Flow
 
 1. Parse
@@ -62,6 +64,8 @@ Execution Runtime must be executor-based, not web-only:
 - Memory Executor
 - Plugin Executor
 
+Early P1 execution must run in sandbox workspace: `09_Assets/runtime_workspace/`.
+
 ### Task Decomposer Contract
 
 Task Decomposer must output structured task objects, not plain numbered text steps.
@@ -95,6 +99,8 @@ Git operations must happen only after Verify succeeds:
 2. Verify
 3. Git Stage
 4. Git Commit
+
+No Git stage/commit is allowed when Verify fails.
 
 ### Preview Service Boundary
 

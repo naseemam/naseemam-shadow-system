@@ -45,6 +45,8 @@ This index maps the core architecture documents for Ameer and highlights how the
   - خطة تنفيذ عربية ودعم حوار باللغة العربية.
 - `P1_Runtime_Contracts.md`
   - Contract-only schema for P1 runtime objects: Task, ValidatedTask, ScheduledTask, ExecutionResult, ExecutionReport, runtime state, and executor interface.
+- `P1_Acceptance_Criteria.md`
+  - Phase-by-phase acceptance criteria for P1 runtime delivery, including sandbox-first execution and End-to-End completion gates.
 
 ## Notes
 

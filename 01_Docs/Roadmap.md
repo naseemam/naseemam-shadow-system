@@ -15,6 +15,7 @@
 - المرجع التنفيذي المعتمد: `03_Architecture/Execution_Plan.md`.
 - مدخلا التشغيل الرسميان في P1 هما `/ask` و`/execute` وكلاهما يمران عبر نفس ExecutiveKernel.
 - عقود كائنات P1 التشغيلية مثبتة في: `03_Architecture/P1_Runtime_Contracts.md`.
+- معايير القبول المرحلية مثبتة في: `03_Architecture/P1_Acceptance_Criteria.md`.
 
 ## نظرة عامة
 
