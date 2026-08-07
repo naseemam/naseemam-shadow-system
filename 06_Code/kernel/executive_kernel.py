@@ -538,7 +538,7 @@ class ExecutiveKernel:
                     (r.get("relative_path") for r in exec_results
                      if r.get("status") == "completed" and (r.get("relative_path") or "").endswith("index.html")),
                     None,
-                )
+                ) if decomposition["intent"] == "build_generic" else None
             ),
         }
 

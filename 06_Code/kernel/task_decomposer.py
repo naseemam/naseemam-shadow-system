@@ -397,8 +397,42 @@ class TaskDecomposer:
         slug = slug.strip("-") or "project"
         return slug[:60]
 
+    @staticmethod
+    def _slugify(text: str) -> str:
+        """تحويل نص عربي/إنجليزي إلى slug آمن للمسارات."""
+        import re as _re
+        slug = text.strip()
+        # Replace spaces and common separators with hyphens
+        slug = _re.sub(r"[\s_/\\]+", "-", slug)
+        # Remove characters that are unsafe in file paths
+        slug = _re.sub(r"[^\w\u0600-\u06FF\-]", "", slug)
+        slug = slug.strip("-") or "project"
+        return slug[:60]
+
+    @staticmethod
+    def _extract_title(command: str) -> str:
+        """استخراج العنوان الفعلي من الأمر بحذف الفعل والحروف التمهيدية."""
+        import re as _re
+        # Strip leading verb + optional "صفحة/page" + preposition
+        # e.g. "أنشئ صفحة عن حلم الندى" → "حلم الندى"
+        # e.g. "build a page about the dream" → "the dream"
+        stripped = _re.sub(
+            r"^(أنشئ|انشئ|ابن|ابنِ|اصنع|بناء|صمم|اعمل|create|build|make|generate)\s+",
+            "", command.strip(), flags=_re.IGNORECASE,
+        )
+        stripped = _re.sub(
+            r"^(صفحة|page|a page|an? page)\s+",
+            "", stripped, flags=_re.IGNORECASE,
+        )
+        stripped = _re.sub(
+            r"^(عن|حول|about|for|of)\s+",
+            "", stripped, flags=_re.IGNORECASE,
+        )
+        return stripped.strip() or command.strip()
+
     def _generic_page_tasks(self, command: str) -> List[Dict[str, Any]]:
-        slug = self._slugify(command)
+        title = self._extract_title(command)
+        slug = self._slugify(title)
         prefix = f"{self.RUNTIME_PREFIX}/projects/{slug}"
         html_content = f"""\
 <!DOCTYPE html>

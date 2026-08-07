@@ -1352,14 +1352,27 @@ async def preview_home():
 
 
 def _inline_assets(html: str, base_dir: str) -> str:
-    """Inline style.css and script.js into an HTML string so it renders without a file server."""
-    css_path = os.path.join(base_dir, "style.css")
-    js_path = os.path.join(base_dir, "script.js")
-    if os.path.exists(css_path):
-        css = open(css_path, encoding="utf-8").read()
+    """Inline style.css and script.js into an HTML string so it renders without a file server.
+
+    base_dir MUST already be validated / realpath-resolved by the caller.
+    Only files that are direct children of base_dir (no sub-paths) are opened.
+    """
+    base_real = os.path.realpath(base_dir)
+
+    def _safe_read(filename: str) -> str | None:
+        target = os.path.realpath(os.path.join(base_real, filename))
+        if not target.startswith(base_real + os.sep):
+            return None
+        if not os.path.isfile(target):
+            return None
+        with open(target, encoding="utf-8") as fh:
+            return fh.read()
+
+    css = _safe_read("style.css")
+    if css is not None:
         html = html.replace('<link rel="stylesheet" href="style.css" />', f"<style>{css}</style>")
-    if os.path.exists(js_path):
-        js = open(js_path, encoding="utf-8").read()
+    js = _safe_read("script.js")
+    if js is not None:
         html = html.replace('<script src="script.js"></script>', f"<script>{js}</script>")
     return html
 
@@ -1371,14 +1384,20 @@ async def preview_project(project_id: str):
 
     تُخدَم من 09_Assets/runtime_workspace/projects/{project_id}/index.html.
     """
-    project_dir = os.path.join(ROOT, "09_Assets", "runtime_workspace", "projects", project_id)
+    import html as _html_mod
+    projects_root = os.path.realpath(os.path.join(ROOT, "09_Assets", "runtime_workspace", "projects"))
+    project_dir = os.path.realpath(os.path.join(projects_root, project_id))
+    # Guard against path traversal — project_dir must be a strict child of projects_root
+    if not project_dir.startswith(projects_root + os.sep):
+        raise HTTPException(status_code=400, detail="Invalid project_id")
     preview_path = os.path.join(project_dir, "index.html")
-    if not os.path.exists(preview_path):
+    if not os.path.isfile(preview_path):
+        safe_id = _html_mod.escape(project_id)
         return HTMLResponse(
             content=(
                 "<html lang='ar' dir='rtl'><head><meta charset='utf-8'>"
                 "<title>Preview</title></head><body style='font-family:sans-serif;padding:2rem;'>"
-                f"<h2>لم يتم إنشاء المشروع «{project_id}» بعد.</h2>"
+                f"<h2>لم يتم إنشاء المشروع «{safe_id}» بعد.</h2>"
                 "<p>أرسل الأمر عبر <code>POST /ask</code> أولاً.</p>"
                 "</body></html>"
             ),
