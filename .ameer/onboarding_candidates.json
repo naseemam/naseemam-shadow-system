@@ -158,5 +158,25 @@
     "approval_state": "pending",
     "target_layer": "founder_memory",
     "reason": "onboarding_requires_explicit_approval"
+  },
+  {
+    "id": "bd7ecaf6-53f7-4484-b673-27376f1f7f6c",
+    "fact": "أنني أفضل العمل في الليل",
+    "source": "onboarding_query",
+    "timestamp": "2026-08-07T21:40:01Z",
+    "confidence": 0.7,
+    "approval_state": "pending",
+    "target_layer": "founder_memory",
+    "reason": "onboarding_requires_explicit_approval"
+  },
+  {
+    "id": "aaebc4eb-d1dd-4e29-8fa6-4cf33540d239",
+    "fact": "أنني أفضل العمل في الليل",
+    "source": "onboarding_query",
+    "timestamp": "2026-08-07T21:40:01Z",
+    "confidence": 0.7,
+    "approval_state": "pending",
+    "target_layer": "founder_memory",
+    "reason": "onboarding_requires_explicit_approval"
   }
 ]
