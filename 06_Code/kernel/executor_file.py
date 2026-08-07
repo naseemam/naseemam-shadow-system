@@ -51,9 +51,12 @@ class FileExecutor:
             path.parent.mkdir(parents=True, exist_ok=True)
             prefix = ""
             if path.exists():
-                existing = path.read_text(encoding="utf-8")
-                if existing and not existing.endswith("\n"):
-                    prefix = "\n"
+                with path.open("rb") as handle:
+                    handle.seek(0, 2)
+                    if handle.tell() > 0:
+                        handle.seek(-1, 2)
+                        if handle.read(1) != b"\n":
+                            prefix = "\n"
             with path.open("a", encoding="utf-8") as handle:
                 handle.write(prefix + content)
             return {

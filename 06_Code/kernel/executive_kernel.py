@@ -10,6 +10,7 @@ Executive Operating Kernel — قلب نظام أمير التشغيلي.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from datetime import datetime, timezone
@@ -421,13 +422,13 @@ class ExecutiveKernel:
                     execution_results.append(outcome)
                     if outcome.get("status") == "completed":
                         completed += 1
-                        self.state.update_task(task_id, "done", result=str(outcome))
+                        self.state.update_task(task_id, "done", result=json.dumps(outcome, ensure_ascii=False))
                     elif outcome.get("status") == "blocked":
                         blocked += 1
-                        self.state.update_task(task_id, "blocked", result=str(outcome))
+                        self.state.update_task(task_id, "blocked", result=json.dumps(outcome, ensure_ascii=False))
                     else:
                         failed += 1
-                        self.state.update_task(task_id, "failed", result=str(outcome))
+                        self.state.update_task(task_id, "failed", result=json.dumps(outcome, ensure_ascii=False))
 
         return {
             "accepted": schedule.get("accepted", False),
