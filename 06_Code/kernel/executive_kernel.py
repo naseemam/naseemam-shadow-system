@@ -34,6 +34,7 @@ from kernel.execution_authorization import ExecutionAuthorization
 from kernel.plan_validator import PlanValidator
 from kernel.scheduler import Scheduler
 from kernel.executor_file import FileExecutor
+from kernel.task_decomposer import TaskDecomposer
 from context.workspace_awareness import WorkspaceAwareness
 from context.session_context import SessionContext
 from context.founder_profile import FounderProfile
@@ -86,6 +87,7 @@ class ExecutiveKernel:
         )
         self.scheduler: Scheduler = Scheduler(self._root, self.state)
         self.file_executor: FileExecutor = FileExecutor(self._root)
+        self.task_decomposer: TaskDecomposer = TaskDecomposer(str(self._root))
 
     # ── Startup helpers ───────────────────────────────────────────────────────
 
@@ -444,6 +446,98 @@ class ExecutiveKernel:
         }
 
     # ── Decision & Approval helpers ───────────────────────────────────────────
+
+    def execute_command(self, command: str) -> dict:
+        """
+        المسار الكامل: أمر بشري → Task Batch → PlanValidator → Scheduler → FileExecutor.
+
+        يُعيد trace كامل لكل خطوة في الـ Pipeline.
+        """
+        # 1. Executive Brain — intent detection (via TaskDecomposer)
+        decomposition = self.task_decomposer.decompose(command)
+        tasks = decomposition.get("tasks", [])
+
+        pipeline_trace = {
+            "command": command,
+            "pipeline": [],
+            "final": {},
+        }
+
+        # Step 1 — ExecutiveBrain / TaskDecomposer
+        pipeline_trace["pipeline"].append({
+            "step": 1,
+            "name": "ExecutiveBrain → TaskDecomposer",
+            "status": "completed" if tasks else "no_match",
+            "output": {
+                "intent": decomposition["intent"],
+                "task_count": decomposition["task_count"],
+                "tasks": [
+                    {"id": t["id"], "description": t.get("description", t["target"])}
+                    for t in tasks
+                ],
+            },
+        })
+
+        if not tasks:
+            pipeline_trace["final"] = {
+                "accepted": False,
+                "reason": "no_tasks_generated",
+                "intent": decomposition["intent"],
+            }
+            return pipeline_trace
+
+        # Steps 2–5 — PlanValidator → Scheduler → FileExecutor (via execute_task)
+        result = self.execute_task(tasks)
+
+        # Step 2 — PlanValidator
+        pipeline_trace["pipeline"].append({
+            "step": 2,
+            "name": "PlanValidator",
+            "status": "passed" if result["validation"]["valid"] else "blocked",
+            "output": result["validation"],
+        })
+
+        # Step 3 — Scheduler
+        pipeline_trace["pipeline"].append({
+            "step": 3,
+            "name": "Scheduler",
+            "status": "accepted" if result["schedule"].get("accepted") else "rejected",
+            "output": result["schedule"].get("summary", {}),
+        })
+
+        # Step 4 — FileExecutor
+        exec_results = result["execution"]["results"]
+        pipeline_trace["pipeline"].append({
+            "step": 4,
+            "name": "FileExecutor",
+            "status": "completed" if result["execution"]["completed"] == len(tasks) else "partial",
+            "output": {
+                "completed": result["execution"]["completed"],
+                "failed": result["execution"]["failed"],
+                "blocked": result["execution"]["blocked"],
+                "files": [
+                    r.get("relative_path", r.get("task_id")) for r in exec_results
+                    if r.get("status") == "completed"
+                ],
+            },
+        })
+
+        pipeline_trace["final"] = {
+            "accepted": result["accepted"],
+            "tasks_queued": result["tasks_queued"],
+            "completed": result["execution"]["completed"],
+            "failed": result["execution"]["failed"],
+            "files_created": [
+                r.get("relative_path") for r in exec_results
+                if r.get("status") == "completed"
+            ],
+            "preview_path": "09_Assets/runtime_workspace/home/index.html"
+            if decomposition["intent"] == "build_homepage" else None,
+        }
+
+        return pipeline_trace
+
+    # ── Decision & Approval helpers (continued) ───────────────────────────────
 
     def record_decision(
         self,

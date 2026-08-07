@@ -228,6 +228,129 @@
       #composer  { padding: 10px 12px; }
       .msg { max-width: 92%; font-size: 14px; }
     }
+
+    /* ─── Pipeline Panel ─────────────────────────────────────────── */
+    #pipelineToggle {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--muted);
+      transition: background .15s, color .15s;
+    }
+    #pipelineToggle.active {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+
+    #pipelinePanel {
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      padding: 16px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    #pipelinePanel.open { display: flex; }
+
+    .pipeline-row {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+    }
+    #pipelineInput {
+      flex: 1;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 9px 14px;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      direction: rtl;
+    }
+    #pipelineInput:focus {
+      border-color: rgba(37,99,235,.4);
+      box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+    }
+    #pipelineRunBtn {
+      border: none;
+      border-radius: var(--radius-sm);
+      background: var(--accent);
+      color: white;
+      padding: 0 18px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background .15s;
+    }
+    #pipelineRunBtn:hover:not(:disabled) { background: var(--accent-dark); }
+    #pipelineRunBtn:disabled { opacity: .45; cursor: not-allowed; }
+
+    #pipelineTrace {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #pipelineTrace.visible { display: flex; }
+
+    .pipe-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-size: 13px;
+      position: relative;
+    }
+    .pipe-step.ok  { border-color: #bbf7d0; background: #f0fdf4; }
+    .pipe-step.err { border-color: #fecaca; background: #fff5f5; }
+    .pipe-step.run { border-color: #bfdbfe; background: #eff6ff; }
+
+    .pipe-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .pipe-body { flex: 1; }
+    .pipe-name  { font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+    .pipe-detail { color: var(--muted); line-height: 1.5; }
+
+    .pipe-files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .pipe-file {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px 9px;
+      font-size: 12px;
+      font-family: monospace;
+      color: var(--accent);
+    }
+
+    .pipe-preview-btn {
+      margin-top: 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: none;
+      background: var(--success);
+      color: white;
+      padding: 7px 16px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity .15s;
+    }
+    .pipe-preview-btn:hover { opacity: .85; }
   </style>
 </head>
 <body>
@@ -238,11 +361,28 @@
         <span class="brand-dot"></span>
         أمير
       </div>
-      <div id="statusBadge" class="checking">
-        <span class="status-dot"></span>
-        <span id="statusText">جارٍ الاتصال...</span>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button id="pipelineToggle">⚙ Pipeline</button>
+        <div id="statusBadge" class="checking">
+          <span class="status-dot"></span>
+          <span id="statusText">جارٍ الاتصال...</span>
+        </div>
       </div>
     </header>
+
+    <!-- ─── Pipeline Panel ──────────────────────────────────────── -->
+    <div id="pipelinePanel">
+      <div class="pipeline-row">
+        <input
+          id="pipelineInput"
+          type="text"
+          placeholder="مثال: ابنِ الصفحة الرئيسية"
+          value="ابنِ الصفحة الرئيسية"
+        />
+        <button id="pipelineRunBtn">▶ نفّذ</button>
+      </div>
+      <div id="pipelineTrace"></div>
+    </div>
 
     <div id="messages" role="log" aria-live="polite" aria-label="المحادثة"></div>
 
@@ -308,6 +448,163 @@
       inputEl.style.height = "auto";
       inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + "px";
     });
+
+    // ── Pipeline Panel ─────────────────────────────────────────────
+    var pipelineToggle = document.getElementById("pipelineToggle");
+    var pipelinePanel  = document.getElementById("pipelinePanel");
+    var pipelineInput  = document.getElementById("pipelineInput");
+    var pipelineRunBtn = document.getElementById("pipelineRunBtn");
+    var pipelineTrace  = document.getElementById("pipelineTrace");
+
+    pipelineToggle.addEventListener("click", function () {
+      var open = pipelinePanel.classList.toggle("open");
+      pipelineToggle.classList.toggle("active", open);
+    });
+
+    pipelineRunBtn.addEventListener("click", runPipeline);
+    pipelineInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") runPipeline();
+    });
+
+    function stepIcon(status) {
+      if (status === "completed" || status === "passed" || status === "accepted") return "✅";
+      if (status === "no_match" || status === "blocked" || status === "rejected") return "❌";
+      return "⏳";
+    }
+    function stepClass(status) {
+      if (status === "completed" || status === "passed" || status === "accepted") return "ok";
+      if (status === "no_match" || status === "blocked" || status === "rejected") return "err";
+      return "run";
+    }
+
+    function renderTrace(trace) {
+      pipelineTrace.innerHTML = "";
+      pipelineTrace.classList.add("visible");
+
+      var steps = trace.pipeline || [];
+      steps.forEach(function (step) {
+        var div = document.createElement("div");
+        div.className = "pipe-step " + stepClass(step.status);
+
+        var iconEl = document.createElement("span");
+        iconEl.className = "pipe-icon";
+        iconEl.textContent = stepIcon(step.status);
+
+        var body = document.createElement("div");
+        body.className = "pipe-body";
+
+        var name = document.createElement("div");
+        name.className = "pipe-name";
+        name.textContent = step.name;
+
+        var detail = document.createElement("div");
+        detail.className = "pipe-detail";
+
+        var out = step.output || {};
+
+        if (step.name.indexOf("TaskDecomposer") !== -1) {
+          detail.textContent = "النية: " + (out.intent || "—") + " • المهام: " + (out.task_count || 0);
+          if (out.tasks && out.tasks.length) {
+            var filesDiv = document.createElement("div");
+            filesDiv.className = "pipe-files";
+            out.tasks.forEach(function (t) {
+              var chip = document.createElement("span");
+              chip.className = "pipe-file";
+              chip.textContent = t.description || t.id;
+              filesDiv.appendChild(chip);
+            });
+            body.appendChild(name);
+            body.appendChild(detail);
+            body.appendChild(filesDiv);
+            div.appendChild(iconEl);
+            div.appendChild(body);
+            pipelineTrace.appendChild(div);
+            return;
+          }
+        } else if (step.name.indexOf("PlanValidator") !== -1) {
+          detail.textContent = step.status === "passed"
+            ? "✔ جميع المهام صالحة للتنفيذ"
+            : "✘ " + (out.blocked || []).join(", ");
+        } else if (step.name.indexOf("Scheduler") !== -1) {
+          detail.textContent = "مجدولة: " + (out.scheduled || 0) + " • محظورة: " + (out.blocked || 0);
+        } else if (step.name.indexOf("FileExecutor") !== -1) {
+          detail.textContent = "مكتملة: " + (out.completed || 0) + " • فاشلة: " + (out.failed || 0);
+          if (out.files && out.files.length) {
+            var filesDiv2 = document.createElement("div");
+            filesDiv2.className = "pipe-files";
+            out.files.forEach(function (f) {
+              var chip = document.createElement("span");
+              chip.className = "pipe-file";
+              chip.textContent = f;
+              filesDiv2.appendChild(chip);
+            });
+            body.appendChild(name);
+            body.appendChild(detail);
+            body.appendChild(filesDiv2);
+            div.appendChild(iconEl);
+            div.appendChild(body);
+            pipelineTrace.appendChild(div);
+            return;
+          }
+        } else {
+          detail.textContent = JSON.stringify(out).slice(0, 120);
+        }
+
+        body.appendChild(name);
+        body.appendChild(detail);
+        div.appendChild(iconEl);
+        div.appendChild(body);
+        pipelineTrace.appendChild(div);
+      });
+
+      // Final — Preview button
+      var final = trace.final || {};
+      if (final.accepted && final.preview_path) {
+        var previewBtn = document.createElement("a");
+        previewBtn.href = "/preview";
+        previewBtn.target = "_blank";
+        previewBtn.className = "pipe-preview-btn";
+        previewBtn.innerHTML = "🔍 فتح Preview";
+        pipelineTrace.appendChild(previewBtn);
+      }
+    }
+
+    function runPipeline() {
+      var cmd = pipelineInput.value.trim();
+      if (!cmd) return;
+
+      pipelineRunBtn.disabled = true;
+      pipelineTrace.innerHTML = "";
+      pipelineTrace.classList.add("visible");
+
+      // Show running steps
+      var runDiv = document.createElement("div");
+      runDiv.className = "pipe-step run";
+      runDiv.innerHTML = "<span class='pipe-icon'>⏳</span><div class='pipe-body'><div class='pipe-name'>جارٍ التنفيذ...</div><div class='pipe-detail'>" + cmd + "</div></div>";
+      pipelineTrace.appendChild(runDiv);
+
+      fetch("/execute/command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: cmd })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          renderTrace(data);
+        })
+        .catch(function (err) {
+          pipelineTrace.innerHTML = "";
+          var errDiv = document.createElement("div");
+          errDiv.className = "pipe-step err";
+          errDiv.innerHTML = "<span class='pipe-icon'>❌</span><div class='pipe-body'><div class='pipe-name'>خطأ</div><div class='pipe-detail'>تعذّر الاتصال بالخادم.</div></div>";
+          pipelineTrace.appendChild(errDiv);
+          pipelineTrace.classList.add("visible");
+        })
+        .finally(function () {
+          pipelineRunBtn.disabled = false;
+        });
+    }
+
 
     // ── Send on Enter (Shift+Enter = newline) ──────────────────────
     inputEl.addEventListener("keydown", function (e) {

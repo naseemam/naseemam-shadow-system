@@ -1216,6 +1216,89 @@ async def execute_tasks(request: Request):
     return utf8_json_response(report, status_code=status_code)
 
 
+@app.post('/execute/command')
+async def execute_command(request: Request):
+    """
+    POST /execute/command — تحويل أمر بشري إلى Task Batch وتنفيذه.
+
+    المسار الكامل:
+        human_command
+            ↓ ExecutiveBrain
+            ↓ TaskDecomposer
+            ↓ PlanValidator
+            ↓ Scheduler
+            ↓ FileExecutor
+            ↓ files created
+
+    طلب مثال:
+        POST /execute/command
+        { "command": "ابنِ الصفحة الرئيسية" }
+
+    الاستجابة: trace كامل لكل خطوة في الـ Pipeline.
+    """
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable", "kernel": "inactive"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return utf8_json_response({"error": "invalid JSON"}, status_code=400)
+
+    command = str(body.get("command", "")).strip()
+    if not command:
+        return utf8_json_response({"error": "command field is required"}, status_code=422)
+
+    try:
+        trace = KERNEL.execute_command(command)
+    except Exception as exc:
+        _log("execute_command_error", level="error", command=command, error=str(exc))
+        return utf8_json_response({"error": "execution failed — see server logs"}, status_code=500)
+
+    accepted = trace.get("final", {}).get("accepted", False)
+    _log(
+        "execute_command_completed",
+        command=command,
+        intent=trace.get("pipeline", [{}])[0].get("output", {}).get("intent"),
+        accepted=accepted,
+        completed=trace.get("final", {}).get("completed", 0),
+    )
+    return utf8_json_response(trace, status_code=200 if accepted else 422)
+
+
+@app.get('/preview', response_class=HTMLResponse)
+async def preview_home():
+    """
+    GET /preview — عرض الصفحة الرئيسية المُنشأة بواسطة أمير.
+
+    تُخدَم من 09_Assets/runtime_workspace/home/index.html.
+    """
+    preview_path = os.path.join(ROOT, "09_Assets", "runtime_workspace", "home", "index.html")
+    if not os.path.exists(preview_path):
+        return HTMLResponse(
+            content=(
+                "<html lang='ar' dir='rtl'><head><meta charset='utf-8'>"
+                "<title>Preview</title></head><body style='font-family:sans-serif;padding:2rem;'>"
+                "<h2>لم يتم إنشاء الصفحة الرئيسية بعد.</h2>"
+                "<p>أرسل الأمر: <code>ابنِ الصفحة الرئيسية</code> عبر <code>POST /execute/command</code> أولاً.</p>"
+                "</body></html>"
+            ),
+            media_type="text/html; charset=utf-8",
+            status_code=404,
+        )
+    with open(preview_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    # Inline CSS and JS so the preview works without a static file server
+    css_path = os.path.join(ROOT, "09_Assets", "runtime_workspace", "home", "style.css")
+    js_path = os.path.join(ROOT, "09_Assets", "runtime_workspace", "home", "script.js")
+    if os.path.exists(css_path):
+        css = open(css_path, encoding="utf-8").read()
+        content = content.replace('<link rel="stylesheet" href="style.css" />', f"<style>{css}</style>")
+    if os.path.exists(js_path):
+        js = open(js_path, encoding="utf-8").read()
+        content = content.replace('<script src="script.js"></script>', f"<script>{js}</script>")
+    return HTMLResponse(content=content, media_type="text/html; charset=utf-8")
+
+
 @app.post('/learning/reset')
 async def reset_learning():
     """إعادة ضبط التفضيلات المُتعلَّمة إلى الإعدادات الافتراضية (بموافقة المؤسسة)."""
