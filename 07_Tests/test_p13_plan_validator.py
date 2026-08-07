@@ -489,11 +489,11 @@ class TestKernelGate(unittest.TestCase):
         self.kernel.execute_task(tasks)
         self.assertEqual(len(self.kernel.state.running_tasks), initial_count)
 
-    def test_accepted_tasks_queued_in_state(self):
-        """Accepted tasks are stored in running_tasks for the Scheduler."""
-        initial_count = len(self.kernel.state.running_tasks)
+    def test_accepted_tasks_are_persisted_in_state(self):
+        """Accepted tasks remain persisted even after immediate execution."""
         self.kernel.execute_task([_make_valid_task("state-task-1")])
-        self.assertEqual(len(self.kernel.state.running_tasks), initial_count + 1)
+        stored = self.kernel.state.snapshot()["running_tasks"]
+        self.assertTrue(any(task.get("id") == "state-task-1" for task in stored))
 
     def test_execute_task_result_shape(self):
         result = self.kernel.execute_task([_make_valid_task()])

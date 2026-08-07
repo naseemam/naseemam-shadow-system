@@ -31,6 +31,8 @@ from kernel.capability_registry import CapabilityRegistry
 from kernel.permission_registry import PermissionRegistry
 from kernel.execution_authorization import ExecutionAuthorization
 from kernel.plan_validator import PlanValidator
+from kernel.scheduler import Scheduler
+from kernel.executor_file import FileExecutor
 from context.workspace_awareness import WorkspaceAwareness
 from context.session_context import SessionContext
 from context.founder_profile import FounderProfile
@@ -81,6 +83,8 @@ class ExecutiveKernel:
             capability_registry=self.capabilities,
             permission_registry=self.permissions,
         )
+        self.scheduler: Scheduler = Scheduler(self._root, self.state)
+        self.file_executor: FileExecutor = FileExecutor(self._root)
 
     # ── Startup helpers ───────────────────────────────────────────────────────
 
@@ -368,17 +372,74 @@ class ExecutiveKernel:
             return {
                 "accepted": False,
                 "validation": validation,
+                "schedule": {
+                    "accepted": False,
+                    "blocked": [],
+                    "batches": [],
+                    "execution_order": [],
+                    "summary": {"total": len(tasks), "scheduled": 0, "blocked": 0, "parallel_batches": 0},
+                },
+                "execution": {
+                    "completed": 0,
+                    "failed": 0,
+                    "blocked": 0,
+                    "results": [],
+                },
                 "tasks_queued": 0,
             }
 
-        # تسجيل المهام في الحالة (Scheduler سيلتقطها لاحقاً في P1.4)
+        schedule = self.scheduler.schedule(tasks)
+
         for task in tasks:
-            self.state.add_task(task)
+            stored_task = dict(task)
+            if any(item.get("id") == task.get("id") for item in schedule.get("blocked", [])):
+                stored_task["status"] = "blocked"
+            else:
+                stored_task["status"] = "pending"
+            self.state.add_task(stored_task)
+
+        execution_results = []
+        completed = 0
+        failed = 0
+        blocked = len(schedule.get("blocked", []))
+
+        if schedule.get("accepted"):
+            for batch in schedule.get("batches", []):
+                for task in batch.get("tasks", []):
+                    task_id = task.get("id")
+                    executor = str(task.get("executor", "")).lower()
+                    self.state.update_task(task_id, "in_progress")
+                    if executor == "file":
+                        outcome = self.file_executor.execute(task)
+                    else:
+                        outcome = {
+                            "task_id": task_id,
+                            "status": "failed",
+                            "reason": "executor_not_implemented",
+                            "executor": executor,
+                        }
+                    execution_results.append(outcome)
+                    if outcome.get("status") == "completed":
+                        completed += 1
+                        self.state.update_task(task_id, "done", result=str(outcome))
+                    elif outcome.get("status") == "blocked":
+                        blocked += 1
+                        self.state.update_task(task_id, "blocked", result=str(outcome))
+                    else:
+                        failed += 1
+                        self.state.update_task(task_id, "failed", result=str(outcome))
 
         return {
-            "accepted": True,
+            "accepted": schedule.get("accepted", False),
             "validation": validation,
-            "tasks_queued": len(tasks),
+            "schedule": schedule,
+            "execution": {
+                "completed": completed,
+                "failed": failed,
+                "blocked": blocked,
+                "results": execution_results,
+            },
+            "tasks_queued": schedule.get("summary", {}).get("scheduled", 0),
         }
 
     # ── Decision & Approval helpers ───────────────────────────────────────────
