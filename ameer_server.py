@@ -1334,6 +1334,57 @@ async def preview_home():
     return HTMLResponse(content=content, media_type="text/html; charset=utf-8")
 
 
+@app.get('/preview/projects/{slug}', response_class=HTMLResponse)
+async def preview_project(slug: str):
+    """
+    GET /preview/projects/{slug} — عرض مشروع عام مُنشأ بواسطة build_generic.
+
+    يُخدَم من 09_Assets/runtime_workspace/projects/{slug}/index.html.
+    """
+    # Reject slugs that try to escape the projects directory
+    if ".." in slug or "/" in slug or "\\" in slug:
+        return HTMLResponse(
+            content=(
+                "<html lang='ar' dir='rtl'><head><meta charset='utf-8'>"
+                "<title>خطأ</title></head><body style='font-family:sans-serif;padding:2rem;'>"
+                "<h2>معرّف المشروع غير صالح.</h2>"
+                "</body></html>"
+            ),
+            media_type="text/html; charset=utf-8",
+            status_code=400,
+        )
+
+    project_dir = os.path.join(ROOT, "09_Assets", "runtime_workspace", "projects", slug)
+    index_path = os.path.join(project_dir, "index.html")
+
+    if not os.path.exists(index_path):
+        return HTMLResponse(
+            content=(
+                f"<html lang='ar' dir='rtl'><head><meta charset='utf-8'>"
+                f"<title>Preview</title></head><body style='font-family:sans-serif;padding:2rem;'>"
+                f"<h2>لم يتم إنشاء المشروع بعد.</h2>"
+                f"<p>المشروع <code>{slug}</code> غير موجود.</p>"
+                f"</body></html>"
+            ),
+            media_type="text/html; charset=utf-8",
+            status_code=404,
+        )
+
+    with open(index_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    css_path = os.path.join(project_dir, "style.css")
+    js_path = os.path.join(project_dir, "script.js")
+    if os.path.exists(css_path):
+        css = open(css_path, encoding="utf-8").read()
+        content = content.replace('<link rel="stylesheet" href="style.css" />', f"<style>{css}</style>")
+    if os.path.exists(js_path):
+        js = open(js_path, encoding="utf-8").read()
+        content = content.replace('<script src="script.js"></script>', f"<script>{js}</script>")
+
+    return HTMLResponse(content=content, media_type="text/html; charset=utf-8")
+
+
 @app.post('/learning/reset')
 async def reset_learning():
     """إعادة ضبط التفضيلات المُتعلَّمة إلى الإعدادات الافتراضية (بموافقة المؤسسة)."""
