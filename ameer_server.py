@@ -571,7 +571,7 @@ async def ask(request: Request):
             _slug = _preview_path[len("09_Assets/runtime_workspace/projects/"):].split("/")[0]
             if _slug:
                 user_payload["preview_url"] = f"/preview/projects/{_slug}"
-        elif _preview_path:
+        elif _preview_path.startswith("09_Assets/runtime_workspace/home/"):
             user_payload["preview_url"] = "/preview"
     _log("ask_completed", request_id=request_id)
     return utf8_json_response(user_payload, headers=runtime_headers(workspace_root=REPO_ROOT))
