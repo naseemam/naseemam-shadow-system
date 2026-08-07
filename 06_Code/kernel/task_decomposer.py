@@ -34,6 +34,7 @@ from typing import Any, Dict, List
 _BUILD_HOME_PATTERNS = [
     # Arabic
     "ابن", "ابنِ", "ابنى", "بناء", "اصنع", "اصنعي",
+    "أنشئ", "انشئ", "إنشاء",
     "الصفحة الرئيسية", "صفحة رئيسية", "الهوم", "homepage",
     # English
     "build", "create", "make", "generate",
@@ -58,7 +59,7 @@ def _detect_intent(command: str) -> str:
     ):
         return "build_homepage"
 
-    if _matches(command, ["build", "ابن", "ابنِ", "اصنع", "بناء"]):
+    if _matches(command, ["build", "ابن", "ابنِ", "اصنع", "بناء", "أنشئ", "انشئ"]):
         return "build_generic"
 
     return "unknown"
