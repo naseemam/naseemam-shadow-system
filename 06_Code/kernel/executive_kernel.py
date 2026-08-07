@@ -401,7 +401,7 @@ class ExecutiveKernel:
         execution_results = []
         completed = 0
         failed = 0
-        blocked = len(schedule.get("blocked", []))
+        blocked = 0
 
         if schedule.get("accepted"):
             for batch in schedule.get("batches", []):

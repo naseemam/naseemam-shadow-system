@@ -25,7 +25,7 @@ class FileExecutor:
 
         try:
             path = self._resolve_target(target)
-        except Exception:
+        except ValueError:
             return {
                 "task_id": task_id,
                 "status": "blocked",
