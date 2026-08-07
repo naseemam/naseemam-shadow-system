@@ -195,15 +195,17 @@ class Scheduler:
 
     def _detect_cycle(self, task_map: Dict[str, Dict[str, Any]]) -> List[str]:
         visited: Set[str] = set()
+        in_stack: Set[str] = set()
         path: List[str] = []
 
         def dfs(node: str) -> Optional[List[str]]:
-            if node in path:
+            if node in in_stack:
                 start = path.index(node)
                 return path[start:] + [node]
             if node in visited:
                 return None
             visited.add(node)
+            in_stack.add(node)
             path.append(node)
             for dep in [str(dep) for dep in task_map.get(node, {}).get("depends_on", []) if dep]:
                 if dep in task_map:
@@ -211,6 +213,7 @@ class Scheduler:
                     if result:
                         return result
             path.pop()
+            in_stack.discard(node)
             return None
 
         for node in task_map:

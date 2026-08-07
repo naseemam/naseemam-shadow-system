@@ -95,7 +95,10 @@ class FileExecutor:
         }
 
     def _resolve_target(self, target: str) -> Path:
-        path = (self._root / target).resolve() if not Path(target).is_absolute() else Path(target).resolve()
+        raw_target = Path(target)
+        if raw_target.is_absolute():
+            raise ValueError("absolute_targets_not_allowed")
+        path = (self._root / raw_target).resolve()
         if not path.is_relative_to(self._runtime_workspace):
             raise ValueError("target_outside_runtime_workspace")
         return path

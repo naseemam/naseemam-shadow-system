@@ -145,6 +145,15 @@ class KernelExecutionTests(unittest.TestCase):
         self.assertEqual(result["schedule"]["execution_order"], ["index"])
         self.assertEqual(result["execution"]["results"][0]["status"], "completed")
 
+    def test_file_executor_rejects_absolute_targets(self):
+        absolute_target = str(Path(self.tmp, "09_Assets", "runtime_workspace", "absolute.txt"))
+        result = self.kernel.file_executor.execute(
+            _task("absolute", absolute_target, content="x")
+        )
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["reason"], "target_outside_runtime_workspace")
+
 
 if __name__ == "__main__":
     unittest.main()
