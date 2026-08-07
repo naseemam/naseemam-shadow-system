@@ -593,7 +593,21 @@
       // Show running steps
       var runDiv = document.createElement("div");
       runDiv.className = "pipe-step run";
-      runDiv.innerHTML = "<span class='pipe-icon'>⏳</span><div class='pipe-body'><div class='pipe-name'>جارٍ التنفيذ...</div><div class='pipe-detail'>" + cmd + "</div></div>";
+      var runIcon = document.createElement("span");
+      runIcon.className = "pipe-icon";
+      runIcon.textContent = "⏳";
+      var runBody = document.createElement("div");
+      runBody.className = "pipe-body";
+      var runName = document.createElement("div");
+      runName.className = "pipe-name";
+      runName.textContent = "جارٍ التنفيذ...";
+      var runDetail = document.createElement("div");
+      runDetail.className = "pipe-detail";
+      runDetail.textContent = cmd;
+      runBody.appendChild(runName);
+      runBody.appendChild(runDetail);
+      runDiv.appendChild(runIcon);
+      runDiv.appendChild(runBody);
       pipelineTrace.appendChild(runDiv);
 
       fetch("/execute/command", {
