@@ -201,8 +201,13 @@ def utf8_json_response(payload, headers: dict[str, str] | None = None, status_co
 DOCUMENTS = load_documents()
 
 class AskRequest(BaseModel):
-    query: str
+    query: str = ""
+    message: str = ""
     max_results: int = 5
+
+    @property
+    def resolved_query(self) -> str:
+        return (self.query or self.message).strip()
 
     class Config:
         extra = 'allow'
@@ -319,7 +324,7 @@ async def ask(request: Request):
         raise HTTPException(status_code=400, detail="Expected JSON object")
 
     req = AskRequest(**payload)
-    q = req.query.strip() if isinstance(req.query, str) else ''
+    q = req.resolved_query
     if not q:
         raise HTTPException(status_code=400, detail="Empty query")
 
@@ -445,12 +450,21 @@ async def ask(request: Request):
                     completed = final_exec.get("completed", 0)
                     files = final_exec.get("files_created") or []
                     file_list = "، ".join(f for f in files if f) if files else ""
+                    _exec_intent = kernel_execution_trace.get("pipeline", [{}])[0].get("output", {}).get("intent", "")
+                    _preview_hint = ""
+                    _pp = final_exec.get("preview_path") or ""
+                    if "/projects/" in _pp:
+                        _slug = _pp.split("/projects/", 1)[1].replace("/index.html", "").rstrip("/")
+                        _preview_hint = f"\n\nيمكنك معاينة الصفحة الآن عبر: /preview/projects/{_slug}"
+                    elif _pp.endswith("home/index.html"):
+                        _preview_hint = "\n\nيمكنك معاينتها الآن عبر رابط Preview أدناه."
+                    _page_label = "الصفحة الرئيسية" if _exec_intent == "build_homepage" else "الصفحة"
                     kernel_execution_reply = (
-                        f"✅ تم بناء الصفحة الرئيسية بنجاح! "
+                        f"✅ تم بناء {_page_label} بنجاح! "
                         f"أُنشئت {completed} ملفات"
                         + (f": {file_list}" if file_list else "")
-                        + ".\n\n"
-                        "يمكنك معاينتها الآن عبر رابط Preview أدناه."
+                        + "."
+                        + _preview_hint
                     )
                 elif not final_exec.get("accepted") and kernel_execution_trace.get("pipeline"):
                     kernel_execution_reply = (
@@ -566,6 +580,16 @@ async def ask(request: Request):
     user_payload["request_id"] = request_id
     if kernel_execution_trace is not None:
         user_payload["execution_trace"] = kernel_execution_trace
+        _preview_path = kernel_execution_trace.get("final", {}).get("preview_path") or ""
+        if _preview_path:
+            # Derive preview URL from preview_path
+            # e.g. "09_Assets/runtime_workspace/projects/حلم-الندى/index.html"
+            # → "/preview/projects/حلم-الندى"
+            if "/projects/" in _preview_path:
+                _slug = _preview_path.split("/projects/", 1)[1].replace("/index.html", "").rstrip("/")
+                user_payload["preview_url"] = f"/preview/projects/{_slug}"
+            elif _preview_path.endswith("home/index.html"):
+                user_payload["preview_url"] = "/preview"
     _log("ask_completed", request_id=request_id)
     return utf8_json_response(user_payload, headers=runtime_headers(workspace_root=REPO_ROOT))
 
@@ -595,7 +619,7 @@ async def ask_trace(request: Request):
         raise HTTPException(status_code=400, detail="Expected JSON object")
 
     req = AskRequest(**payload)
-    q = req.query.strip() if isinstance(req.query, str) else ''
+    q = req.resolved_query
     if not q:
         raise HTTPException(status_code=400, detail="Empty query")
 
@@ -1322,15 +1346,48 @@ async def preview_home():
         )
     with open(preview_path, "r", encoding="utf-8") as f:
         content = f.read()
-    # Inline CSS and JS so the preview works without a static file server
-    css_path = os.path.join(ROOT, "09_Assets", "runtime_workspace", "home", "style.css")
-    js_path = os.path.join(ROOT, "09_Assets", "runtime_workspace", "home", "script.js")
+    home_dir = os.path.join(ROOT, "09_Assets", "runtime_workspace", "home")
+    content = _inline_assets(content, home_dir)
+    return HTMLResponse(content=content, media_type="text/html; charset=utf-8")
+
+
+def _inline_assets(html: str, base_dir: str) -> str:
+    """Inline style.css and script.js into an HTML string so it renders without a file server."""
+    css_path = os.path.join(base_dir, "style.css")
+    js_path = os.path.join(base_dir, "script.js")
     if os.path.exists(css_path):
         css = open(css_path, encoding="utf-8").read()
-        content = content.replace('<link rel="stylesheet" href="style.css" />', f"<style>{css}</style>")
+        html = html.replace('<link rel="stylesheet" href="style.css" />', f"<style>{css}</style>")
     if os.path.exists(js_path):
         js = open(js_path, encoding="utf-8").read()
-        content = content.replace('<script src="script.js"></script>', f"<script>{js}</script>")
+        html = html.replace('<script src="script.js"></script>', f"<script>{js}</script>")
+    return html
+
+
+@app.get('/preview/projects/{project_id:path}', response_class=HTMLResponse)
+async def preview_project(project_id: str):
+    """
+    GET /preview/projects/{project_id} — عرض صفحة مشروع مُنشأة بواسطة أمير.
+
+    تُخدَم من 09_Assets/runtime_workspace/projects/{project_id}/index.html.
+    """
+    project_dir = os.path.join(ROOT, "09_Assets", "runtime_workspace", "projects", project_id)
+    preview_path = os.path.join(project_dir, "index.html")
+    if not os.path.exists(preview_path):
+        return HTMLResponse(
+            content=(
+                "<html lang='ar' dir='rtl'><head><meta charset='utf-8'>"
+                "<title>Preview</title></head><body style='font-family:sans-serif;padding:2rem;'>"
+                f"<h2>لم يتم إنشاء المشروع «{project_id}» بعد.</h2>"
+                "<p>أرسل الأمر عبر <code>POST /ask</code> أولاً.</p>"
+                "</body></html>"
+            ),
+            media_type="text/html; charset=utf-8",
+            status_code=404,
+        )
+    with open(preview_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    content = _inline_assets(content, project_dir)
     return HTMLResponse(content=content, media_type="text/html; charset=utf-8")
 
 

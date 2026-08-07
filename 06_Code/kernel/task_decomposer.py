@@ -58,7 +58,7 @@ def _detect_intent(command: str) -> str:
     ):
         return "build_homepage"
 
-    if _matches(command, ["build", "ابن", "ابنِ", "اصنع", "بناء"]):
+    if _matches(command, ["build", "ابن", "ابنِ", "اصنع", "بناء", "أنشئ", "انشئ", "أنشئي", "صمم", "اعمل", "create", "make", "generate"]):
         return "build_generic"
 
     return "unknown"
@@ -385,17 +385,94 @@ class TaskDecomposer:
             },
         ]
 
+    @staticmethod
+    def _slugify(text: str) -> str:
+        """تحويل نص عربي/إنجليزي إلى slug آمن للمسارات."""
+        import re as _re
+        slug = text.strip()
+        # Replace spaces and common separators with hyphens
+        slug = _re.sub(r"[\s_/\\]+", "-", slug)
+        # Remove characters that are unsafe in file paths
+        slug = _re.sub(r"[^\w\u0600-\u06FF\-]", "", slug)
+        slug = slug.strip("-") or "project"
+        return slug[:60]
+
     def _generic_page_tasks(self, command: str) -> List[Dict[str, Any]]:
-        slug = "page"
-        prefix = f"{self.RUNTIME_PREFIX}/{slug}"
+        slug = self._slugify(command)
+        prefix = f"{self.RUNTIME_PREFIX}/projects/{slug}"
+        html_content = f"""\
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{command}</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="page-wrapper">
+    <h1 class="page-title">{command}</h1>
+    <p class="page-subtitle">أُنشئت بواسطة أمير</p>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>"""
+        css_content = """\
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+  background: #f8f9fa;
+  color: #212529;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.page-wrapper {
+  text-align: center;
+  padding: 3rem 2rem;
+  max-width: 700px;
+}
+.page-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  color: #1a1a2e;
+}
+.page-subtitle {
+  font-size: 1.1rem;
+  color: #6c757d;
+}"""
+        js_content = """\
+document.addEventListener('DOMContentLoaded', function () {
+  console.log('[Ameer] Project page loaded.');
+});"""
         return [
             {
                 "id": f"page-html-{uuid.uuid4().hex[:6]}",
                 "action": "write",
                 "executor": "file",
                 "target": f"{prefix}/index.html",
-                "content": f"<!DOCTYPE html>\n<html lang='ar' dir='rtl'><head><meta charset='utf-8'><title>{command}</title></head><body><h1>{command}</h1></body></html>",
+                "content": html_content,
                 "priority": "high",
                 "description": f"كتابة index.html لـ: {command}",
+            },
+            {
+                "id": f"page-css-{uuid.uuid4().hex[:6]}",
+                "action": "write",
+                "executor": "file",
+                "target": f"{prefix}/style.css",
+                "content": css_content,
+                "priority": "high",
+                "description": f"كتابة style.css لـ: {command}",
+            },
+            {
+                "id": f"page-js-{uuid.uuid4().hex[:6]}",
+                "action": "write",
+                "executor": "file",
+                "target": f"{prefix}/script.js",
+                "content": js_content,
+                "priority": "normal",
+                "description": f"كتابة script.js لـ: {command}",
             },
         ]

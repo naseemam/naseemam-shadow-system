@@ -531,8 +531,15 @@ class ExecutiveKernel:
                 r.get("relative_path") for r in exec_results
                 if r.get("status") == "completed"
             ],
-            "preview_path": "09_Assets/runtime_workspace/home/index.html"
-            if decomposition["intent"] == "build_homepage" else None,
+            "preview_path": (
+                "09_Assets/runtime_workspace/home/index.html"
+                if decomposition["intent"] == "build_homepage"
+                else next(
+                    (r.get("relative_path") for r in exec_results
+                     if r.get("status") == "completed" and (r.get("relative_path") or "").endswith("index.html")),
+                    None,
+                )
+            ),
         }
 
         return pipeline_trace
