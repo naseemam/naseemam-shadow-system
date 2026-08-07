@@ -125,7 +125,6 @@ class Scheduler:
             i = 0
             while i < len(ready):
                 current = ready[i]
-                current_id = str(current.get("id"))
                 priority_value = self._priority_value(current.get("priority"))
 
                 if self._is_parallel_safe(current):
@@ -154,6 +153,7 @@ class Scheduler:
                     i = j
                     continue
 
+                current_id = str(current.get("id"))
                 batches.append({
                     "parallel": False,
                     "task_ids": [current_id],
