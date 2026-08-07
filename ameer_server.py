@@ -1150,6 +1150,72 @@ async def get_learning_preferences():
     })
 
 
+@app.post('/execute')
+async def execute_tasks(request: Request):
+    """
+    POST /execute — تنفيذ مهام حقيقية عبر Pipeline الكامل.
+
+    يُوصل مباشرةً بـ:
+        ExecutiveKernel → PlanValidator → Scheduler → FileExecutor
+
+    طلب مثال:
+        POST /execute
+        {
+          "tasks": [
+            {
+              "id": "home-index",
+              "action": "write",
+              "executor": "file",
+              "target": "09_Assets/runtime_workspace/home/index.html",
+              "content": "<!DOCTYPE html>...",
+              "priority": "high"
+            }
+          ]
+        }
+
+    الاستجابة:
+        {
+          "accepted": true,
+          "validation": { ... },
+          "schedule": { ... },
+          "execution": {
+            "completed": 1,
+            "failed": 0,
+            "blocked": 0,
+            "results": [ { "task_id": "home-index", "status": "completed", ... } ]
+          },
+          "tasks_queued": 1
+        }
+
+    قيود الأمان:
+        - كل الأهداف يجب أن تقع داخل 09_Assets/runtime_workspace
+        - الكتابة خارج هذا المسار مرفوضة تلقائياً من PlanValidator
+    """
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable", "kernel": "inactive"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return utf8_json_response({"error": "invalid JSON"}, status_code=400)
+
+    tasks = body.get("tasks")
+    if not isinstance(tasks, list) or len(tasks) == 0:
+        return utf8_json_response(
+            {"error": "tasks field is required and must be a non-empty list"},
+            status_code=422,
+        )
+
+    try:
+        report = KERNEL.execute_task(tasks)
+    except Exception as exc:
+        _log("execute_task_error", level="error", error=str(exc))
+        return utf8_json_response({"error": "execution failed — see server logs"}, status_code=500)
+
+    status_code = 200 if report.get("accepted") else 422
+    return utf8_json_response(report, status_code=status_code)
+
+
 @app.post('/learning/reset')
 async def reset_learning():
     """إعادة ضبط التفضيلات المُتعلَّمة إلى الإعدادات الافتراضية (بموافقة المؤسسة)."""
