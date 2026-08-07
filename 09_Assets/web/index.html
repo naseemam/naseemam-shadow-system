@@ -351,6 +351,19 @@
       transition: opacity .15s;
     }
     .pipe-preview-btn:hover { opacity: .85; }
+
+    .inline-trace {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 6px 0 4px;
+      padding: 10px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      max-width: 480px;
+    }
   </style>
 </head>
 <body>
@@ -626,6 +639,101 @@
       return el;
     }
 
+    // ── Render execution trace inline in the chat ─────────────────
+    function addInlineTrace(trace) {
+      var container = document.createElement("div");
+      container.className = "inline-trace";
+
+      var steps = trace.pipeline || [];
+      steps.forEach(function (step) {
+        var div = document.createElement("div");
+        div.className = "pipe-step " + stepClass(step.status);
+
+        var iconEl = document.createElement("span");
+        iconEl.className = "pipe-icon";
+        iconEl.textContent = stepIcon(step.status);
+
+        var body = document.createElement("div");
+        body.className = "pipe-body";
+
+        var name = document.createElement("div");
+        name.className = "pipe-name";
+        name.textContent = step.name;
+
+        var detail = document.createElement("div");
+        detail.className = "pipe-detail";
+
+        var out = step.output || {};
+
+        if (step.name.indexOf("TaskDecomposer") !== -1) {
+          detail.textContent = "النية: " + (out.intent || "—") + " • المهام: " + (out.task_count || 0);
+          if (out.tasks && out.tasks.length) {
+            var filesDiv = document.createElement("div");
+            filesDiv.className = "pipe-files";
+            out.tasks.forEach(function (t) {
+              var chip = document.createElement("span");
+              chip.className = "pipe-file";
+              chip.textContent = t.description || t.id;
+              filesDiv.appendChild(chip);
+            });
+            body.appendChild(name);
+            body.appendChild(detail);
+            body.appendChild(filesDiv);
+            div.appendChild(iconEl);
+            div.appendChild(body);
+            container.appendChild(div);
+            return;
+          }
+        } else if (step.name.indexOf("PlanValidator") !== -1) {
+          detail.textContent = step.status === "passed"
+            ? "✔ جميع المهام صالحة للتنفيذ"
+            : "✘ " + (out.blocked || []).join(", ");
+        } else if (step.name.indexOf("Scheduler") !== -1) {
+          detail.textContent = "مجدولة: " + (out.scheduled || 0) + " • محظورة: " + (out.blocked || 0);
+        } else if (step.name.indexOf("FileExecutor") !== -1) {
+          detail.textContent = "مكتملة: " + (out.completed || 0) + " • فاشلة: " + (out.failed || 0);
+          if (out.files && out.files.length) {
+            var filesDiv2 = document.createElement("div");
+            filesDiv2.className = "pipe-files";
+            out.files.forEach(function (f) {
+              var chip = document.createElement("span");
+              chip.className = "pipe-file";
+              chip.textContent = f;
+              filesDiv2.appendChild(chip);
+            });
+            body.appendChild(name);
+            body.appendChild(detail);
+            body.appendChild(filesDiv2);
+            div.appendChild(iconEl);
+            div.appendChild(body);
+            container.appendChild(div);
+            return;
+          }
+        } else {
+          detail.textContent = JSON.stringify(out).slice(0, 120);
+        }
+
+        body.appendChild(name);
+        body.appendChild(detail);
+        div.appendChild(iconEl);
+        div.appendChild(body);
+        container.appendChild(div);
+      });
+
+      var final = trace.final || {};
+      if (final.accepted && final.preview_path) {
+        var previewBtn = document.createElement("a");
+        previewBtn.href = "/preview";
+        previewBtn.target = "_blank";
+        previewBtn.className = "pipe-preview-btn";
+        previewBtn.innerHTML = "🔍 فتح Preview";
+        container.appendChild(previewBtn);
+      }
+
+      msgBox.appendChild(container);
+      msgBox.scrollTop = msgBox.scrollHeight;
+    }
+
     // ── Send ───────────────────────────────────────────────────────
     function send() {
       var q = inputEl.value.trim();
@@ -656,6 +764,9 @@
           var reply = (data && (data.reply || data.message)) || "";
           if (!reply) reply = "حاضر، لم أتلقَّ ردًا واضحًا. هل تريد إعادة المحاولة؟";
           addMsg(reply, "ameer");
+          if (data && data.execution_trace) {
+            addInlineTrace(data.execution_trace);
+          }
         })
         .catch(function () {
           typingEl.remove();

@@ -431,6 +431,15 @@ async def ask(request: Request):
         plan,
         workspace_root=ROOT,
     )
+    # ── 3b. Executive Kernel execution pipeline (when command has clear intent) ──
+    kernel_execution_trace: dict | None = None
+    if KERNEL:
+        try:
+            decomp = KERNEL.task_decomposer.decompose(q)
+            if decomp.get("intent", "unknown") != "unknown":
+                kernel_execution_trace = KERNEL.execute_command(q)
+        except Exception:
+            pass
     # ── 4. Compose fallback reply (used only if ECE is unavailable) ─────────────
     fallback_reply, reply_source = EXECUTIVE_BRAIN.compose_final_reply(
         q,
@@ -531,6 +540,8 @@ async def ask(request: Request):
         }
     user_payload.update(public_runtime_identity(workspace_root=REPO_ROOT))
     user_payload["request_id"] = request_id
+    if kernel_execution_trace is not None:
+        user_payload["execution_trace"] = kernel_execution_trace
     _log("ask_completed", request_id=request_id)
     return utf8_json_response(user_payload, headers=runtime_headers(workspace_root=REPO_ROOT))
 
