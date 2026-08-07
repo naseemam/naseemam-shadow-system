@@ -24,6 +24,7 @@ TaskDecomposer — يحوّل أمرًا بشريًا إلى Task Batch قابل
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List
@@ -34,6 +35,7 @@ from typing import Any, Dict, List
 _BUILD_HOME_PATTERNS = [
     # Arabic
     "ابن", "ابنِ", "ابنى", "بناء", "اصنع", "اصنعي",
+    "أنشئ", "انشئ", "إنشاء",
     "الصفحة الرئيسية", "صفحة رئيسية", "الهوم", "homepage",
     # English
     "build", "create", "make", "generate",
@@ -58,7 +60,7 @@ def _detect_intent(command: str) -> str:
     ):
         return "build_homepage"
 
-    if _matches(command, ["build", "ابن", "ابنِ", "اصنع", "بناء"]):
+    if _matches(command, ["build", "ابن", "ابنِ", "اصنع", "بناء", "أنشئ", "انشئ"]):
         return "build_generic"
 
     return "unknown"
@@ -306,6 +308,133 @@ document.addEventListener('DOMContentLoaded', () => {
 """
 
 
+# ── Generic page templates ────────────────────────────────────────────────────
+
+_GENERIC_HTML_TPL = """\
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title}</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="page-header">
+    <div class="logo"><span class="logo-icon">✨</span> <span class="logo-text">{title}</span></div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>{title}</h1>
+      <p class="subtitle">{description}</p>
+    </section>
+
+    <section class="card-section">
+      <h2>حول هذه الصفحة</h2>
+      <p>{description}</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>أُنشئت بواسطة أمير · {title}</p>
+  </footer>
+  <script src="script.js"></script>
+</body>
+</html>
+"""
+
+_GENERIC_CSS = """\
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --accent: #7c3aed;
+  --radius: 14px;
+  --shadow: 0 2px 12px rgba(0,0,0,.08);
+}
+
+html, body {
+  font-family: "Segoe UI", Tahoma, "Arabic UI Text", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.6;
+  font-size: 16px;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  padding: 1rem 2rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+}
+
+.logo { display: flex; align-items: center; gap: .5rem; font-size: 1.2rem; font-weight: 700; }
+
+.hero {
+  text-align: center;
+  padding: 4rem 1rem 2rem;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.hero h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: .75rem; color: var(--accent); }
+.subtitle { font-size: 1.1rem; color: var(--muted); }
+
+.card-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2rem;
+  margin: 0 auto 1.5rem;
+  max-width: 900px;
+  box-shadow: var(--shadow);
+}
+
+.card-section h2 { font-size: 1.3rem; font-weight: 700; margin-bottom: .75rem; }
+.card-section p { color: var(--muted); }
+
+footer {
+  text-align: center;
+  padding: 2rem;
+  color: var(--muted);
+  font-size: .85rem;
+  border-top: 1px solid var(--border);
+}
+"""
+
+_GENERIC_JS = """\
+/* Ameer generated page — script.js */
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('[Ameer] Page loaded.');
+});
+"""
+
+
+def _slug_from_command(command: str) -> str:
+    """استخلاص slug من نص الأمر.
+
+    يستخدم ما بعد كلمات مثل "عن / حول / about / for" كعنوان للصفحة،
+    ثم يحوّله إلى slug آمن للمسارات.
+    يعود إلى "project" عند تعذّر الاستخلاص.
+    """
+    m = re.search(r"(?:عن|حول|about|for)\s+(.+)$", command, flags=re.IGNORECASE)
+    raw = m.group(1).strip() if m else ""
+    if not raw:
+        # fallback: كلمات الأمر بعد كلمات الفعل
+        raw = re.sub(r"^(أنشئ|انشئ|إنشاء|build|create|make|اصنع|ابن|ابنِ)\s*", "", command, flags=re.IGNORECASE).strip()
+    # تحويل إلى slug: أبجديات لاتينية وعربية وأرقام مفصولة بـ "-"
+    slug = re.sub(r"[^\w\u0600-\u06FF]+", "-", raw.lower()).strip("-")
+    return slug or "project"
+
+
 # ── TaskDecomposer ─────────────────────────────────────────────────────────────
 
 class TaskDecomposer:
@@ -386,16 +515,38 @@ class TaskDecomposer:
         ]
 
     def _generic_page_tasks(self, command: str) -> List[Dict[str, Any]]:
-        slug = "page"
-        prefix = f"{self.RUNTIME_PREFIX}/{slug}"
+        slug = _slug_from_command(command)
+        prefix = f"{self.RUNTIME_PREFIX}/projects/{slug}"
+        title = slug.replace("-", " ").strip()
+        description_match = re.search(r"(?:عن|حول|about|for)\s+(.+)$", command, flags=re.IGNORECASE)
+        description = description_match.group(1).strip() if description_match else title
+        html_content = _GENERIC_HTML_TPL.format(title=title, description=description)
         return [
             {
-                "id": f"page-html-{uuid.uuid4().hex[:6]}",
+                "id": f"proj-html-{slug}",
                 "action": "write",
                 "executor": "file",
                 "target": f"{prefix}/index.html",
-                "content": f"<!DOCTYPE html>\n<html lang='ar' dir='rtl'><head><meta charset='utf-8'><title>{command}</title></head><body><h1>{command}</h1></body></html>",
+                "content": html_content,
                 "priority": "high",
-                "description": f"كتابة index.html لـ: {command}",
+                "description": f"كتابة index.html لمشروع: {title}",
+            },
+            {
+                "id": f"proj-css-{slug}",
+                "action": "write",
+                "executor": "file",
+                "target": f"{prefix}/style.css",
+                "content": _GENERIC_CSS,
+                "priority": "high",
+                "description": f"كتابة style.css لمشروع: {title}",
+            },
+            {
+                "id": f"proj-js-{slug}",
+                "action": "write",
+                "executor": "file",
+                "target": f"{prefix}/script.js",
+                "content": _GENERIC_JS,
+                "priority": "normal",
+                "description": f"كتابة script.js لمشروع: {title}",
             },
         ]
