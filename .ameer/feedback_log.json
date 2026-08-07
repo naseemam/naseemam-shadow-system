@@ -304,5 +304,23 @@
     "context": {},
     "source": "founder",
     "recorded_at": "2026-08-06T20:45:18Z"
+  },
+  {
+    "id": "2b08808a-1fb8-4bb4-a39f-f3d0d24565e0",
+    "feedback_type": "neutral",
+    "topic": "test_topic",
+    "comment": "",
+    "context": {},
+    "source": "founder",
+    "recorded_at": "2026-08-07T17:50:19Z"
+  },
+  {
+    "id": "d7939f87-1f1d-44f6-a8f3-af4a44a9f6fc",
+    "feedback_type": "positive",
+    "topic": "proactive_briefing",
+    "comment": "مفيد",
+    "context": {},
+    "source": "founder",
+    "recorded_at": "2026-08-07T17:50:19Z"
   }
 ]

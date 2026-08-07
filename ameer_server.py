@@ -432,12 +432,31 @@ async def ask(request: Request):
         workspace_root=ROOT,
     )
     # ── 3b. Executive Kernel execution pipeline (when command has clear intent) ──
+    # Must run BEFORE compose_final_reply so the reply can confirm the outcome.
     kernel_execution_trace: dict | None = None
+    kernel_execution_reply: str | None = None
     if KERNEL:
         try:
             decomp = KERNEL.task_decomposer.decompose(q)
             if decomp.get("intent", "unknown") != "unknown":
                 kernel_execution_trace = KERNEL.execute_command(q)
+                final_exec = kernel_execution_trace.get("final", {})
+                if final_exec.get("accepted"):
+                    completed = final_exec.get("completed", 0)
+                    files = final_exec.get("files_created") or []
+                    file_list = "، ".join(f for f in files if f) if files else ""
+                    kernel_execution_reply = (
+                        f"✅ تم بناء الصفحة الرئيسية بنجاح! "
+                        f"أُنشئت {completed} ملفات"
+                        + (f": {file_list}" if file_list else "")
+                        + ".\n\n"
+                        "يمكنك معاينتها الآن عبر رابط Preview أدناه."
+                    )
+                elif not final_exec.get("accepted") and kernel_execution_trace.get("pipeline"):
+                    kernel_execution_reply = (
+                        "⚠️ لم يتمكن أمير من إتمام التنفيذ. "
+                        "راجع خطوات Pipeline أدناه لمعرفة سبب التوقف."
+                    )
         except Exception:
             pass
     # ── 4. Compose fallback reply (used only if ECE is unavailable) ─────────────
@@ -481,6 +500,11 @@ async def ask(request: Request):
         )
         final_reply = conversation_result.get("reply", fallback_reply)
         reply_source = conversation_result.get("engine", reply_source)
+
+    # ── 5b. Override reply when kernel execution succeeded ────────────────────
+    if kernel_execution_reply is not None:
+        final_reply = kernel_execution_reply
+        reply_source = "executive_kernel"
 
     # ── 6. AOS Kernel: record assistant reply in session context ──────────────
     if KERNEL:
