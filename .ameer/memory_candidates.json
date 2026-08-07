@@ -418,5 +418,65 @@
       "endpoint": "/memory"
     },
     "approval_id": "5d300c56-9e96-4cf1-a92e-404c529386fc"
+  },
+  {
+    "id": "1169eba7-5366-4a56-b2d1-669983e5306c",
+    "memory_type": "founder_memory",
+    "content": "أفضّل أن تبدأ كل جلسة بتقرير سريع",
+    "source": "founder",
+    "timestamp": "2026-08-07T18:10:41Z",
+    "confidence": 0.7,
+    "approval_state": "pending",
+    "importance_score": 0.49,
+    "sensitive_categories": [],
+    "origin_context": {
+      "endpoint": "/memory"
+    },
+    "approval_id": "55a84086-09b6-41fe-ada4-4bd371bf1f67"
+  },
+  {
+    "id": "4736f64e-9078-4026-843c-43b3771cf76a",
+    "memory_type": "founder_memory",
+    "content": "اسم مشروعي هو حلم الندى",
+    "source": "founder",
+    "timestamp": "2026-08-07T18:10:44Z",
+    "confidence": 0.7,
+    "approval_state": "pending",
+    "importance_score": 0.65,
+    "sensitive_categories": [],
+    "origin_context": {
+      "endpoint": "/memory"
+    },
+    "approval_id": "9c1081b8-23c6-47ec-8e97-e0608923fc6e"
+  },
+  {
+    "id": "11ff7b91-6d53-46a7-9854-5c0c8ea08a7e",
+    "memory_type": "founder_memory",
+    "content": "test memory from runtime capability",
+    "source": "founder",
+    "timestamp": "2026-08-07T18:10:44Z",
+    "confidence": 0.7,
+    "approval_state": "pending",
+    "importance_score": 0.5,
+    "sensitive_categories": [],
+    "origin_context": {
+      "endpoint": "/memory"
+    },
+    "approval_id": "311a1c0c-6c86-4718-ab3e-f46f2557882a"
+  },
+  {
+    "id": "f52568c6-8f66-4de1-8a86-4c32aaedf872",
+    "memory_type": "founder_memory",
+    "content": "كلمة السر للمشروع هي sky-123",
+    "source": "founder",
+    "timestamp": "2026-08-07T18:10:44Z",
+    "confidence": 0.7,
+    "approval_state": "pending",
+    "importance_score": 0.67,
+    "sensitive_categories": [],
+    "origin_context": {
+      "endpoint": "/memory"
+    },
+    "approval_id": "cb2aed78-4434-4aec-ba89-4704012eead8"
   }
 ]
