@@ -47,18 +47,43 @@ class ExecutiveStateManager:
 
     # ── Persistence ───────────────────────────────────────────────────────────
 
+    # Current schema version — bump this when the state structure changes.
+    SCHEMA_VERSION = 1
+
     def _load(self) -> None:
         if self._state_path.exists():
             try:
                 raw = self._state_path.read_text(encoding="utf-8")
                 loaded = json.loads(raw)
                 if isinstance(loaded, dict):
-                    self._state = loaded
+                    self._state, _needs_persist = self._migrate(loaded)
+                    if _needs_persist:
+                        self._persist()
                     return
             except Exception:
                 pass
         self._state = self._default_state()
         self._persist()
+
+    def _migrate(self, state: Dict[str, Any]) -> "tuple[Dict[str, Any], bool]":
+        """Migrate state from older schema versions to the current one.
+
+        Returns ``(state, needs_persist)`` so the caller controls when to
+        write to disk.  Every missing key from the default state is
+        back-filled so that code can always rely on a complete, well-formed
+        state dictionary.
+        """
+        version = state.get("schema_version", 0)
+
+        # v0 → v1: add schema_version (all other keys were already present)
+        if version < 1:
+            state["schema_version"] = self.SCHEMA_VERSION
+            defaults = self._default_state()
+            for key, default_value in defaults.items():
+                state.setdefault(key, default_value)
+            return state, True
+
+        return state, False
 
     def _persist(self) -> None:
         try:
@@ -72,6 +97,7 @@ class ExecutiveStateManager:
 
     def _default_state(self) -> Dict[str, Any]:
         return {
+            "schema_version": self.SCHEMA_VERSION,
             "active_goals": [],
             "active_projects": [],
             "pending_approvals": [],

@@ -30,6 +30,7 @@ from kernel.memory_governance import MemoryGovernanceEngine
 from kernel.capability_registry import CapabilityRegistry
 from kernel.permission_registry import PermissionRegistry
 from kernel.execution_authorization import ExecutionAuthorization
+from kernel.plan_validator import PlanValidator
 from context.workspace_awareness import WorkspaceAwareness
 from context.session_context import SessionContext
 from context.founder_profile import FounderProfile
@@ -73,6 +74,12 @@ class ExecutiveKernel:
         self.permissions: PermissionRegistry = PermissionRegistry(self._root)
         self.execution_auth: ExecutionAuthorization = ExecutionAuthorization(
             self._root, self.capabilities, self.permissions
+        )
+        # P1.3 — Plan Validator (the single gate before the Scheduler)
+        self.plan_validator: PlanValidator = PlanValidator(
+            self._root,
+            capability_registry=self.capabilities,
+            permission_registry=self.permissions,
         )
 
     # ── Startup helpers ───────────────────────────────────────────────────────
@@ -330,6 +337,49 @@ class ExecutiveKernel:
             parts.append(f"المهام الجارية: {count}.")
 
         return " ".join(parts) if parts else ""
+
+    # ── Task Execution (P1.3 gated pipeline) ──────────────────────────────────
+
+    def execute_task(self, tasks: list) -> dict:
+        """
+        نقطة الدخول الوحيدة لتنفيذ مهام.
+
+        المسار الإلزامي:
+            ExecutiveKernel.execute_task()
+                ↓
+            PlanValidator   ← البوابة الوحيدة
+                ↓
+            Scheduler (P1.4)
+                ↓
+            ExecutionEngine (P1.5+)
+
+        لا يُسمح لأي مكون بتجاوز PlanValidator.
+
+        يُعيد:
+        {
+            "accepted": bool,
+            "validation": { ... },   # مخرج PlanValidator
+            "tasks_queued": int,     # عدد المهام المقبولة للجدولة
+        }
+        """
+        validation = self.plan_validator.validate(tasks)
+
+        if not validation["valid"]:
+            return {
+                "accepted": False,
+                "validation": validation,
+                "tasks_queued": 0,
+            }
+
+        # تسجيل المهام في الحالة (Scheduler سيلتقطها لاحقاً في P1.4)
+        for task in tasks:
+            self.state.add_task(task)
+
+        return {
+            "accepted": True,
+            "validation": validation,
+            "tasks_queued": len(tasks),
+        }
 
     # ── Decision & Approval helpers ───────────────────────────────────────────
 
