@@ -574,5 +574,77 @@
       ],
       "last_recorded_at": "2026-08-06T20:45:18Z"
     }
+  },
+  {
+    "cycle_at": "2026-08-07T17:50:19Z",
+    "changes": [
+      "added 'proactive_briefing' to proactive_topics"
+    ],
+    "feedback_snapshot": {
+      "total": 35,
+      "by_type": {
+        "neutral": 18,
+        "positive": 17
+      },
+      "topics": [
+        "test_topic",
+        "proactive_briefing"
+      ],
+      "last_recorded_at": "2026-08-07T17:50:19Z"
+    }
+  },
+  {
+    "cycle_at": "2026-08-07T17:50:19Z",
+    "changes": [
+      "preferences reset to defaults"
+    ],
+    "feedback_snapshot": {
+      "total": 36,
+      "by_type": {
+        "neutral": 18,
+        "positive": 18
+      },
+      "topics": [
+        "test_topic",
+        "proactive_briefing"
+      ],
+      "last_recorded_at": "2026-08-07T17:50:19Z"
+    }
+  },
+  {
+    "cycle_at": "2026-08-07T18:10:42Z",
+    "changes": [
+      "added 'proactive_briefing' to proactive_topics"
+    ],
+    "feedback_snapshot": {
+      "total": 37,
+      "by_type": {
+        "neutral": 19,
+        "positive": 18
+      },
+      "topics": [
+        "test_topic",
+        "proactive_briefing"
+      ],
+      "last_recorded_at": "2026-08-07T18:10:42Z"
+    }
+  },
+  {
+    "cycle_at": "2026-08-07T18:10:42Z",
+    "changes": [
+      "preferences reset to defaults"
+    ],
+    "feedback_snapshot": {
+      "total": 38,
+      "by_type": {
+        "neutral": 19,
+        "positive": 19
+      },
+      "topics": [
+        "test_topic",
+        "proactive_briefing"
+      ],
+      "last_recorded_at": "2026-08-07T18:10:42Z"
+    }
   }
 ]

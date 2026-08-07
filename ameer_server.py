@@ -431,6 +431,34 @@ async def ask(request: Request):
         plan,
         workspace_root=ROOT,
     )
+    # ── 3b. Executive Kernel execution pipeline (when command has clear intent) ──
+    # Must run BEFORE compose_final_reply so the reply can confirm the outcome.
+    kernel_execution_trace: dict | None = None
+    kernel_execution_reply: str | None = None
+    if KERNEL:
+        try:
+            decomp = KERNEL.task_decomposer.decompose(q)
+            if decomp.get("intent", "unknown") != "unknown":
+                kernel_execution_trace = KERNEL.execute_command(q)
+                final_exec = kernel_execution_trace.get("final", {})
+                if final_exec.get("accepted"):
+                    completed = final_exec.get("completed", 0)
+                    files = final_exec.get("files_created") or []
+                    file_list = "، ".join(f for f in files if f) if files else ""
+                    kernel_execution_reply = (
+                        f"✅ تم بناء الصفحة الرئيسية بنجاح! "
+                        f"أُنشئت {completed} ملفات"
+                        + (f": {file_list}" if file_list else "")
+                        + ".\n\n"
+                        "يمكنك معاينتها الآن عبر رابط Preview أدناه."
+                    )
+                elif not final_exec.get("accepted") and kernel_execution_trace.get("pipeline"):
+                    kernel_execution_reply = (
+                        "⚠️ لم يتمكن أمير من إتمام التنفيذ. "
+                        "راجع خطوات Pipeline أدناه لمعرفة سبب التوقف."
+                    )
+        except Exception:
+            pass
     # ── 4. Compose fallback reply (used only if ECE is unavailable) ─────────────
     fallback_reply, reply_source = EXECUTIVE_BRAIN.compose_final_reply(
         q,
@@ -472,6 +500,11 @@ async def ask(request: Request):
         )
         final_reply = conversation_result.get("reply", fallback_reply)
         reply_source = conversation_result.get("engine", reply_source)
+
+    # ── 5b. Override reply when kernel execution succeeded ────────────────────
+    if kernel_execution_reply is not None:
+        final_reply = kernel_execution_reply
+        reply_source = "executive_kernel"
 
     # ── 6. AOS Kernel: record assistant reply in session context ──────────────
     if KERNEL:
@@ -531,6 +564,8 @@ async def ask(request: Request):
         }
     user_payload.update(public_runtime_identity(workspace_root=REPO_ROOT))
     user_payload["request_id"] = request_id
+    if kernel_execution_trace is not None:
+        user_payload["execution_trace"] = kernel_execution_trace
     _log("ask_completed", request_id=request_id)
     return utf8_json_response(user_payload, headers=runtime_headers(workspace_root=REPO_ROOT))
 
@@ -1148,6 +1183,155 @@ async def get_learning_preferences():
         "learning_snapshot": KERNEL.learning.snapshot(),
         "last_cycle": cycle_result,
     })
+
+
+@app.post('/execute')
+async def execute_tasks(request: Request):
+    """
+    POST /execute — تنفيذ مهام حقيقية عبر Pipeline الكامل.
+
+    يُوصل مباشرةً بـ:
+        ExecutiveKernel → PlanValidator → Scheduler → FileExecutor
+
+    طلب مثال:
+        POST /execute
+        {
+          "tasks": [
+            {
+              "id": "home-index",
+              "action": "write",
+              "executor": "file",
+              "target": "09_Assets/runtime_workspace/home/index.html",
+              "content": "<!DOCTYPE html>...",
+              "priority": "high"
+            }
+          ]
+        }
+
+    الاستجابة:
+        {
+          "accepted": true,
+          "validation": { ... },
+          "schedule": { ... },
+          "execution": {
+            "completed": 1,
+            "failed": 0,
+            "blocked": 0,
+            "results": [ { "task_id": "home-index", "status": "completed", ... } ]
+          },
+          "tasks_queued": 1
+        }
+
+    قيود الأمان:
+        - كل الأهداف يجب أن تقع داخل 09_Assets/runtime_workspace
+        - الكتابة خارج هذا المسار مرفوضة تلقائياً من PlanValidator
+    """
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable", "kernel": "inactive"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return utf8_json_response({"error": "invalid JSON"}, status_code=400)
+
+    tasks = body.get("tasks")
+    if not isinstance(tasks, list) or len(tasks) == 0:
+        return utf8_json_response(
+            {"error": "tasks field is required and must be a non-empty list"},
+            status_code=422,
+        )
+
+    try:
+        report = KERNEL.execute_task(tasks)
+    except Exception as exc:
+        _log("execute_task_error", level="error", error=str(exc))
+        return utf8_json_response({"error": "execution failed — see server logs"}, status_code=500)
+
+    status_code = 200 if report.get("accepted") else 422
+    return utf8_json_response(report, status_code=status_code)
+
+
+@app.post('/execute/command')
+async def execute_command(request: Request):
+    """
+    POST /execute/command — تحويل أمر بشري إلى Task Batch وتنفيذه.
+
+    المسار الكامل:
+        human_command
+            ↓ ExecutiveBrain
+            ↓ TaskDecomposer
+            ↓ PlanValidator
+            ↓ Scheduler
+            ↓ FileExecutor
+            ↓ files created
+
+    طلب مثال:
+        POST /execute/command
+        { "command": "ابنِ الصفحة الرئيسية" }
+
+    الاستجابة: trace كامل لكل خطوة في الـ Pipeline.
+    """
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable", "kernel": "inactive"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return utf8_json_response({"error": "invalid JSON"}, status_code=400)
+
+    command = str(body.get("command", "")).strip()
+    if not command:
+        return utf8_json_response({"error": "command field is required"}, status_code=422)
+
+    try:
+        trace = KERNEL.execute_command(command)
+    except Exception as exc:
+        _log("execute_command_error", level="error", command=command, error=str(exc))
+        return utf8_json_response({"error": "execution failed — see server logs"}, status_code=500)
+
+    accepted = trace.get("final", {}).get("accepted", False)
+    _log(
+        "execute_command_completed",
+        command=command,
+        intent=trace.get("pipeline", [{}])[0].get("output", {}).get("intent"),
+        accepted=accepted,
+        completed=trace.get("final", {}).get("completed", 0),
+    )
+    return utf8_json_response(trace, status_code=200 if accepted else 422)
+
+
+@app.get('/preview', response_class=HTMLResponse)
+async def preview_home():
+    """
+    GET /preview — عرض الصفحة الرئيسية المُنشأة بواسطة أمير.
+
+    تُخدَم من 09_Assets/runtime_workspace/home/index.html.
+    """
+    preview_path = os.path.join(ROOT, "09_Assets", "runtime_workspace", "home", "index.html")
+    if not os.path.exists(preview_path):
+        return HTMLResponse(
+            content=(
+                "<html lang='ar' dir='rtl'><head><meta charset='utf-8'>"
+                "<title>Preview</title></head><body style='font-family:sans-serif;padding:2rem;'>"
+                "<h2>لم يتم إنشاء الصفحة الرئيسية بعد.</h2>"
+                "<p>أرسل الأمر: <code>ابنِ الصفحة الرئيسية</code> عبر <code>POST /execute/command</code> أولاً.</p>"
+                "</body></html>"
+            ),
+            media_type="text/html; charset=utf-8",
+            status_code=404,
+        )
+    with open(preview_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    # Inline CSS and JS so the preview works without a static file server
+    css_path = os.path.join(ROOT, "09_Assets", "runtime_workspace", "home", "style.css")
+    js_path = os.path.join(ROOT, "09_Assets", "runtime_workspace", "home", "script.js")
+    if os.path.exists(css_path):
+        css = open(css_path, encoding="utf-8").read()
+        content = content.replace('<link rel="stylesheet" href="style.css" />', f"<style>{css}</style>")
+    if os.path.exists(js_path):
+        js = open(js_path, encoding="utf-8").read()
+        content = content.replace('<script src="script.js"></script>', f"<script>{js}</script>")
+    return HTMLResponse(content=content, media_type="text/html; charset=utf-8")
 
 
 @app.post('/learning/reset')

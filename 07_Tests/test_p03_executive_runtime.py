@@ -350,10 +350,16 @@ class TestRuntimePipelineOrder(unittest.TestCase):
         """
         After a /ask call, KERNEL.session must contain the user message,
         proving before_request was called (it records the user message).
+
+        Note: KERNEL is a singleton shared across the full test suite.
+        We clear the session first to prevent the deque from being at maxlen
+        (20 turns) from prior tests, which would cause the length not to grow.
         """
         kernel = self.server.KERNEL
         if kernel is None:
             self.skipTest("KERNEL not available")
+        # Isolate from prior test pollution by resetting the session buffer
+        kernel.session.clear()
         initial_turns = len(kernel.session)
         self.client.post("/ask", json={"query": "ما الأولويات الآن؟"})
         # Session must have grown by at least 2 (user + assistant)
