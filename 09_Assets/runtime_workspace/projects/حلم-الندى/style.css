@@ -1,0 +1,63 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --accent: #7c3aed;
+  --radius: 14px;
+  --shadow: 0 2px 12px rgba(0,0,0,.08);
+}
+
+html, body {
+  font-family: "Segoe UI", Tahoma, "Arabic UI Text", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.6;
+  font-size: 16px;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  padding: 1rem 2rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+}
+
+.logo { display: flex; align-items: center; gap: .5rem; font-size: 1.2rem; font-weight: 700; }
+
+.hero {
+  text-align: center;
+  padding: 4rem 1rem 2rem;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.hero h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: .75rem; color: var(--accent); }
+.subtitle { font-size: 1.1rem; color: var(--muted); }
+
+.card-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2rem;
+  margin: 0 auto 1.5rem;
+  max-width: 900px;
+  box-shadow: var(--shadow);
+}
+
+.card-section h2 { font-size: 1.3rem; font-weight: 700; margin-bottom: .75rem; }
+.card-section p { color: var(--muted); }
+
+footer {
+  text-align: center;
+  padding: 2rem;
+  color: var(--muted);
+  font-size: .85rem;
+  border-top: 1px solid var(--border);
+}
