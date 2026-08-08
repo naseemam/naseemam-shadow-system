@@ -114,5 +114,97 @@ class LivePipelineExecutionTests(unittest.TestCase):
         self.assertIn("executive_conversation_engine", logs)
 
 
+class ConversationalLeakRegressionTests(unittest.TestCase):
+    """
+    Regression: conversational messages must not trigger the open-tasks warning
+    even when running_tasks contains stale pending entries.
+
+    Production issue: /ask with a conversational query returned
+    "لفت انتباهي أن مهام مفتوحة تشغل موارد..." instead of a conversational reply.
+    """
+
+    def _load_ece(self):
+        mod = _load("executive_conversation", os.path.join(CODE_ROOT, "executive_conversation.py"))
+        return mod
+
+    def _make_reasoning_output(self, request_type: str) -> dict:
+        return {"reasoning": {"request_type": request_type, "guardian_status": "pass"}}
+
+    def _stalled_tasks(self) -> list:
+        return [{"id": "t1", "title": "مهمة قديمة", "status": "pending"}]
+
+    def test_conversational_question_with_stalled_tasks_does_not_leak_task_warning(self):
+        """request_type=question + stalled tasks → AI reply must pass through unchanged."""
+        mod = self._load_ece()
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan(
+                "هل أنت جاهز؟",
+                running_tasks=self._stalled_tasks(),
+            )
+            draft = "نعم، أنا جاهز."
+            result = ece.execute(
+                query="هل أنت جاهز؟",
+                draft_reply=draft,
+                planner_state=planner_state,
+                running_tasks=self._stalled_tasks(),
+                reasoning_output=self._make_reasoning_output("question"),
+                dry_run=True,
+            )
+            reply = result["reply"]
+            self.assertNotIn("مهام مفتوحة تشغل موارد", reply,
+                             "Task warning must not appear in conversational reply")
+            self.assertNotIn("نغلق المهمة المفتوحة الأعلى أثرًا أولًا", reply,
+                             "Task close instruction must not appear in conversational reply")
+            self.assertEqual(reply, draft,
+                             "Draft reply must be returned unchanged for conversational request")
+
+    def test_execution_request_with_stalled_tasks_still_triggers_executive_signal(self):
+        """request_type=execution + stalled tasks → executive signal must remain active."""
+        mod = self._load_ece()
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan(
+                "ابدأ مشروع التوسعة الجديد",
+                running_tasks=self._stalled_tasks(),
+            )
+            result = ece.execute(
+                query="ابدأ مشروع التوسعة الجديد",
+                draft_reply="سأبدأ المشروع.",
+                planner_state=planner_state,
+                running_tasks=self._stalled_tasks(),
+                reasoning_output=self._make_reasoning_output("execution"),
+                dry_run=True,
+            )
+            reply = result["reply"]
+            # For execution requests with stalled tasks the executive warning must appear
+            self.assertTrue(
+                "مهام مفتوحة" in reply or "نغلق" in reply or "مفتوح" in reply,
+                f"Executive signal expected for execution request with stalled tasks, got: {reply!r}",
+            )
+
+    def test_greeting_with_stalled_tasks_does_not_leak_task_warning(self):
+        """request_type=greeting + stalled tasks → conversational pass-through."""
+        mod = self._load_ece()
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan(
+                "مرحبا",
+                running_tasks=self._stalled_tasks(),
+            )
+            draft = "أهلًا! كيف أقدر أساعدك؟"
+            result = ece.execute(
+                query="مرحبا",
+                draft_reply=draft,
+                planner_state=planner_state,
+                running_tasks=self._stalled_tasks(),
+                reasoning_output=self._make_reasoning_output("greeting"),
+                dry_run=True,
+            )
+            reply = result["reply"]
+            self.assertNotIn("مهام مفتوحة تشغل موارد", reply)
+            self.assertNotIn("نغلق المهمة المفتوحة الأعلى أثرًا أولًا", reply)
+
+
 if __name__ == "__main__":
     unittest.main()

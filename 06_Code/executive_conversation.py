@@ -286,10 +286,22 @@ class ExecutiveConversationEngine:
             t for t in (running_tasks or [])
             if str(t.get("status", "")).lower() in {"pending", "blocked"}
         ]
+
+        # Conversational requests (question/greeting) must not be interrupted by
+        # stale pending tasks.  Stalled tasks are executive signals only when the
+        # request itself is actionable (execution, planning, decision, analysis).
+        _conversational_types = {"question", "greeting"}
+        _request_type = (
+            (reasoning_output or {}).get("reasoning", {}).get("request_type", "")
+            if reasoning_output
+            else ""
+        )
+        _is_conversational = _request_type in _conversational_types or not _request_type
+
         has_executive_signals = bool(
             pending_approvals
-            or _stalled
-            or (planner_state.risks or planner_state.detected_risks)
+            or (not _is_conversational and _stalled)
+            or (not _is_conversational and (planner_state.risks or planner_state.detected_risks))
             or (is_first_turn and active_projects)
             or (reasoning_output and reasoning_output.get("reasoning", {}).get("guardian_status") != "pass")
         )
