@@ -680,6 +680,10 @@ class AmeerOrchestrator:
         return found_any
 
     def guardian_check(self, query: str, intent: str) -> Dict:
+        # NOTE: normalize_fn must preserve Arabic negation particles (لا، ما، لن …)
+        # and the high-risk terms unchanged; stripping diacritics is safe, but
+        # removing or transforming these tokens would cause negation detection to
+        # silently fall back to "risky".
         q = self.normalize_fn(query.lower())
         # A risky term that appears ONLY in explicitly negated contexts (e.g.
         # "لا تنفذ أي شيء") must NOT trigger the approval gate.
