@@ -47,6 +47,7 @@ logs/
 .ameer/decisions.json
 .ameer/approvals.json
 .ameer/conversation_memory.json
+.ameer/onboarding_candidates.json
 
 # Test artifacts
 .pytest_cache/
