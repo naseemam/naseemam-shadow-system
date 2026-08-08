@@ -114,5 +114,271 @@ class LivePipelineExecutionTests(unittest.TestCase):
         self.assertIn("executive_conversation_engine", logs)
 
 
+class ConversationalLeakRegressionTests(unittest.TestCase):
+    """
+    Regression: conversational messages must not trigger the open-tasks warning
+    even when running_tasks contains stale pending entries.
+
+    Production issue: /ask with a conversational query returned
+    "لفت انتباهي أن مهام مفتوحة تشغل موارد..." instead of a conversational reply.
+    """
+
+    def _load_ece(self):
+        mod = _load("executive_conversation", os.path.join(CODE_ROOT, "executive_conversation.py"))
+        return mod
+
+    def _make_reasoning_output(self, request_type: str) -> dict:
+        return {"reasoning": {"request_type": request_type, "guardian_status": "pass"}}
+
+    def _stalled_tasks(self) -> list:
+        return [{"id": "t1", "title": "مهمة قديمة", "status": "pending"}]
+
+    def test_conversational_question_with_stalled_tasks_does_not_leak_task_warning(self):
+        """request_type=question + stalled tasks → AI reply must pass through unchanged."""
+        mod = self._load_ece()
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan(
+                "هل أنت جاهز؟",
+                running_tasks=self._stalled_tasks(),
+            )
+            draft = "نعم، أنا جاهز."
+            result = ece.execute(
+                query="هل أنت جاهز؟",
+                draft_reply=draft,
+                planner_state=planner_state,
+                running_tasks=self._stalled_tasks(),
+                reasoning_output=self._make_reasoning_output("question"),
+                dry_run=True,
+            )
+            reply = result["reply"]
+            self.assertNotIn("مهام مفتوحة تشغل موارد", reply,
+                             "Task warning must not appear in conversational reply")
+            self.assertNotIn("نغلق المهمة المفتوحة الأعلى أثرًا أولًا", reply,
+                             "Task close instruction must not appear in conversational reply")
+            self.assertEqual(reply, draft,
+                             "Draft reply must be returned unchanged for conversational request")
+
+    def test_execution_request_with_stalled_tasks_still_triggers_executive_signal(self):
+        """request_type=execution + stalled tasks → executive signal must remain active."""
+        mod = self._load_ece()
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan(
+                "ابدأ مشروع التوسعة الجديد",
+                running_tasks=self._stalled_tasks(),
+            )
+            result = ece.execute(
+                query="ابدأ مشروع التوسعة الجديد",
+                draft_reply="سأبدأ المشروع.",
+                planner_state=planner_state,
+                running_tasks=self._stalled_tasks(),
+                reasoning_output=self._make_reasoning_output("execution"),
+                dry_run=True,
+            )
+            reply = result["reply"]
+            # For execution requests with stalled tasks the executive warning must appear
+            self.assertTrue(
+                "مهام مفتوحة" in reply or "نغلق" in reply or "مفتوح" in reply,
+                f"Executive signal expected for execution request with stalled tasks, got: {reply!r}",
+            )
+
+    def test_greeting_with_stalled_tasks_does_not_leak_task_warning(self):
+        """request_type=greeting + stalled tasks → conversational pass-through."""
+        mod = self._load_ece()
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan(
+                "مرحبا",
+                running_tasks=self._stalled_tasks(),
+            )
+            draft = "أهلًا! كيف أقدر أساعدك؟"
+            result = ece.execute(
+                query="مرحبا",
+                draft_reply=draft,
+                planner_state=planner_state,
+                running_tasks=self._stalled_tasks(),
+                reasoning_output=self._make_reasoning_output("greeting"),
+                dry_run=True,
+            )
+            reply = result["reply"]
+            self.assertNotIn("مهام مفتوحة تشغل موارد", reply)
+            self.assertNotIn("نغلق المهمة المفتوحة الأعلى أثرًا أولًا", reply)
+
+    # ── C: opinion/conversational + active_projects → stays conversational ─────
+
+    def test_opinion_with_active_projects_does_not_leak_executive_report(self):
+        """
+        C — An opinion/casual question (request_type=question) on a first turn
+        with active_projects must NOT produce an executive project-status report.
+        Regression for the (is_first_turn and active_projects) branch now guarded
+        by not _is_conversational.
+        """
+        mod = self._load_ece()
+        active_projects = [{"id": "p1", "name": "مشروع التوسعة", "status": "active"}]
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan("وش رأيك في Manus؟", active_projects=active_projects)
+            draft = "Manus أداة مثيرة للاهتمام، إليك رأيي..."
+            result = ece.execute(
+                query="وش رأيك في Manus؟",
+                draft_reply=draft,
+                planner_state=planner_state,
+                active_projects=active_projects,
+                is_first_turn=True,
+                reasoning_output=self._make_reasoning_output("question"),
+                dry_run=True,
+            )
+            reply = result["reply"]
+            self.assertEqual(reply, draft,
+                             "Opinion question must return draft unchanged, not an executive project report")
+
+    def test_analysis_type_with_stalled_tasks_does_not_leak(self):
+        """
+        C (variant) — request_type=analysis is informational; stalled tasks must
+        not hijack the reply.
+        """
+        mod = self._load_ece()
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan("لماذا فشل المشروع؟", running_tasks=self._stalled_tasks())
+            draft = "السبب الرئيسي هو..."
+            result = ece.execute(
+                query="لماذا فشل المشروع؟",
+                draft_reply=draft,
+                planner_state=planner_state,
+                running_tasks=self._stalled_tasks(),
+                reasoning_output=self._make_reasoning_output("analysis"),
+                dry_run=True,
+            )
+            reply = result["reply"]
+            self.assertEqual(reply, draft,
+                             "Analysis type must stay conversational; stalled tasks must not hijack reply")
+
+    # ── E: approval-sensitive path stays active ───────────────────────────────
+
+    def test_conversational_question_with_stale_pending_approvals_does_not_leak(self):
+        """
+        E1 — Stale/persistent pending approvals must NOT hijack a conversational
+        question.  The fix: pending_approvals is gated by not _is_conversational.
+        """
+        mod = self._load_ece()
+        stale_approvals = [{"id": "a1", "action": "deploy", "status": "pending"}]
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan("هل أنت جاهز؟", pending_approvals=stale_approvals)
+            draft = "نعم، أنا جاهز."
+            result = ece.execute(
+                query="هل أنت جاهز؟",
+                draft_reply=draft,
+                planner_state=planner_state,
+                pending_approvals=stale_approvals,
+                reasoning_output=self._make_reasoning_output("question"),
+                dry_run=True,
+            )
+            reply = result["reply"]
+            self.assertEqual(reply, draft,
+                             "Conversational question must return draft unchanged even with stale pending approvals")
+            self.assertNotIn("مهام مفتوحة", reply)
+            self.assertNotIn("المهمة المفتوحة", reply)
+            self.assertNotIn("نغلق المهمة", reply)
+
+    def test_conversational_greeting_with_stale_pending_approvals_does_not_leak(self):
+        """
+        E2 — Stale pending approvals must NOT hijack a conversational greeting.
+        """
+        mod = self._load_ece()
+        stale_approvals = [{"id": "a2", "action": "deploy", "status": "pending"}]
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan("مرحبا", pending_approvals=stale_approvals)
+            draft = "أهلًا! كيف أقدر أساعدك؟"
+            result = ece.execute(
+                query="مرحبا",
+                draft_reply=draft,
+                planner_state=planner_state,
+                pending_approvals=stale_approvals,
+                reasoning_output=self._make_reasoning_output("greeting"),
+                dry_run=True,
+            )
+            reply = result["reply"]
+            self.assertEqual(reply, draft,
+                             "Conversational greeting must return draft unchanged with stale pending approvals")
+            self.assertNotIn("مهام مفتوحة", reply)
+
+    def test_pending_approvals_still_trigger_executive_path(self):
+        """
+        E3 — For non-conversational (execution) requests, pending approvals must
+        still activate the executive path.  They are only prevented from hijacking
+        purely conversational turns.
+        """
+        mod = self._load_ece()
+        pending_approvals = [{"id": "a3", "action": "deploy", "status": "pending"}]
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan("ابدأ النشر", pending_approvals=pending_approvals)
+            result = ece.execute(
+                query="ابدأ النشر",
+                draft_reply="سأبدأ النشر.",
+                planner_state=planner_state,
+                pending_approvals=pending_approvals,
+                reasoning_output=self._make_reasoning_output("execution"),
+                dry_run=True,
+            )
+            reply = result["reply"]
+            # Executive path must engage — reply should contain an approval prompt
+            self.assertIn("قرارًا", reply,
+                          "Execution request with pending approvals must engage the executive path")
+
+    # ── F: conversation → actionable transition ───────────────────────────────
+
+    def test_conversational_then_actionable_transition(self):
+        """
+        F — First message is conversational (opinion), second is actionable
+        (execution).  Each must be routed correctly.
+        """
+        mod = self._load_ece()
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+
+            # Turn 1: conversational opinion question
+            planner_state_1 = ece.memory.plan(
+                "وش رأيك في Manus؟", running_tasks=self._stalled_tasks()
+            )
+            draft_1 = "Manus أداة رائعة تعتمد على..."
+            result_1 = ece.execute(
+                query="وش رأيك في Manus؟",
+                draft_reply=draft_1,
+                planner_state=planner_state_1,
+                running_tasks=self._stalled_tasks(),
+                reasoning_output=self._make_reasoning_output("question"),
+                dry_run=True,
+            )
+            self.assertEqual(result_1["reply"], draft_1,
+                             "First conversational turn must stay conversational")
+
+            # Turn 2: actionable execution request with stalled tasks
+            planner_state_2 = ece.memory.plan(
+                "اربطه بالمشروع", running_tasks=self._stalled_tasks()
+            )
+            result_2 = ece.execute(
+                query="اربطه بالمشروع",
+                draft_reply="سأربطه الآن.",
+                planner_state=planner_state_2,
+                running_tasks=self._stalled_tasks(),
+                reasoning_output=self._make_reasoning_output("execution"),
+                dry_run=True,
+            )
+            reply_2 = result_2["reply"]
+            # Executive path must activate for execution + stalled tasks.
+            # The executive branch replaces the draft, so at least one of the
+            # known warning tokens must appear in the reply.
+            self.assertTrue(
+                "مهام مفتوحة" in reply_2 or "نغلق" in reply_2 or "مفتوح" in reply_2,
+                f"Actionable turn must engage executive path, got: {reply_2!r}",
+            )
+
+
+
 if __name__ == "__main__":
     unittest.main()
