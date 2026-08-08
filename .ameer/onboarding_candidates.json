@@ -178,5 +178,45 @@
     "approval_state": "pending",
     "target_layer": "founder_memory",
     "reason": "onboarding_requires_explicit_approval"
+  },
+  {
+    "id": "5c7ab913-cb7b-4e7b-811f-806d51822d0f",
+    "fact": "أنني أفضل العمل في الليل",
+    "source": "onboarding_query",
+    "timestamp": "2026-08-08T17:05:06Z",
+    "confidence": 0.7,
+    "approval_state": "pending",
+    "target_layer": "founder_memory",
+    "reason": "onboarding_requires_explicit_approval"
+  },
+  {
+    "id": "a29b167c-de29-4c3a-89ee-aa7c86c8e2b2",
+    "fact": "أنني أفضل العمل في الليل",
+    "source": "onboarding_query",
+    "timestamp": "2026-08-08T17:05:06Z",
+    "confidence": 0.7,
+    "approval_state": "pending",
+    "target_layer": "founder_memory",
+    "reason": "onboarding_requires_explicit_approval"
+  },
+  {
+    "id": "d7e8b6c0-1fab-4c3c-9387-195a273ba388",
+    "fact": "أنني أفضل العمل في الليل",
+    "source": "onboarding_query",
+    "timestamp": "2026-08-08T17:05:39Z",
+    "confidence": 0.7,
+    "approval_state": "pending",
+    "target_layer": "founder_memory",
+    "reason": "onboarding_requires_explicit_approval"
+  },
+  {
+    "id": "e311e3fc-46ab-47cb-9dfc-4a70f3230f98",
+    "fact": "أنني أفضل العمل في الليل",
+    "source": "onboarding_query",
+    "timestamp": "2026-08-08T17:05:39Z",
+    "confidence": 0.7,
+    "approval_state": "pending",
+    "target_layer": "founder_memory",
+    "reason": "onboarding_requires_explicit_approval"
   }
 ]
