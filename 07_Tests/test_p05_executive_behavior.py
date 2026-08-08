@@ -318,10 +318,11 @@ class ConversationalLeakRegressionTests(unittest.TestCase):
                 dry_run=True,
             )
             reply_2 = result_2["reply"]
-            # Executive path must activate for execution + stalled tasks
+            # Executive path must activate for execution + stalled tasks.
+            # The executive branch replaces the draft, so at least one of the
+            # known warning tokens must appear in the reply.
             self.assertTrue(
-                "مهام مفتوحة" in reply_2 or "نغلق" in reply_2 or "مفتوح" in reply_2
-                or reply_2 != "سأربطه الآن.",
+                "مهام مفتوحة" in reply_2 or "نغلق" in reply_2 or "مفتوح" in reply_2,
                 f"Actionable turn must engage executive path, got: {reply_2!r}",
             )
 
