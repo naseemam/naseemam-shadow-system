@@ -966,5 +966,211 @@
       "needs_approval": true,
       "sensitive_categories": []
     }
+  },
+  {
+    "id": "e7cf500c-8d73-4d20-b810-0d5de5ab2e42",
+    "event": "memory_candidate_created",
+    "at": "2026-08-08T15:43:14Z",
+    "details": {
+      "item_id": "83f0f1f6-5f29-4c91-b1c8-72bc72d1bee0",
+      "target_layer": "founder_memory",
+      "importance_score": 0.68,
+      "needs_approval": true,
+      "sensitive_categories": []
+    }
+  },
+  {
+    "id": "ceaa4e82-d0ca-4bf4-8b4f-bbe202c09262",
+    "event": "memory_item_stored",
+    "at": "2026-08-08T15:43:14Z",
+    "details": {
+      "item_id": "83f0f1f6-5f29-4c91-b1c8-72bc72d1bee0",
+      "memory_type": "founder_memory",
+      "approval_state": "approved"
+    }
+  },
+  {
+    "id": "24d00f62-566f-4b77-b7f8-fba03fc05436",
+    "event": "memory_candidate_approved_and_stored",
+    "at": "2026-08-08T15:43:14Z",
+    "details": {
+      "approval_id": "08f7f9d5-8da4-4d2d-8c2c-5dfe62fe0d1e",
+      "item_id": "83f0f1f6-5f29-4c91-b1c8-72bc72d1bee0",
+      "target_layer": "founder_memory"
+    }
+  },
+  {
+    "id": "39d6b6ff-989c-41ff-bd9d-5fb177e4440d",
+    "event": "memory_candidate_created",
+    "at": "2026-08-08T15:43:14Z",
+    "details": {
+      "item_id": "7797b7fc-315e-4e89-bb9f-5aef9ffe618f",
+      "target_layer": "founder_memory",
+      "importance_score": 0.45,
+      "needs_approval": true,
+      "sensitive_categories": []
+    }
+  },
+  {
+    "id": "0bbf8160-461a-446a-b370-cd1685305af7",
+    "event": "memory_item_stored",
+    "at": "2026-08-08T15:43:14Z",
+    "details": {
+      "item_id": "7797b7fc-315e-4e89-bb9f-5aef9ffe618f",
+      "memory_type": "founder_memory",
+      "approval_state": "approved"
+    }
+  },
+  {
+    "id": "af70b780-6115-4dfe-830e-498263c19af4",
+    "event": "memory_candidate_approved_and_stored",
+    "at": "2026-08-08T15:43:14Z",
+    "details": {
+      "approval_id": "860a2273-72c9-4f2a-8490-271f1e9de710",
+      "item_id": "7797b7fc-315e-4e89-bb9f-5aef9ffe618f",
+      "target_layer": "founder_memory"
+    }
+  },
+  {
+    "id": "d4a764b7-c23f-4aee-b723-a87b6938ae55",
+    "event": "memory_item_deleted",
+    "at": "2026-08-08T15:43:14Z",
+    "details": {
+      "item_id": "7797b7fc-315e-4e89-bb9f-5aef9ffe618f",
+      "memory_type": "founder_memory"
+    }
+  },
+  {
+    "id": "9a21a3f9-e5c3-49b6-806e-f923341c6279",
+    "event": "memory_candidate_created",
+    "at": "2026-08-08T15:43:14Z",
+    "details": {
+      "item_id": "aa05f9a4-bf20-492c-9e8b-e4906c814869",
+      "target_layer": "founder_memory",
+      "importance_score": 0.49,
+      "needs_approval": true,
+      "sensitive_categories": []
+    }
+  },
+  {
+    "id": "d87836b4-6f16-477d-8c83-6641d3d9a080",
+    "event": "memory_candidate_created",
+    "at": "2026-08-08T15:44:21Z",
+    "details": {
+      "item_id": "230910ea-2b67-4e5b-8871-7139a6615c8e",
+      "target_layer": "founder_memory",
+      "importance_score": 0.68,
+      "needs_approval": true,
+      "sensitive_categories": []
+    }
+  },
+  {
+    "id": "c5a5a95d-2d78-45cf-8a4f-0ebd46d28836",
+    "event": "memory_item_stored",
+    "at": "2026-08-08T15:44:21Z",
+    "details": {
+      "item_id": "230910ea-2b67-4e5b-8871-7139a6615c8e",
+      "memory_type": "founder_memory",
+      "approval_state": "approved"
+    }
+  },
+  {
+    "id": "4c31af88-bf9d-4c10-b250-5adcf0dd4e97",
+    "event": "memory_candidate_approved_and_stored",
+    "at": "2026-08-08T15:44:21Z",
+    "details": {
+      "approval_id": "4af278d1-ec4a-4004-97a9-345ef56dce67",
+      "item_id": "230910ea-2b67-4e5b-8871-7139a6615c8e",
+      "target_layer": "founder_memory"
+    }
+  },
+  {
+    "id": "b834b3f1-c87c-4f78-9429-4e0ef8fa26b5",
+    "event": "memory_candidate_created",
+    "at": "2026-08-08T15:44:21Z",
+    "details": {
+      "item_id": "fc916d63-15b4-4f87-b004-2e49f032fa27",
+      "target_layer": "founder_memory",
+      "importance_score": 0.45,
+      "needs_approval": true,
+      "sensitive_categories": []
+    }
+  },
+  {
+    "id": "bea95012-16e7-43c7-8f7a-cdd50b3dd93b",
+    "event": "memory_item_stored",
+    "at": "2026-08-08T15:44:21Z",
+    "details": {
+      "item_id": "fc916d63-15b4-4f87-b004-2e49f032fa27",
+      "memory_type": "founder_memory",
+      "approval_state": "approved"
+    }
+  },
+  {
+    "id": "012c31ee-fb57-43d4-875f-f7ceea30e6e3",
+    "event": "memory_candidate_approved_and_stored",
+    "at": "2026-08-08T15:44:21Z",
+    "details": {
+      "approval_id": "70c20e51-9a82-416d-b560-7d5eda63f372",
+      "item_id": "fc916d63-15b4-4f87-b004-2e49f032fa27",
+      "target_layer": "founder_memory"
+    }
+  },
+  {
+    "id": "55889dbd-e377-4853-9b8e-f8872fca5a69",
+    "event": "memory_item_deleted",
+    "at": "2026-08-08T15:44:21Z",
+    "details": {
+      "item_id": "fc916d63-15b4-4f87-b004-2e49f032fa27",
+      "memory_type": "founder_memory"
+    }
+  },
+  {
+    "id": "aa469f38-5c86-4d1c-8a20-baafbebd5f3f",
+    "event": "memory_candidate_created",
+    "at": "2026-08-08T15:44:21Z",
+    "details": {
+      "item_id": "c868972f-3d6f-4365-8b35-1561817906ed",
+      "target_layer": "founder_memory",
+      "importance_score": 0.49,
+      "needs_approval": true,
+      "sensitive_categories": []
+    }
+  },
+  {
+    "id": "504f4f73-d1d0-42e0-8bff-40efd4de9cc2",
+    "event": "memory_candidate_created",
+    "at": "2026-08-08T15:44:23Z",
+    "details": {
+      "item_id": "3fbb83d2-e48c-43e9-bfb8-47347813d1d8",
+      "target_layer": "founder_memory",
+      "importance_score": 0.65,
+      "needs_approval": true,
+      "sensitive_categories": []
+    }
+  },
+  {
+    "id": "8aa5a7d3-f748-4f74-ab9d-a5bf9d4bd6e9",
+    "event": "memory_candidate_created",
+    "at": "2026-08-08T15:44:23Z",
+    "details": {
+      "item_id": "75bf38c1-fae1-4436-a669-304fff6bed0c",
+      "target_layer": "founder_memory",
+      "importance_score": 0.5,
+      "needs_approval": true,
+      "sensitive_categories": []
+    }
+  },
+  {
+    "id": "dd02086a-e15e-464d-832d-0b2ec3982417",
+    "event": "memory_candidate_created",
+    "at": "2026-08-08T15:44:23Z",
+    "details": {
+      "item_id": "11db8947-d8be-4af7-9088-410c971e6d4d",
+      "target_layer": "founder_memory",
+      "importance_score": 0.67,
+      "needs_approval": true,
+      "sensitive_categories": []
+    }
   }
 ]
