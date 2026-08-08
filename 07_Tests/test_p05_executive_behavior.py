@@ -326,9 +326,9 @@ class ConversationalLeakRegressionTests(unittest.TestCase):
                 dry_run=True,
             )
             reply = result["reply"]
-            # Executive path must engage — reply should NOT be the plain draft
-            self.assertNotEqual(reply, "سأبدأ النشر.",
-                                "Execution request with pending approvals must engage the executive path")
+            # Executive path must engage — reply should contain an approval prompt
+            self.assertIn("قرارًا", reply,
+                          "Execution request with pending approvals must engage the executive path")
 
     # ── F: conversation → actionable transition ───────────────────────────────
 
