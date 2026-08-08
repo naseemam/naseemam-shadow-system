@@ -257,26 +257,78 @@ class ConversationalLeakRegressionTests(unittest.TestCase):
 
     # ── E: approval-sensitive path stays active ───────────────────────────────
 
-    def test_pending_approvals_still_trigger_executive_path(self):
+    def test_conversational_question_with_stale_pending_approvals_does_not_leak(self):
         """
-        E — When there are pending approvals the executive path must still
-        activate regardless of request_type, because approvals require
-        founder attention.
+        E1 — Stale/persistent pending approvals must NOT hijack a conversational
+        question.  The fix: pending_approvals is gated by not _is_conversational.
         """
         mod = self._load_ece()
-        pending_approvals = [{"id": "a1", "action": "deploy", "status": "pending"}]
+        stale_approvals = [{"id": "a1", "action": "deploy", "status": "pending"}]
         with tempfile.TemporaryDirectory() as tmp:
             ece = mod.ExecutiveConversationEngine(tmp)
-            planner_state = ece.memory.plan("مرحبا", pending_approvals=pending_approvals)
+            planner_state = ece.memory.plan("هل أنت جاهز؟", pending_approvals=stale_approvals)
+            draft = "نعم، أنا جاهز."
+            result = ece.execute(
+                query="هل أنت جاهز؟",
+                draft_reply=draft,
+                planner_state=planner_state,
+                pending_approvals=stale_approvals,
+                reasoning_output=self._make_reasoning_output("question"),
+                dry_run=True,
+            )
+            reply = result["reply"]
+            self.assertEqual(reply, draft,
+                             "Conversational question must return draft unchanged even with stale pending approvals")
+            self.assertNotIn("مهام مفتوحة", reply)
+            self.assertNotIn("المهمة المفتوحة", reply)
+            self.assertNotIn("نغلق المهمة", reply)
+
+    def test_conversational_greeting_with_stale_pending_approvals_does_not_leak(self):
+        """
+        E2 — Stale pending approvals must NOT hijack a conversational greeting.
+        """
+        mod = self._load_ece()
+        stale_approvals = [{"id": "a2", "action": "deploy", "status": "pending"}]
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan("مرحبا", pending_approvals=stale_approvals)
+            draft = "أهلًا! كيف أقدر أساعدك؟"
             result = ece.execute(
                 query="مرحبا",
-                draft_reply="أهلًا!",
+                draft_reply=draft,
                 planner_state=planner_state,
-                pending_approvals=pending_approvals,
+                pending_approvals=stale_approvals,
                 reasoning_output=self._make_reasoning_output("greeting"),
                 dry_run=True,
             )
-            self.assertIn("reply", result)
+            reply = result["reply"]
+            self.assertEqual(reply, draft,
+                             "Conversational greeting must return draft unchanged with stale pending approvals")
+            self.assertNotIn("مهام مفتوحة", reply)
+
+    def test_pending_approvals_still_trigger_executive_path(self):
+        """
+        E3 — For non-conversational (execution) requests, pending approvals must
+        still activate the executive path.  They are only prevented from hijacking
+        purely conversational turns.
+        """
+        mod = self._load_ece()
+        pending_approvals = [{"id": "a3", "action": "deploy", "status": "pending"}]
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan("ابدأ النشر", pending_approvals=pending_approvals)
+            result = ece.execute(
+                query="ابدأ النشر",
+                draft_reply="سأبدأ النشر.",
+                planner_state=planner_state,
+                pending_approvals=pending_approvals,
+                reasoning_output=self._make_reasoning_output("execution"),
+                dry_run=True,
+            )
+            reply = result["reply"]
+            # Executive path must engage — reply should NOT be the plain draft
+            self.assertNotEqual(reply, "سأبدأ النشر.",
+                                "Execution request with pending approvals must engage the executive path")
 
     # ── F: conversation → actionable transition ───────────────────────────────
 

@@ -307,9 +307,9 @@ class ExecutiveConversationEngine:
         _is_conversational = _request_type in _conversational_types or not _request_type
 
         has_executive_signals = bool(
-            # Pending approvals always surface — they require explicit founder action
-            # regardless of whether the current message is conversational or executive.
-            pending_approvals
+            # Pending approvals surface only for non-conversational requests.
+            # Stale/persistent approvals must not hijack a purely conversational turn.
+            (not _is_conversational and pending_approvals)
             or (not _is_conversational and _stalled)
             or (not _is_conversational and (planner_state.risks or planner_state.detected_risks))
             or (not _is_conversational and is_first_turn and active_projects)
