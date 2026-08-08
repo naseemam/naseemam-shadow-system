@@ -648,9 +648,49 @@ class AmeerOrchestrator:
             return m.group(1).strip().lower()
         return None
 
+    # Arabic negation particles that can immediately precede a risky-action word.
+    # Only short-distance negation (within ~15 characters) is considered so that
+    # sentences like "وافقت على ألا تنفذ المشروع" are still caught as negated,
+    # while sentences like "لا تتردد، نفّذ الآن" (negation not near the risky
+    # term) continue to require approval.
+    _ARABIC_NEGATION_PARTICLES = frozenset(["لا", "ما", "لن", "لم", "ليس", "لست", "مش"])
+    _NEGATION_WINDOW = 15  # characters to look back from the start of a match
+
+    def _all_risky_occurrences_negated(self, q: str, term: str) -> bool:
+        """Return True only when EVERY occurrence of *term* in *q* is immediately
+        preceded (within ``_NEGATION_WINDOW`` chars) by one of the Arabic negation
+        particles.  If there is even one non-negated occurrence the term is treated
+        as a genuine risky request."""
+        start = 0
+        found_any = False
+        while True:
+            idx = q.find(term, start)
+            if idx == -1:
+                break
+            found_any = True
+            window = q[max(0, idx - self._NEGATION_WINDOW): idx]
+            tokens = window.split()
+            # The negation particle must be the immediately preceding token or
+            # at most two tokens back (e.g. "لا تنفذ", "لا تقم بتنفيذ").
+            nearby = tokens[-2:] if len(tokens) >= 2 else tokens
+            if not any(p in nearby for p in self._ARABIC_NEGATION_PARTICLES):
+                return False  # this occurrence is NOT negated → risky
+            start = idx + len(term)
+        # Only "negated" if we actually found the term at least once.
+        return found_any
+
     def guardian_check(self, query: str, intent: str) -> Dict:
+        # NOTE: normalize_fn must preserve Arabic negation particles (لا، ما، لن …)
+        # and the high-risk terms unchanged; stripping diacritics is safe, but
+        # removing or transforming these tokens would cause negation detection to
+        # silently fall back to "risky".
         q = self.normalize_fn(query.lower())
-        has_risky_action = any(term in q for term in self.high_risk_action_terms)
+        # A risky term that appears ONLY in explicitly negated contexts (e.g.
+        # "لا تنفذ أي شيء") must NOT trigger the approval gate.
+        has_risky_action = any(
+            term in q and not self._all_risky_occurrences_negated(q, term)
+            for term in self.high_risk_action_terms
+        )
         has_explicit_approval = any(term in q for term in self.explicit_approval_terms)
         has_founder_identity = any(term in q for term in self.founder_identity_terms)
 

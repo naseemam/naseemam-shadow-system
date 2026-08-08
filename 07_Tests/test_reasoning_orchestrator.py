@@ -135,5 +135,102 @@ class AmeerOrchestratorIdentityTests(unittest.TestCase):
         self.assertEqual(result["reason"], "matched execution request")
 
 
+class GuardianNegationRegressionTests(unittest.TestCase):
+    """RC1 negation-aware guardian regression tests.
+
+    These tests cover the defect where an explicitly negated Arabic risky-action
+    term (e.g. "لا تنفذ") was incorrectly classified as ``needs_approval``.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.orchestrator = reasoning_orchestrator.AmeerOrchestrator(
+            documents=[],
+            score_fn=lambda query, text: 0,
+            normalize_fn=lambda text: text.lower().strip(),
+        )
+
+    def _guardian(self, query: str, intent: str = "general") -> dict:
+        return self.orchestrator.guardian_check(query, intent)
+
+    # ------------------------------------------------------------------
+    # Case 1 — explicitly negated action → must NOT trigger approval
+    # ------------------------------------------------------------------
+    def test_negated_execution_request_does_not_trigger_approval(self):
+        result = self._guardian("لا تنفذ أي شيء، أريد تحليلك فقط")
+        self.assertNotEqual(
+            result["status"],
+            "needs_approval",
+            "Explicitly negated request should not require approval",
+        )
+        self.assertEqual(result["status"], "pass")
+
+    def test_negated_delete_request_does_not_trigger_approval(self):
+        result = self._guardian("لا تحذف الملفات، فقط أخبرني بما يمكن حذفه")
+        self.assertNotEqual(result["status"], "needs_approval")
+        self.assertEqual(result["status"], "pass")
+
+    def test_negated_publish_request_does_not_trigger_approval(self):
+        result = self._guardian("لا تنشر شيئًا الآن، أريد مراجعة الكود أولًا")
+        self.assertNotEqual(result["status"], "needs_approval")
+        self.assertEqual(result["status"], "pass")
+
+    # ------------------------------------------------------------------
+    # Case 2 — genuine (non-negated) execution request → approval required
+    # ------------------------------------------------------------------
+    def test_genuine_execution_request_requires_approval(self):
+        result = self._guardian("نفذ الآن وانشر التحديث على الخادم")
+        self.assertEqual(
+            result["status"],
+            "needs_approval",
+            "A real execution request must still require approval",
+        )
+
+    def test_genuine_delete_request_requires_approval(self):
+        result = self._guardian("احذف ملف الإعدادات القديمة")
+        self.assertEqual(result["status"], "needs_approval")
+
+    # ------------------------------------------------------------------
+    # Case 3 — normal conversational/analysis request → no approval prompt
+    # ------------------------------------------------------------------
+    def test_analysis_only_request_does_not_trigger_approval(self):
+        result = self._guardian("ما هو رأيك في خطة التوسع؟", intent="general")
+        self.assertNotEqual(result["status"], "needs_approval")
+        self.assertEqual(result["status"], "pass")
+
+    def test_pure_conversational_request_does_not_trigger_approval(self):
+        result = self._guardian("كيف يمكنني تحسين إنتاجيتي هذا الأسبوع؟", intent="general")
+        self.assertNotEqual(result["status"], "needs_approval")
+        self.assertEqual(result["status"], "pass")
+
+    # ------------------------------------------------------------------
+    # Case 4 — mixed sentence (negated + non-negated risky terms) → approval required
+    # ------------------------------------------------------------------
+    def test_mixed_negated_and_genuine_risky_terms_requires_approval(self):
+        """If a sentence negates one action but affirms another, approval is still required."""
+        result = self._guardian("لا تنفذ هذا، لكن انشر الآن")
+        self.assertEqual(
+            result["status"],
+            "needs_approval",
+            "A non-negated risky term in the same sentence must still require approval",
+        )
+
+    # ------------------------------------------------------------------
+    # Case 5 — RC1 pending-approval leakage protection remains intact
+    #          (guardian_check itself must return needs_approval for real requests)
+    # ------------------------------------------------------------------
+    def test_rc1_pending_approval_leakage_protection(self):
+        """Verify that a real execution request still surfaces needs_approval so the
+        RC1 conversational shield in executive_conversation.py can handle it."""
+        result = self._guardian("طبق التغييرات على بيئة الإنتاج")
+        self.assertEqual(
+            result["status"],
+            "needs_approval",
+            "RC1: genuine execution request must return needs_approval",
+        )
+        self.assertIn("risk_level", result)
+        self.assertEqual(result["risk_level"], "high")
+
+
 if __name__ == "__main__":
     unittest.main()
