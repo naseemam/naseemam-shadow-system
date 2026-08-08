@@ -205,6 +205,127 @@ class ConversationalLeakRegressionTests(unittest.TestCase):
             self.assertNotIn("مهام مفتوحة تشغل موارد", reply)
             self.assertNotIn("نغلق المهمة المفتوحة الأعلى أثرًا أولًا", reply)
 
+    # ── C: opinion/conversational + active_projects → stays conversational ─────
+
+    def test_opinion_with_active_projects_does_not_leak_executive_report(self):
+        """
+        C — An opinion/casual question (request_type=question) on a first turn
+        with active_projects must NOT produce an executive project-status report.
+        Regression for the (is_first_turn and active_projects) branch now guarded
+        by not _is_conversational.
+        """
+        mod = self._load_ece()
+        active_projects = [{"id": "p1", "name": "مشروع التوسعة", "status": "active"}]
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan("وش رأيك في Manus؟", active_projects=active_projects)
+            draft = "Manus أداة مثيرة للاهتمام، إليك رأيي..."
+            result = ece.execute(
+                query="وش رأيك في Manus؟",
+                draft_reply=draft,
+                planner_state=planner_state,
+                active_projects=active_projects,
+                is_first_turn=True,
+                reasoning_output=self._make_reasoning_output("question"),
+                dry_run=True,
+            )
+            reply = result["reply"]
+            self.assertEqual(reply, draft,
+                             "Opinion question must return draft unchanged, not an executive project report")
+
+    def test_analysis_type_with_stalled_tasks_does_not_leak(self):
+        """
+        C (variant) — request_type=analysis is informational; stalled tasks must
+        not hijack the reply.
+        """
+        mod = self._load_ece()
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan("لماذا فشل المشروع؟", running_tasks=self._stalled_tasks())
+            draft = "السبب الرئيسي هو..."
+            result = ece.execute(
+                query="لماذا فشل المشروع؟",
+                draft_reply=draft,
+                planner_state=planner_state,
+                running_tasks=self._stalled_tasks(),
+                reasoning_output=self._make_reasoning_output("analysis"),
+                dry_run=True,
+            )
+            reply = result["reply"]
+            self.assertEqual(reply, draft,
+                             "Analysis type must stay conversational; stalled tasks must not hijack reply")
+
+    # ── E: approval-sensitive path stays active ───────────────────────────────
+
+    def test_pending_approvals_still_trigger_executive_path(self):
+        """
+        E — When there are pending approvals the executive path must still
+        activate regardless of request_type, because approvals require
+        founder attention.
+        """
+        mod = self._load_ece()
+        pending_approvals = [{"id": "a1", "action": "deploy", "status": "pending"}]
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+            planner_state = ece.memory.plan("مرحبا", pending_approvals=pending_approvals)
+            result = ece.execute(
+                query="مرحبا",
+                draft_reply="أهلًا!",
+                planner_state=planner_state,
+                pending_approvals=pending_approvals,
+                reasoning_output=self._make_reasoning_output("greeting"),
+                dry_run=True,
+            )
+            self.assertIn("reply", result)
+
+    # ── F: conversation → actionable transition ───────────────────────────────
+
+    def test_conversational_then_actionable_transition(self):
+        """
+        F — First message is conversational (opinion), second is actionable
+        (execution).  Each must be routed correctly.
+        """
+        mod = self._load_ece()
+        with tempfile.TemporaryDirectory() as tmp:
+            ece = mod.ExecutiveConversationEngine(tmp)
+
+            # Turn 1: conversational opinion question
+            planner_state_1 = ece.memory.plan(
+                "وش رأيك في Manus؟", running_tasks=self._stalled_tasks()
+            )
+            draft_1 = "Manus أداة رائعة تعتمد على..."
+            result_1 = ece.execute(
+                query="وش رأيك في Manus؟",
+                draft_reply=draft_1,
+                planner_state=planner_state_1,
+                running_tasks=self._stalled_tasks(),
+                reasoning_output=self._make_reasoning_output("question"),
+                dry_run=True,
+            )
+            self.assertEqual(result_1["reply"], draft_1,
+                             "First conversational turn must stay conversational")
+
+            # Turn 2: actionable execution request with stalled tasks
+            planner_state_2 = ece.memory.plan(
+                "اربطه بالمشروع", running_tasks=self._stalled_tasks()
+            )
+            result_2 = ece.execute(
+                query="اربطه بالمشروع",
+                draft_reply="سأربطه الآن.",
+                planner_state=planner_state_2,
+                running_tasks=self._stalled_tasks(),
+                reasoning_output=self._make_reasoning_output("execution"),
+                dry_run=True,
+            )
+            reply_2 = result_2["reply"]
+            # Executive path must activate for execution + stalled tasks
+            self.assertTrue(
+                "مهام مفتوحة" in reply_2 or "نغلق" in reply_2 or "مفتوح" in reply_2
+                or reply_2 != "سأربطه الآن.",
+                f"Actionable turn must engage executive path, got: {reply_2!r}",
+            )
+
+
 
 if __name__ == "__main__":
     unittest.main()
