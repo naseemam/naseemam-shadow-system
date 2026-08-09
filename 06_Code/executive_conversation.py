@@ -77,8 +77,25 @@ class PersistentConversationMemory:
         if state is not None:
             self._state = state
         self._state["updated_at"] = _now_iso()
+        # SECURITY: Strip execution-state keys before writing to permanent
+        # conversational memory.  Execution traces belong to ephemeral runtime
+        # state and must not be promoted to permanent memory automatically.
+        _EXECUTION_STATE_KEYS = {
+            "execution_trace",
+            "kernel_execution_trace",
+            "execution_result",
+            "pipeline_trace",
+            "kernel_reply",
+        }
+        safe_state = {k: v for k, v in self._state.items() if k not in _EXECUTION_STATE_KEYS}
+        # Apply credential sanitization before writing to disk.
+        try:
+            from kernel.credential_sanitizer import sanitize as _cs
+            safe_state = _cs(safe_state)
+        except Exception:
+            pass
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(json.dumps(self._state, ensure_ascii=False, indent=2), encoding="utf-8")
+        self._path.write_text(json.dumps(safe_state, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def snapshot(self) -> dict:
         return dict(self._state)

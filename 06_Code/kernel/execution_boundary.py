@@ -1,0 +1,240 @@
+"""
+execution_boundary.py
+=====================
+Central Execution Boundary — the single gate every side-effecting execution
+request must pass before reaching ExecutionAuthorization or FileExecutor.
+
+Pipeline
+--------
+    Execution request
+        ↓
+    ExecutionBoundary.evaluate(guardian, request_type, intent)
+        ↓
+    Guardian verdict  ──►  blocked / needs_approval / unknown / missing  →  DENIED
+        ↓
+    conversational?   ──►  not in KERNEL_ACTIONABLE_INTENTS             →  DENIED
+        ↓
+    ApprovalGate      ──►  action HIGH_RISK and no prior approval        →  DENIED (pending)
+        ↓
+    ExecutionAuthorization.check()                                       →  approved / pending / denied
+        ↓
+    allow / deny
+
+Design rules
+------------
+* Fail-closed: any ambiguous, missing, or unknown guardian status → deny
+* Only an explicit "pass" from Guardian allows execution to proceed
+* Conversational request_types never enter side-effect execution
+* ApprovalGate is consulted for high-risk actions
+* ExecutionAuthorization is the final gate (capability + permission)
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Dict, Optional, Set
+
+# Statuses that Guardian must explicitly produce for execution to be allowed.
+_GUARDIAN_PASS_VALUES: Set[str] = {"pass"}
+
+# Request types that are purely conversational — they must never trigger side effects.
+_CONVERSATIONAL_TYPES: Set[str] = {
+    "question",
+    "greeting",
+    "analysis",
+    "memory",
+    "creative",
+}
+
+# Intents that the kernel is allowed to act on even when request_type is conversational.
+# This mirrors KERNEL_ACTIONABLE_INTENTS in ameer_server.py.
+KERNEL_ACTIONABLE_INTENTS: Set[str] = {"build_homepage", "build_generic"}
+
+
+class BoundaryVerdict(str, Enum):
+    ALLOW = "allow"
+    DENY = "deny"
+    PENDING = "pending"   # waiting for Founder approval
+
+
+@dataclass
+class BoundaryResult:
+    verdict: BoundaryVerdict
+    reason: str
+    request_id: Optional[str] = None
+    authorization_request_id: Optional[str] = None
+    detail: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def allowed(self) -> bool:
+        return self.verdict == BoundaryVerdict.ALLOW
+
+
+class ExecutionBoundary:
+    """
+    Central gate that every side-effecting execution request must pass.
+
+    Parameters
+    ----------
+    approval_gate : ApprovalGate | None
+        Optional; consulted for HIGH_RISK_ACTIONS.
+    execution_auth : ExecutionAuthorization | None
+        Optional; the final authorization layer.
+    """
+
+    def __init__(
+        self,
+        approval_gate=None,
+        execution_auth=None,
+    ) -> None:
+        self._approval_gate = approval_gate
+        self._execution_auth = execution_auth
+
+    # ── Public API ────────────────────────────────────────────────────────────
+
+    def evaluate(
+        self,
+        *,
+        guardian: Optional[Dict[str, Any]],
+        request_type: str = "",
+        intent: str = "",
+        capability_name: str = "file_operations",
+        action: str = "write",
+        context: Optional[Dict[str, Any]] = None,
+        requested_by: str = "executive_kernel",
+    ) -> BoundaryResult:
+        """
+        Evaluate whether a side-effecting execution may proceed.
+
+        Returns a :class:`BoundaryResult` with ``verdict`` ∈
+        {ALLOW, DENY, PENDING}.
+
+        Guardian check (fail-closed)
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        * ``guardian`` is None or empty dict → DENY
+        * ``guardian["status"]`` is None, ``""`` or anything other than
+          ``"pass"`` → DENY
+        * ``"pass"`` → continue to next check
+
+        Conversational-type check
+        ~~~~~~~~~~~~~~~~~~~~~~~~~
+        * If request_type is in _CONVERSATIONAL_TYPES AND intent is not in
+          KERNEL_ACTIONABLE_INTENTS → DENY (conversational requests cannot
+          trigger side effects).
+
+        ApprovalGate check
+        ~~~~~~~~~~~~~~~~~~
+        * If an approval_gate is wired and the action is HIGH_RISK → PENDING
+          (unless a prior approval exists).
+
+        ExecutionAuthorization check
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        * ``execution_auth.check(...)`` → approved / pending / denied
+        * Only ``approved`` maps to ALLOW.
+        """
+        # ── Step 1: Guardian fail-closed ──────────────────────────────────────
+        guardian_status = self._extract_guardian_status(guardian)
+        if guardian_status not in _GUARDIAN_PASS_VALUES:
+            return BoundaryResult(
+                verdict=BoundaryVerdict.DENY,
+                reason="guardian_not_pass",
+                detail={
+                    "guardian_status": guardian_status,
+                    "guardian_raw": guardian,
+                },
+            )
+
+        # ── Step 2: Conversational guard ──────────────────────────────────────
+        rt = (request_type or "").strip().lower()
+        it = (intent or "").strip().lower()
+        if rt in _CONVERSATIONAL_TYPES and it not in KERNEL_ACTIONABLE_INTENTS:
+            return BoundaryResult(
+                verdict=BoundaryVerdict.DENY,
+                reason="conversational_request_blocked",
+                detail={"request_type": rt, "intent": it},
+            )
+
+        # ── Step 3: ApprovalGate (high-risk) ─────────────────────────────────
+        if self._approval_gate is not None:
+            is_high_risk = action in getattr(
+                self._approval_gate, "HIGH_RISK_ACTIONS", set()
+            )
+            if is_high_risk:
+                # Check if there is already a pending or approved entry
+                pending = self._approval_gate.pending()
+                if pending:
+                    # There is a pending approval request — block until resolved
+                    return BoundaryResult(
+                        verdict=BoundaryVerdict.PENDING,
+                        reason="approval_gate_pending",
+                        detail={"pending_count": len(pending)},
+                    )
+                # No pending: open a new request
+                approval_id = self._approval_gate.request(
+                    action=action if action in getattr(
+                        self._approval_gate, "VALID_ACTIONS", {action}
+                    ) else "other",
+                    description=f"Execution boundary gate: {capability_name}/{action}",
+                    requested_by=requested_by,
+                    context=context or {},
+                )
+                return BoundaryResult(
+                    verdict=BoundaryVerdict.PENDING,
+                    reason="approval_gate_created",
+                    detail={"approval_id": approval_id},
+                )
+
+        # ── Step 4: ExecutionAuthorization ───────────────────────────────────
+        if self._execution_auth is not None:
+            auth_result = self._execution_auth.check(
+                capability_name=capability_name,
+                action=action,
+                context=context or {},
+                requested_by=requested_by,
+            )
+            auth_status = auth_result.get("status", "denied")
+            if auth_status == "approved":
+                return BoundaryResult(
+                    verdict=BoundaryVerdict.ALLOW,
+                    reason="execution_authorized",
+                    authorization_request_id=auth_result.get("request_id"),
+                    detail=auth_result,
+                )
+            if auth_status == "pending":
+                return BoundaryResult(
+                    verdict=BoundaryVerdict.PENDING,
+                    reason="execution_authorization_pending",
+                    authorization_request_id=auth_result.get("request_id"),
+                    detail=auth_result,
+                )
+            return BoundaryResult(
+                verdict=BoundaryVerdict.DENY,
+                reason="execution_authorization_denied",
+                detail=auth_result,
+            )
+
+        # ── No auth components wired — allow if Guardian passed ───────────────
+        # (This path is used in lightweight deployments that deliberately skip
+        #  the full authorization stack.  Guardian pass is the minimum bar.)
+        return BoundaryResult(
+            verdict=BoundaryVerdict.ALLOW,
+            reason="guardian_pass_no_auth_components",
+        )
+
+    # ── Internal helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _extract_guardian_status(guardian: Optional[Dict[str, Any]]) -> str:
+        """
+        Extract the guardian status string.
+
+        Fail-closed: anything that is not an explicit "pass" becomes "unknown".
+        """
+        if not guardian:
+            return "missing"
+        raw_status = guardian.get("status")
+        if not raw_status:
+            return "missing"
+        normalized = str(raw_status).strip().lower()
+        return normalized if normalized else "missing"
