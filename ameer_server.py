@@ -117,6 +117,7 @@ MD_GLOB = os.path.join(REPO_ROOT, "**", "*.md")
 WEB_INDEX = os.path.join(REPO_ROOT, "09_Assets", "web", "index.html")
 DEBUG_MODE = os.getenv("AMEER_DEBUG", "0").lower() in {"1", "true", "yes", "on"}
 RUNTIME_METADATA = runtime_metadata(workspace_root=REPO_ROOT)
+KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic"}
 
 # ─── Executive Operating Kernel ───────────────────────────────────────────────
 
@@ -435,10 +436,12 @@ async def ask(request: Request):
     # Must run BEFORE compose_final_reply so the reply can confirm the outcome.
     kernel_execution_trace: dict | None = None
     kernel_execution_reply: str | None = None
+    kernel_detected_intent: str = "unknown"
     if KERNEL:
         try:
             decomp = KERNEL.task_decomposer.decompose(q)
-            if decomp.get("intent", "unknown") != "unknown":
+            kernel_detected_intent = str(decomp.get("intent", "unknown") or "unknown").strip().lower()
+            if kernel_detected_intent != "unknown":
                 kernel_execution_trace = KERNEL.execute_command(q)
                 final_exec = kernel_execution_trace.get("final", {})
                 if final_exec.get("accepted"):
@@ -501,8 +504,26 @@ async def ask(request: Request):
         final_reply = conversation_result.get("reply", fallback_reply)
         reply_source = conversation_result.get("engine", reply_source)
 
-    # ── 5b. Override reply when kernel execution succeeded ────────────────────
-    if kernel_execution_reply is not None:
+    # ── 5b. Kernel execution reply is advisory only (Guardian/ECE authoritative) ─
+    _guardian_status = str((guardian or {}).get("status", "pass") or "pass").strip().lower()
+    _reasoning_guardian = str(
+        ((reasoning_output or {}).get("reasoning", {}).get("guardian_status") or _guardian_status)
+    ).strip().lower()
+    _request_type = str(
+        ((reasoning_output or {}).get("reasoning", {}).get("request_type") or getattr(plan, "request_type", ""))
+    ).strip().lower()
+    _conversational_types = {"question", "greeting", "analysis", "memory", "creative"}
+    _is_conversational_request = (_request_type in _conversational_types) or (not _request_type)
+    _can_use_kernel_reply = (
+        kernel_execution_reply is not None
+        and _guardian_status == "pass"
+        and _reasoning_guardian == "pass"
+        and (
+            not _is_conversational_request
+            or kernel_detected_intent in KERNEL_ACTIONABLE_INTENTS
+        )
+    )
+    if _can_use_kernel_reply:
         final_reply = kernel_execution_reply
         reply_source = "executive_kernel"
 

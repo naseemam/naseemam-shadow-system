@@ -24,6 +24,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -244,10 +245,16 @@ class ECESoleResponseOwnerTests(unittest.TestCase):
             "المهام الطبيعية (in_progress) يجب ألا تستبدل رد OpenAI بنص قالبي محلي.",
         )
 
-    def test_stalled_running_tasks_do_override_draft_reply(self):
+    def test_stalled_running_tasks_do_not_override_conversational_draft_reply(self):
         """
-        Running tasks with status 'blocked' or 'pending' (stalled) MUST still
-        trigger executive intervention — the ECE should surface them proactively.
+        Historical note: this test used to expect any stalled running task to
+        override draft_reply. That contract is obsolete.
+
+        The conversational shield now treats stalled tasks as executive signals
+        only for actionable request types (execution/planning/decision). When
+        request typing is absent here, execute() defaults to the safe
+        conversational path so stale runtime state cannot hijack the user's
+        direct answer.
         """
         stalled_tasks = [{"id": "t2", "title": "مراجعة مالية", "status": "blocked"}]
         state = PersistentConversationMemory(self.tmp).plan(
@@ -262,10 +269,10 @@ class ECESoleResponseOwnerTests(unittest.TestCase):
             running_tasks=stalled_tasks,
             dry_run=True,
         )
-        self.assertNotEqual(
+        self.assertEqual(
             result.get("reply"),
             openai_draft,
-            "المهام المتوقفة (blocked/pending) يجب أن تُفعّل التدخل التنفيذي وتستبدل رد OpenAI.",
+            "المهام المتوقفة لا يجب أن تختطف draft_reply في الطلبات الحوارية أو غير المصنفة.",
         )
 
 
@@ -362,6 +369,148 @@ class AskEndpointECEOwnerTests(unittest.TestCase):
         data = resp.json()
         for key in ("was_modified", "draft_before_ece", "ece_modification", "executive_message"):
             self.assertNotIn(key, data)
+
+    def test_ask_kernel_reply_cannot_override_guardian_blocked(self):
+        class _KernelStub:
+            class _TaskDecomposer:
+                @staticmethod
+                def decompose(_q):
+                    return {"intent": "build_homepage"}
+
+            task_decomposer = _TaskDecomposer()
+
+            @staticmethod
+            def before_request(_q):
+                return {}
+
+            @staticmethod
+            def execute_command(_q):
+                return {"final": {"accepted": True, "completed": 3, "files_created": ["index.html"]}}
+
+            @staticmethod
+            def after_request(_reply):
+                return None
+
+        class _BrainStub:
+            _single_brain_mode = False
+
+            @staticmethod
+            def think(_q, _docs, guardian_result=None, routing_hint=None):
+                return _make_plan(request_type="execution", guardian_status="blocked")
+
+            @staticmethod
+            def get_reasoning_output(_q, _docs, guardian_result=None, routing_hint=None, existing_plan=None):
+                return {"reasoning": {"guardian_status": "blocked", "request_type": "execution"}}
+
+            @staticmethod
+            def _execute_plan(_q, _plan, workspace_root=None):
+                return {}
+
+            @staticmethod
+            def compose_final_reply(*args, **kwargs):
+                return ("هذا الطلب خارج ما أستطيع تنفيذه بشكل مباشر.", "guardian_gate")
+
+        class _MemoryStub:
+            @staticmethod
+            def plan(*args, **kwargs):
+                return {}
+
+        class _ECEStub:
+            memory = _MemoryStub()
+
+            @staticmethod
+            def execute(**kwargs):
+                return {"reply": "هذا الطلب خارج ما أستطيع تنفيذه بشكل مباشر.", "engine": "executive_conversation_engine"}
+
+        orchestrator_payload = {
+            "intent": "execution",
+            "guardian": {"status": "blocked", "reason": "policy"},
+            "routing": {},
+            "agent_result": {},
+            "agent_brain_payload": {},
+            "selected_agent": "ameer_core",
+        }
+
+        with patch.object(_srv_mod, "KERNEL", _KernelStub()), \
+             patch.object(_srv_mod, "ORCHESTRATOR", type("O", (), {"answer": staticmethod(lambda q, m: orchestrator_payload)})()), \
+             patch.object(_srv_mod, "EXECUTIVE_BRAIN", _BrainStub()), \
+             patch.object(_srv_mod, "EXECUTIVE_CONVERSATION_ENGINE", _ECEStub()):
+            resp = client.post("/ask", json={"query": "ابنِ الصفحة الرئيسية"})
+            self.assertEqual(resp.status_code, 200)
+            data = resp.json()
+            reply = data.get("reply", "")
+            self.assertIn("خارج ما أستطيع", reply)
+            self.assertNotIn("✅ تم بناء الصفحة الرئيسية بنجاح", reply)
+
+    def test_ask_kernel_reply_cannot_override_conversational_final_reply(self):
+        class _KernelStub:
+            class _TaskDecomposer:
+                @staticmethod
+                def decompose(_q):
+                    return {"intent": "legacy_reply"}
+
+            task_decomposer = _TaskDecomposer()
+
+            @staticmethod
+            def before_request(_q):
+                return {}
+
+            @staticmethod
+            def execute_command(_q):
+                return {"final": {"accepted": True, "completed": 3, "files_created": ["index.html"]}}
+
+            @staticmethod
+            def after_request(_reply):
+                return None
+
+        class _BrainStub:
+            _single_brain_mode = False
+
+            @staticmethod
+            def think(_q, _docs, guardian_result=None, routing_hint=None):
+                return _make_plan(request_type="question", guardian_status="pass")
+
+            @staticmethod
+            def get_reasoning_output(_q, _docs, guardian_result=None, routing_hint=None, existing_plan=None):
+                return {"reasoning": {"guardian_status": "pass", "request_type": "question"}}
+
+            @staticmethod
+            def _execute_plan(_q, _plan, workspace_root=None):
+                return {}
+
+            @staticmethod
+            def compose_final_reply(*args, **kwargs):
+                return ("مسودة أولية", "executive_brain_local")
+
+        class _MemoryStub:
+            @staticmethod
+            def plan(*args, **kwargs):
+                return {}
+
+        class _ECEStub:
+            memory = _MemoryStub()
+
+            @staticmethod
+            def execute(**kwargs):
+                return {"reply": "رد نهائي محادثي", "engine": "executive_conversation_engine"}
+
+        orchestrator_payload = {
+            "intent": "question",
+            "guardian": {"status": "pass", "reason": ""},
+            "routing": {},
+            "agent_result": {},
+            "agent_brain_payload": {},
+            "selected_agent": "ameer_core",
+        }
+
+        with patch.object(_srv_mod, "KERNEL", _KernelStub()), \
+             patch.object(_srv_mod, "ORCHESTRATOR", type("O", (), {"answer": staticmethod(lambda q, m: orchestrator_payload)})()), \
+             patch.object(_srv_mod, "EXECUTIVE_BRAIN", _BrainStub()), \
+             patch.object(_srv_mod, "EXECUTIVE_CONVERSATION_ENGINE", _ECEStub()):
+            resp = client.post("/ask", json={"query": "سؤال محادثي"})
+            self.assertEqual(resp.status_code, 200)
+            data = resp.json()
+            self.assertEqual(data.get("reply"), "رد نهائي محادثي")
 
 
 if __name__ == "__main__":
