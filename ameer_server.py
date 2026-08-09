@@ -12,6 +12,11 @@ import uuid
 import importlib.util
 from datetime import datetime, timezone
 
+# ─── 06_Code on sys.path — must be first so kernel imports resolve everywhere ─
+_CODE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "06_Code")
+if _CODE_ROOT not in sys.path:
+    sys.path.insert(0, _CODE_ROOT)
+
 from ameer_runtime import (
     public_runtime_identity,
     print_runtime_banner,
@@ -133,11 +138,6 @@ WEB_INDEX = os.path.join(REPO_ROOT, "09_Assets", "web", "index.html")
 DEBUG_MODE = os.getenv("AMEER_DEBUG", "0").lower() in {"1", "true", "yes", "on"}
 RUNTIME_METADATA = runtime_metadata(workspace_root=REPO_ROOT)
 KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic"}
-
-# ─── 06_Code on sys.path (required for kernel sub-modules) ────────────────────
-_CODE_ROOT = os.path.join(os.path.dirname(__file__), "06_Code")
-if _CODE_ROOT not in sys.path:
-    sys.path.insert(0, _CODE_ROOT)
 
 # ─── Executive Operating Kernel ───────────────────────────────────────────────
 

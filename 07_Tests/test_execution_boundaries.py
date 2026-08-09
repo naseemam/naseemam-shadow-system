@@ -453,19 +453,16 @@ class TestCredentialSanitizer(unittest.TestCase):
         self.assertEqual(result["authorization"], "[REDACTED]")
 
     def test_L_bearer_token_in_string_value_redacted(self):
-        # ****** embedded in string values must be redacted
-        payload = {"message": "call API with ******"}
+        # Verify that a real sk- style token in a string value gets redacted
+        # (32+ chars of alphanumeric = long hex / API-key-like pattern).
+        long_hex_token = "a" * 32  # 32 lowercase hex chars — caught by hex pattern
+        payload = {"message": f"token is {long_hex_token} in payload"}
         result = self.sanitize(payload)
-        # ****** is not a bearer-like pattern; the test verifies that
-        # tokens in the format "******" ARE redacted.
-        # For the key-level test, see test_L_authorization_header_redacted.
-        # Verify a proper bearer token string is caught:
-        payload2 = {"message": "******"}
+        self.assertNotIn(long_hex_token, result["message"])
+        # Also verify authorization as a key is still redacted (separate coverage)
+        payload2 = {"authorization": "my-secret-value"}
         result2 = self.sanitize(payload2)
-        # 6 chars of * are not a hex/base64 credential; only the key matters
-        payload3 = {"authorization": "******"}
-        result3 = self.sanitize(payload3)
-        self.assertEqual(result3["authorization"], "[REDACTED]")
+        self.assertEqual(result2["authorization"], "[REDACTED]")
 
     def test_L_safe_arabic_text_untouched(self):
         payload = {"reply": "أنا أمير، شريكك التنفيذي"}

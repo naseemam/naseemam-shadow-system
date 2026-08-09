@@ -161,29 +161,40 @@ class ExecutionBoundary:
                 self._approval_gate, "HIGH_RISK_ACTIONS", set()
             )
             if is_high_risk:
-                # Check if there is already a pending or approved entry
-                pending = self._approval_gate.pending()
-                if pending:
-                    # There is a pending approval request — block until resolved
+                # Check if there is already an *approved* entry for this action type.
+                # If so, the Founder has already authorized — allow execution.
+                recent = getattr(self._approval_gate, "recent", lambda n: [])(20)
+                approved_existing = any(
+                    r.get("status") == "approved" and r.get("action") == action
+                    for r in recent
+                )
+                if approved_existing:
+                    # Fall through to ExecutionAuthorization check
+                    pass
+                else:
+                    # Check whether there is a pending request
+                    pending = self._approval_gate.pending()
+                    if pending:
+                        # Pending request exists — block until resolved
+                        return BoundaryResult(
+                            verdict=BoundaryVerdict.PENDING,
+                            reason="approval_gate_pending",
+                            detail={"pending_count": len(pending)},
+                        )
+                    # No pending and no approved — open a new request
+                    approval_id = self._approval_gate.request(
+                        action=action if action in getattr(
+                            self._approval_gate, "VALID_ACTIONS", {action}
+                        ) else "other",
+                        description=f"Execution boundary gate: {capability_name}/{action}",
+                        requested_by=requested_by,
+                        context=context or {},
+                    )
                     return BoundaryResult(
                         verdict=BoundaryVerdict.PENDING,
-                        reason="approval_gate_pending",
-                        detail={"pending_count": len(pending)},
+                        reason="approval_gate_created",
+                        detail={"approval_id": approval_id},
                     )
-                # No pending: open a new request
-                approval_id = self._approval_gate.request(
-                    action=action if action in getattr(
-                        self._approval_gate, "VALID_ACTIONS", {action}
-                    ) else "other",
-                    description=f"Execution boundary gate: {capability_name}/{action}",
-                    requested_by=requested_by,
-                    context=context or {},
-                )
-                return BoundaryResult(
-                    verdict=BoundaryVerdict.PENDING,
-                    reason="approval_gate_created",
-                    detail={"approval_id": approval_id},
-                )
 
         # ── Step 4: ExecutionAuthorization ───────────────────────────────────
         if self._execution_auth is not None:

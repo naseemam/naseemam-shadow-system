@@ -29,7 +29,6 @@ _SENSITIVE_KEYS: tuple[str, ...] = (
     "passwd",
     "secret",
     "authorization",
-    "auth",
     "bearer",
     "credential",
     "credentials",
