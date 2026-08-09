@@ -305,6 +305,22 @@ class ExecutiveConversationEngine:
             else ""
         )
         _is_conversational = _request_type in _conversational_types or not _request_type
+        # For conversational requests (question/analysis/memory/creative/greeting),
+        # a valid draft_reply from the provider is the authoritative reply and
+        # must be preserved as-is — it must never be discarded in favor of the
+        # stale planner-state reconstruction in _build_from_buffer().
+        _clean_draft_early = (draft_reply or "").strip()
+        if _is_conversational and _clean_draft_early:
+            reply = _clean_draft_early
+            if not dry_run:
+                self.memory.update_after_reply(query, reply, planner_state)
+            return {
+                "reply": reply,
+                "planner_state": planner_state.to_dict(),
+                "engine": "executive_conversation_engine",
+                "response_owner": "ExecutiveConversationEngine",
+                "memory_context_used": bool(conversation_context or persistent_memory_block),
+            }
 
         has_executive_signals = bool(
             # Pending approvals surface only for non-conversational requests.
