@@ -245,10 +245,16 @@ class ECESoleResponseOwnerTests(unittest.TestCase):
             "المهام الطبيعية (in_progress) يجب ألا تستبدل رد OpenAI بنص قالبي محلي.",
         )
 
-    def test_stalled_running_tasks_do_override_draft_reply(self):
+    def test_stalled_running_tasks_do_not_override_conversational_draft_reply(self):
         """
-        Running tasks with status 'blocked' or 'pending' (stalled) MUST still
-        trigger executive intervention — the ECE should surface them proactively.
+        Historical note: this test used to expect any stalled running task to
+        override draft_reply. That contract is obsolete.
+
+        The conversational shield now treats stalled tasks as executive signals
+        only for actionable request types (execution/planning/decision). When
+        request typing is absent here, execute() defaults to the safe
+        conversational path so stale runtime state cannot hijack the user's
+        direct answer.
         """
         stalled_tasks = [{"id": "t2", "title": "مراجعة مالية", "status": "blocked"}]
         state = PersistentConversationMemory(self.tmp).plan(
@@ -263,10 +269,10 @@ class ECESoleResponseOwnerTests(unittest.TestCase):
             running_tasks=stalled_tasks,
             dry_run=True,
         )
-        self.assertNotEqual(
+        self.assertEqual(
             result.get("reply"),
             openai_draft,
-            "المهام المتوقفة (blocked/pending) يجب أن تُفعّل التدخل التنفيذي وتستبدل رد OpenAI.",
+            "المهام المتوقفة لا يجب أن تختطف draft_reply في الطلبات الحوارية أو غير المصنفة.",
         )
 
 
