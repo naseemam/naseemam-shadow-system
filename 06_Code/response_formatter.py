@@ -93,16 +93,22 @@ class ResponseFormatter:
         # or agent_result must only be used when the governed reply is absent or
         # contains internal/operational phrases that must never reach the user.
         governed_reply = (payload.get("reply") or payload.get("message") or "").strip()
-        # A reply that mentions internal routing tokens is an operational artefact,
-        # not a user-facing response — treat it as absent so structured data wins.
+        has_governed_reply = bool(governed_reply)
+        # A reply that mentions internal routing tokens is an operational artefact.
+        # In that specific case we can rebuild from structured response_data.
+        # Otherwise, if governed text exists but sanitize fails, fail closed.
         _is_internal = bool(governed_reply and self._agent_pattern.search(governed_reply))
         safe_governed = (self.format_text(governed_reply) if governed_reply and not _is_internal else "")
-        if not safe_governed or safe_governed == self._FALLBACK_REPLY:
+        if not has_governed_reply or _is_internal:
             response_data = self._extract_response_data(payload)
             composed = self._compose_from_structured_data(response_data)
+            safe_reply = self.format_text(composed)
         else:
-            composed = ""
-        safe_reply = safe_governed or self.format_text(composed)
+            safe_reply = (
+                safe_governed
+                if safe_governed and safe_governed != self._FALLBACK_REPLY
+                else self._FALLBACK_REPLY
+            )
         return {
             "reply": safe_reply,
             "message": safe_reply,

@@ -71,6 +71,21 @@ class ResponseFormatterTests(unittest.TestCase):
             "أنا أمير، شريكك التنفيذي. أفكر معك، أخطط، أتابع، وأقدم الرد النهائي باسمي.",
         )
 
+    def test_format_payload_fails_closed_when_governed_reply_is_unsanitizable(self):
+        formatter = ResponseFormatter()
+        payload = {
+            "reply": '{"debug_trace":{"tool_calls":["file.create"]}}',
+            "agent_brain_payload": {
+                "response_data": {
+                    "intent": "identity",
+                    "facts": {"subject": "ameer"},
+                },
+            },
+        }
+        result = formatter.format_payload(payload)
+        self.assertEqual(result["reply"], "أنا معك.")
+        self.assertEqual(result["message"], "أنا معك.")
+
     def test_format_text_blocks_json_like_internal_payload(self):
         formatter = ResponseFormatter()
         raw = '{"selected_agent":"identity_agent","execution_engine":{"tool_calls":["file.create"]}}'
