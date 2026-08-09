@@ -190,6 +190,60 @@ class TestExecutionAuthorizationDenied(unittest.TestCase):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Regression — Phase 1 fail-closed dependency behavior
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestExecutionBoundaryFailClosedDependencies(unittest.TestCase):
+    """Regression: guardian pass must not bypass missing/unavailable dependencies."""
+
+    def setUp(self):
+        mod = _load_execution_boundary()
+        self.ExecutionBoundary = mod.ExecutionBoundary
+        self.BoundaryVerdict = mod.BoundaryVerdict
+
+    def test_guardian_pass_with_missing_execution_auth_denies(self):
+        boundary = self.ExecutionBoundary()  # execution_auth intentionally missing
+        result = boundary.evaluate(
+            guardian={"status": "pass"},
+            request_type="execution",
+            intent="build_homepage",
+            action="write",
+        )
+        self.assertEqual(result.verdict, self.BoundaryVerdict.DENY)
+        self.assertEqual(result.reason, "execution_authorization_missing")
+
+    def test_guardian_pass_with_required_approval_gate_missing_denies(self):
+        class _ApprovedAuth:
+            def check(self, **kwargs):
+                return {"status": "approved", "request_id": "req-1"}
+
+        boundary = self.ExecutionBoundary(execution_auth=_ApprovedAuth())
+        result = boundary.evaluate(
+            guardian={"status": "pass"},
+            request_type="execution",
+            intent="build_homepage",
+            action="delete",  # high risk → approval gate required
+        )
+        self.assertEqual(result.verdict, self.BoundaryVerdict.DENY)
+        self.assertEqual(result.reason, "approval_gate_required_missing")
+
+    def test_execution_boundary_dependencies_unavailable_denies(self):
+        class _BrokenExecutionAuth:
+            def check(self, **kwargs):
+                raise RuntimeError("execution auth backend offline")
+
+        boundary = self.ExecutionBoundary(execution_auth=_BrokenExecutionAuth())
+        result = boundary.evaluate(
+            guardian={"status": "pass"},
+            request_type="execution",
+            intent="build_homepage",
+            action="write",
+        )
+        self.assertEqual(result.verdict, self.BoundaryVerdict.DENY)
+        self.assertEqual(result.reason, "execution_authorization_unavailable")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # G — FileExecutor: execution without authorization token
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -239,7 +293,7 @@ class TestFileExecutorAuthorizationCheck(unittest.TestCase):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class TestConversationalRequestBlocked(unittest.TestCase):
-    """H: Conversational request types must never trigger side-effect execution."""
+    """H: Conversational types are denied unless intent is explicitly kernel-actionable."""
 
     def setUp(self):
         mod = _load_execution_boundary()
@@ -264,14 +318,18 @@ class TestConversationalRequestBlocked(unittest.TestCase):
                     )
 
     def test_H_actionable_intent_with_pass_guardian_allowed(self):
-        """build_homepage with guardian=pass should be allowed (no auth components)."""
-        boundary = self.ExecutionBoundary()
+        """build_homepage with guardian=pass remains executable when auth explicitly approves."""
+        class _ApprovedAuth:
+            def check(self, **kwargs):
+                return {"status": "approved", "request_id": "req-1"}
+
+        boundary = self.ExecutionBoundary(execution_auth=_ApprovedAuth())
         result = boundary.evaluate(
             guardian={"status": "pass"},
             request_type="question",  # conversational but with KERNEL_ACTIONABLE_INTENT
             intent="build_homepage",
         )
-        # With no auth components wired, guardian pass is sufficient
+        # Conversational behavior stays the same for actionable intents when auth approves.
         self.assertEqual(result.verdict, self.BoundaryVerdict.ALLOW)
 
 

@@ -38,6 +38,15 @@ from typing import Any, Dict, Optional, Set
 # Statuses that Guardian must explicitly produce for execution to be allowed.
 _GUARDIAN_PASS_VALUES: Set[str] = {"pass"}
 
+# High-risk actions that require an ApprovalGate to be available.
+# Mirrors ApprovalGate.HIGH_RISK_ACTIONS.
+_HIGH_RISK_ACTIONS_REQUIRING_APPROVAL: Set[str] = {
+    "delete",
+    "publish",
+    "external",
+    "financial",
+}
+
 # Request types that are purely conversational — they must never trigger side effects.
 _CONVERSATIONAL_TYPES: Set[str] = {
     "question",
@@ -156,81 +165,109 @@ class ExecutionBoundary:
             )
 
         # ── Step 3: ApprovalGate (high-risk) ─────────────────────────────────
-        if self._approval_gate is not None:
-            is_high_risk = action in getattr(
-                self._approval_gate, "HIGH_RISK_ACTIONS", set()
+        is_high_risk = action in _HIGH_RISK_ACTIONS_REQUIRING_APPROVAL
+        if is_high_risk and self._approval_gate is None:
+            return BoundaryResult(
+                verdict=BoundaryVerdict.DENY,
+                reason="approval_gate_required_missing",
+                detail={"action": action},
             )
-            if is_high_risk:
-                # Check if there is already an *approved* entry for this action type.
-                # If so, the Founder has already authorized — allow execution.
-                recent = getattr(self._approval_gate, "recent", lambda n: [])(20)
-                approved_existing = any(
-                    r.get("status") == "approved" and r.get("action") == action
-                    for r in recent
+
+        if self._approval_gate is not None and is_high_risk:
+            recent_fn = getattr(self._approval_gate, "recent", None)
+            pending_fn = getattr(self._approval_gate, "pending", None)
+            request_fn = getattr(self._approval_gate, "request", None)
+            if not callable(recent_fn) or not callable(pending_fn) or not callable(request_fn):
+                return BoundaryResult(
+                    verdict=BoundaryVerdict.DENY,
+                    reason="approval_gate_unavailable",
+                    detail={"action": action},
                 )
-                if approved_existing:
-                    # Fall through to ExecutionAuthorization check
-                    pass
-                else:
-                    # Check whether there is a pending request
-                    pending = self._approval_gate.pending()
-                    if pending:
-                        # Pending request exists — block until resolved
-                        return BoundaryResult(
-                            verdict=BoundaryVerdict.PENDING,
-                            reason="approval_gate_pending",
-                            detail={"pending_count": len(pending)},
-                        )
-                    # No pending and no approved — open a new request
-                    approval_id = self._approval_gate.request(
-                        action=action if action in getattr(
-                            self._approval_gate, "VALID_ACTIONS", {action}
-                        ) else "other",
-                        description=f"Execution boundary gate: {capability_name}/{action}",
-                        requested_by=requested_by,
-                        context=context or {},
-                    )
+
+            # Check if there is already an *approved* entry for this action type.
+            # If so, the Founder has already authorized — allow execution.
+            recent = recent_fn(20)
+            approved_existing = any(
+                r.get("status") == "approved" and r.get("action") == action
+                for r in recent
+            )
+            if not approved_existing:
+                # Check whether there is a pending request
+                pending = pending_fn()
+                if pending:
+                    # Pending request exists — block until resolved
                     return BoundaryResult(
                         verdict=BoundaryVerdict.PENDING,
-                        reason="approval_gate_created",
-                        detail={"approval_id": approval_id},
+                        reason="approval_gate_pending",
+                        detail={"pending_count": len(pending)},
                     )
+                # No pending and no approved — open a new request
+                valid_actions = getattr(self._approval_gate, "VALID_ACTIONS", {action})
+                approval_id = request_fn(
+                    action=action if action in valid_actions else "other",
+                    description=f"Execution boundary gate: {capability_name}/{action}",
+                    requested_by=requested_by,
+                    context=context or {},
+                )
+                return BoundaryResult(
+                    verdict=BoundaryVerdict.PENDING,
+                    reason="approval_gate_created",
+                    detail={"approval_id": approval_id},
+                )
 
         # ── Step 4: ExecutionAuthorization ───────────────────────────────────
-        if self._execution_auth is not None:
-            auth_result = self._execution_auth.check(
+        if self._execution_auth is None:
+            return BoundaryResult(
+                verdict=BoundaryVerdict.DENY,
+                reason="execution_authorization_missing",
+            )
+
+        check_fn = getattr(self._execution_auth, "check", None)
+        if not callable(check_fn):
+            return BoundaryResult(
+                verdict=BoundaryVerdict.DENY,
+                reason="execution_authorization_unavailable",
+            )
+
+        try:
+            auth_result = check_fn(
                 capability_name=capability_name,
                 action=action,
                 context=context or {},
                 requested_by=requested_by,
             )
-            auth_status = auth_result.get("status", "denied")
-            if auth_status == "approved":
-                return BoundaryResult(
-                    verdict=BoundaryVerdict.ALLOW,
-                    reason="execution_authorized",
-                    authorization_request_id=auth_result.get("request_id"),
-                    detail=auth_result,
-                )
-            if auth_status == "pending":
-                return BoundaryResult(
-                    verdict=BoundaryVerdict.PENDING,
-                    reason="execution_authorization_pending",
-                    authorization_request_id=auth_result.get("request_id"),
-                    detail=auth_result,
-                )
+        except Exception as exc:
             return BoundaryResult(
                 verdict=BoundaryVerdict.DENY,
-                reason="execution_authorization_denied",
-                detail=auth_result,
+                reason="execution_authorization_unavailable",
+                detail={"error": str(exc)},
             )
 
-        # ── No auth components wired — allow if Guardian passed ───────────────
-        # (This path is used in lightweight deployments that deliberately skip
-        #  the full authorization stack.  Guardian pass is the minimum bar.)
+        if not isinstance(auth_result, dict):
+            return BoundaryResult(
+                verdict=BoundaryVerdict.DENY,
+                reason="execution_authorization_unavailable",
+                detail={"error": "invalid_check_result_type"},
+            )
+        auth_status = auth_result.get("status", "denied")
+        if auth_status == "approved":
+            return BoundaryResult(
+                verdict=BoundaryVerdict.ALLOW,
+                reason="execution_authorized",
+                authorization_request_id=auth_result.get("request_id"),
+                detail=auth_result,
+            )
+        if auth_status == "pending":
+            return BoundaryResult(
+                verdict=BoundaryVerdict.PENDING,
+                reason="execution_authorization_pending",
+                authorization_request_id=auth_result.get("request_id"),
+                detail=auth_result,
+            )
         return BoundaryResult(
-            verdict=BoundaryVerdict.ALLOW,
-            reason="guardian_pass_no_auth_components",
+            verdict=BoundaryVerdict.DENY,
+            reason="execution_authorization_denied",
+            detail=auth_result,
         )
 
     # ── Internal helpers ──────────────────────────────────────────────────────
