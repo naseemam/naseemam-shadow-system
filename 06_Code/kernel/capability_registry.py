@@ -86,6 +86,13 @@ _CORE_CAPABILITIES: List[Dict[str, Any]] = [
         "dependencies": [],
         "risk_level": "low",
     },
+    {
+        "name": "file_operations",
+        "description": "Controlled file read/write operations within approved runtime boundaries",
+        "scope": "tooling",
+        "dependencies": [],
+        "risk_level": "medium",
+    },
 ]
 
 

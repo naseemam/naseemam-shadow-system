@@ -99,6 +99,14 @@ def _load_execution_authorization():
     return mod, cap_mod, perm_mod
 
 
+def _load_tool_registry():
+    _ensure_code_path()
+    return _load(
+        "tool_registry",
+        os.path.join(CODE_ROOT, "kernel", "tool_registry.py"),
+    )
+
+
 # ── CapabilityRegistry tests ──────────────────────────────────────────────────
 
 class TestCapabilityRegistry(unittest.TestCase):
@@ -119,6 +127,7 @@ class TestCapabilityRegistry(unittest.TestCase):
         self.assertIn("engineering", names)
         self.assertIn("programming", names)
         self.assertIn("planning", names)
+        self.assertIn("file_operations", names)
 
     # 2 — cannot register with status=core
     def test_cannot_register_with_core_status(self):
@@ -481,6 +490,49 @@ class TestExecutionAuthorization(unittest.TestCase):
         ids = [p["request_id"] for p in pending]
         self.assertNotIn(r1["request_id"], ids)
         self.assertIn(r2["request_id"], ids)
+
+
+class TestFileOperationsContract(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        tool_mod = _load_tool_registry()
+        auth_mod, cap_mod, perm_mod = _load_execution_authorization()
+        self.tools = tool_mod.ToolRegistry()
+        self.cap_reg = cap_mod.CapabilityRegistry(self.tmp)
+        self.perm_reg = perm_mod.PermissionRegistry(self.tmp)
+        self.auth = auth_mod.ExecutionAuthorization(self.tmp, self.cap_reg, self.perm_reg)
+
+    def test_file_operations_capability_is_seeded(self):
+        cap = self.cap_reg.get_by_name("file_operations")
+        self.assertIsNotNone(cap)
+        self.assertEqual(cap["status"], "core")
+
+    def test_file_tools_contract_stays_not_granted_and_denied(self):
+        read_tool = self.tools.get("file.read")
+        create_tool = self.tools.get("file.create")
+
+        self.assertEqual(read_tool.capability, "file_operations")
+        self.assertEqual(read_tool.action, "read")
+        self.assertEqual(create_tool.capability, "file_operations")
+        self.assertEqual(create_tool.action, "write")
+
+        cap = self.cap_reg.get_by_name("file_operations")
+        self.perm_reg.ensure(cap["capability_id"])
+        card = self.perm_reg.get_for_capability(cap["capability_id"])
+        self.assertEqual(card["permission_status"], "not_granted")
+
+        read_result = self.auth.check(
+            capability_name=read_tool.capability,
+            action=read_tool.action,
+            context={"tool_name": read_tool.tool_name},
+        )
+        create_result = self.auth.check(
+            capability_name=create_tool.capability,
+            action=create_tool.action,
+            context={"tool_name": create_tool.tool_name},
+        )
+        self.assertEqual(read_result["status"], "denied")
+        self.assertEqual(create_result["status"], "denied")
 
 
 # ── ExecutiveKernel integration tests ─────────────────────────────────────────
