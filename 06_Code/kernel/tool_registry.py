@@ -14,8 +14,21 @@ from typing import Any, Mapping
 
 
 _PROTECTED_FIELDS = frozenset({"capability", "action", "risk_level"})
+_FILE_READ_PROTECTED_FIELDS = frozenset(
+    {
+        "scope",
+        "scope_kind",
+        "scope_root",
+        "workspace_root",
+        "runtime_workspace",
+        "trusted_scope",
+        "allowed_root",
+        "caller_scope_override",
+    }
+)
 _VALID_RISKS = frozenset({"low", "medium", "high"})
 _VALID_STATUSES = frozenset({"enabled", "disabled", "experimental"})
+_FILE_READ_SCOPE_ROOT = "09_Assets/runtime_workspace"
 
 
 def _immutable_mapping(value: Mapping[str, Any], field_name: str) -> Mapping[str, Any]:
@@ -62,7 +75,14 @@ class ToolRegistry:
             capability="file_operations",
             action="read",
             risk_level="low",
-            input_policy={"required": ("target",), "additional": False},
+            input_policy={
+                "required": ("target",),
+                "additional": False,
+                "scope_kind": "runtime_workspace_only",
+                "scope_root": _FILE_READ_SCOPE_ROOT,
+                "caller_scope_override": False,
+                "resolve_symlinks": True,
+            },
             output_policy={"content": "sanitized", "metadata": "relative_path_only"},
         ),
         "file.create": ToolDefinition(
@@ -88,6 +108,8 @@ class ToolRegistry:
         """Resolve a tool without allowing request data to override its metadata."""
         if request is not None:
             forbidden = _PROTECTED_FIELDS.intersection(request)
+            if tool_name == "file.read":
+                forbidden = forbidden.union(_FILE_READ_PROTECTED_FIELDS.intersection(request))
             if forbidden:
                 fields = ", ".join(sorted(forbidden))
                 raise ValueError(f"tool metadata is registry-owned: {fields}")

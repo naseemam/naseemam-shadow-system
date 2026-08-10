@@ -40,6 +40,18 @@ class ToolRegistryTests(unittest.TestCase):
         self.assertEqual(tool.action, "write")
         self.assertEqual(tool.risk_level, "medium")
 
+    def test_file_read_scope_is_registry_owned(self):
+        tool = self.registry.get("file.read")
+        self.assertEqual(tool.input_policy["scope_kind"], "runtime_workspace_only")
+        self.assertEqual(tool.input_policy["scope_root"], "09_Assets/runtime_workspace")
+        self.assertFalse(tool.input_policy["caller_scope_override"])
+        self.assertTrue(tool.input_policy["resolve_symlinks"])
+        with self.assertRaises(ValueError):
+            self.registry.resolve(
+                "file.read",
+                {"target": "09_Assets/runtime_workspace/home/index.html", "scope_root": "/tmp/evil"},
+            )
+
     def test_incomplete_or_invalid_definitions_are_rejected(self):
         with self.assertRaises(TypeError):
             ToolDefinition(

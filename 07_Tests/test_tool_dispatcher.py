@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -42,7 +43,24 @@ class _DeniedAuth:
         return {"status": "denied", "request_id": "req-denied"}
 
 
+class _TrackingAuth:
+    def __init__(self, workspace_root, status="denied"):
+        self._root = Path(workspace_root).resolve()
+        self.status = status
+        self.calls = []
+
+    def check(self, **kwargs):
+        self.calls.append(kwargs)
+        return {"status": self.status, "request_id": "req-tracked"}
+
+
 class ToolDispatcherTests(unittest.TestCase):
+    def _make_runtime_workspace(self, tmp):
+        runtime_ws = Path(tmp, "09_Assets", "runtime_workspace", "home")
+        runtime_ws.mkdir(parents=True, exist_ok=True)
+        (runtime_ws / "index.html").write_text("<html></html>", encoding="utf-8")
+        return "09_Assets/runtime_workspace/home/index.html"
+
     def test_A_tool_unregistered_denies(self):
         dispatcher = ToolDispatcher(
             tool_registry=ToolRegistry(),
@@ -91,22 +109,29 @@ class ToolDispatcherTests(unittest.TestCase):
         self.assertEqual(boundary.last_kwargs["action"], "write")
 
     def test_D_capability_action_risk_come_from_registry(self):
-        boundary = _SpyBoundary()
-        dispatcher = ToolDispatcher(
-            tool_registry=ToolRegistry(),
-            execution_boundary=boundary,
-            execution_authorization=_ApprovedAuth(),
-        )
+        with tempfile.TemporaryDirectory() as tmp:
+            boundary = _SpyBoundary()
+            dispatcher = ToolDispatcher(
+                tool_registry=ToolRegistry(),
+                execution_boundary=boundary,
+                execution_authorization=_ApprovedAuth(),
+                workspace_root=tmp,
+            )
 
-        dispatcher.dispatch(
-            tool_name="file.read",
-            guardian={"status": "pass"},
-            context={"action": "write", "risk_level": "high", "capability": "x"},
-        )
+            dispatcher.dispatch(
+                tool_name="file.read",
+                guardian={"status": "pass"},
+                context={
+                    "target": self._make_runtime_workspace(tmp),
+                    "action": "write",
+                    "risk_level": "high",
+                    "capability": "x",
+                },
+            )
 
-        self.assertEqual(boundary.last_kwargs["capability_name"], "file_operations")
-        self.assertEqual(boundary.last_kwargs["action"], "read")
-        self.assertEqual(boundary.last_kwargs["context"]["risk_level"], "low")
+            self.assertEqual(boundary.last_kwargs["capability_name"], "file_operations")
+            self.assertEqual(boundary.last_kwargs["action"], "read")
+            self.assertEqual(boundary.last_kwargs["context"]["risk_level"], "low")
 
     def test_E_boundary_unavailable_denies(self):
         dispatcher = ToolDispatcher(
@@ -169,9 +194,36 @@ class ToolDispatcherTests(unittest.TestCase):
                 execution_authorization=auth,
             )
 
-            result = dispatcher.dispatch(tool_name="file.read", guardian={"status": "pass"})
+            result = dispatcher.dispatch(
+                tool_name="file.read",
+                guardian={"status": "pass"},
+                context={"target": self._make_runtime_workspace(tmp)},
+            )
             self.assertEqual(result["decision"], "DENY")
             self.assertEqual(result["reason"], "execution_authorization_denied")
+
+    def test_H_file_read_inside_workspace_reaches_authorization_then_denies_not_granted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = self._make_runtime_workspace(tmp)
+            auth = _TrackingAuth(tmp, status="denied")
+            boundary = ExecutionBoundary(execution_auth=auth)
+            dispatcher = ToolDispatcher(
+                tool_registry=ToolRegistry(),
+                execution_boundary=boundary,
+                execution_authorization=auth,
+                workspace_root=tmp,
+            )
+
+            result = dispatcher.dispatch(
+                tool_name="file.read",
+                guardian={"status": "pass"},
+                context={"target": target},
+            )
+
+            self.assertEqual(result["decision"], "DENY")
+            self.assertEqual(result["reason"], "execution_authorization_denied")
+            self.assertEqual(len(auth.calls), 1)
+            self.assertEqual(auth.calls[0]["context"]["target"], target)
 
     def test_I_file_create_without_permission_denies(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -193,17 +245,23 @@ class ToolDispatcherTests(unittest.TestCase):
             self.assertEqual(result["reason"], "execution_authorization_denied")
 
     def test_J_executor_not_called_on_deny(self):
-        executor = Mock()
-        boundary = _SpyBoundary(verdict=BoundaryVerdict.DENY, reason="forced_deny")
-        dispatcher = ToolDispatcher(
-            tool_registry=ToolRegistry(),
-            execution_boundary=boundary,
-            execution_authorization=_ApprovedAuth(),
-            executor=executor,
-        )
-        result = dispatcher.dispatch(tool_name="file.read", guardian={"status": "pass"})
-        self.assertEqual(result["decision"], "DENY")
-        executor.assert_not_called()
+        with tempfile.TemporaryDirectory() as tmp:
+            executor = Mock()
+            boundary = _SpyBoundary(verdict=BoundaryVerdict.DENY, reason="forced_deny")
+            dispatcher = ToolDispatcher(
+                tool_registry=ToolRegistry(),
+                execution_boundary=boundary,
+                execution_authorization=_ApprovedAuth(),
+                executor=executor,
+                workspace_root=tmp,
+            )
+            result = dispatcher.dispatch(
+                tool_name="file.read",
+                guardian={"status": "pass"},
+                context={"target": self._make_runtime_workspace(tmp)},
+            )
+            self.assertEqual(result["decision"], "DENY")
+            executor.assert_not_called()
 
     def test_K_no_fallback_allows_execution(self):
         cases = (
@@ -244,17 +302,171 @@ class ToolDispatcherTests(unittest.TestCase):
         self.assertEqual(result["execution_request"]["action"], "write")
 
     def test_N_caller_cannot_change_capability(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dispatcher = ToolDispatcher(
+                tool_registry=ToolRegistry(),
+                execution_boundary=_SpyBoundary(),
+                execution_authorization=_ApprovedAuth(),
+                workspace_root=tmp,
+            )
+            result = dispatcher.dispatch(
+                tool_name="file.read",
+                guardian={"status": "pass"},
+                context={
+                    "target": self._make_runtime_workspace(tmp),
+                    "capability": "external_network",
+                },
+            )
+            self.assertEqual(result["execution_request"]["capability_name"], "file_operations")
+
+    def test_O_file_read_outside_workspace_denies_before_authorization(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            auth = _TrackingAuth(tmp, status="approved")
+            boundary = _SpyBoundary(verdict=BoundaryVerdict.ALLOW, reason="execution_authorized")
+            dispatcher = ToolDispatcher(
+                tool_registry=ToolRegistry(),
+                execution_boundary=boundary,
+                execution_authorization=auth,
+                workspace_root=tmp,
+            )
+            result = dispatcher.dispatch(
+                tool_name="file.read",
+                guardian={"status": "pass"},
+                context={"target": "01_Docs/outside.md"},
+            )
+            self.assertEqual(result["decision"], "DENY")
+            self.assertEqual(result["reason"], "file_read_scope_denied")
+            self.assertFalse(boundary.called)
+            self.assertEqual(auth.calls, [])
+
+    def test_P_file_read_traversal_denies_before_authorization(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            auth = _TrackingAuth(tmp, status="approved")
+            dispatcher = ToolDispatcher(
+                tool_registry=ToolRegistry(),
+                execution_boundary=_SpyBoundary(verdict=BoundaryVerdict.ALLOW, reason="execution_authorized"),
+                execution_authorization=auth,
+                workspace_root=tmp,
+            )
+            result = dispatcher.dispatch(
+                tool_name="file.read",
+                guardian={"status": "pass"},
+                context={"target": "09_Assets/runtime_workspace/home/../../../../etc/passwd"},
+            )
+            self.assertEqual(result["decision"], "DENY")
+            self.assertEqual(result["reason"], "file_read_scope_denied")
+            self.assertEqual(auth.calls, [])
+
+    def test_Q_file_read_absolute_outside_workspace_denies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            auth = _TrackingAuth(tmp, status="approved")
+            dispatcher = ToolDispatcher(
+                tool_registry=ToolRegistry(),
+                execution_boundary=_SpyBoundary(verdict=BoundaryVerdict.ALLOW, reason="execution_authorized"),
+                execution_authorization=auth,
+                workspace_root=tmp,
+            )
+            outside = str(Path(tmp).parent / "absolute-outside.txt")
+            result = dispatcher.dispatch(
+                tool_name="file.read",
+                guardian={"status": "pass"},
+                context={"target": outside},
+            )
+            self.assertEqual(result["decision"], "DENY")
+            self.assertEqual(result["reason"], "file_read_scope_denied")
+            self.assertEqual(auth.calls, [])
+
+    def test_R_file_read_scope_override_denies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            auth = _TrackingAuth(tmp, status="approved")
+            dispatcher = ToolDispatcher(
+                tool_registry=ToolRegistry(),
+                execution_boundary=_SpyBoundary(verdict=BoundaryVerdict.ALLOW, reason="execution_authorized"),
+                execution_authorization=auth,
+                workspace_root=tmp,
+            )
+            result = dispatcher.dispatch(
+                tool_name="file.read",
+                guardian={"status": "pass"},
+                context={
+                    "target": self._make_runtime_workspace(tmp),
+                    "scope_root": "/tmp/override",
+                },
+            )
+            self.assertEqual(result["decision"], "DENY")
+            self.assertIn(result["reason"], {"tool_policy_denied", "file_read_scope_override_denied"})
+            self.assertEqual(auth.calls, [])
+
+    def test_S_file_read_symlink_escape_denies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_home = Path(tmp, "09_Assets", "runtime_workspace", "home")
+            runtime_home.mkdir(parents=True, exist_ok=True)
+            outside_dir = Path(tmp, "outside")
+            outside_dir.mkdir()
+            outside_target = outside_dir / "secret.txt"
+            outside_target.write_text("secret", encoding="utf-8")
+            link = runtime_home / "escape.txt"
+            try:
+                link.symlink_to(outside_target)
+            except (NotImplementedError, OSError):
+                self.skipTest("symlink creation not supported on this filesystem")
+
+            auth = _TrackingAuth(tmp, status="approved")
+            dispatcher = ToolDispatcher(
+                tool_registry=ToolRegistry(),
+                execution_boundary=_SpyBoundary(verdict=BoundaryVerdict.ALLOW, reason="execution_authorized"),
+                execution_authorization=auth,
+                workspace_root=tmp,
+            )
+            result = dispatcher.dispatch(
+                tool_name="file.read",
+                guardian={"status": "pass"},
+                context={"target": "09_Assets/runtime_workspace/home/escape.txt"},
+            )
+            self.assertEqual(result["decision"], "DENY")
+            self.assertEqual(result["reason"], "file_read_scope_denied")
+            self.assertEqual(auth.calls, [])
+
+    def test_T_file_create_unaffected_by_file_read_scope_policy(self):
+        boundary = _SpyBoundary(verdict=BoundaryVerdict.DENY, reason="forced_deny")
         dispatcher = ToolDispatcher(
             tool_registry=ToolRegistry(),
-            execution_boundary=_SpyBoundary(),
+            execution_boundary=boundary,
             execution_authorization=_ApprovedAuth(),
         )
         result = dispatcher.dispatch(
-            tool_name="file.read",
+            tool_name="file.create",
             guardian={"status": "pass"},
-            context={"capability": "external_network"},
+            context={
+                "target": "/tmp/absolute-create-path-is-not-validated-here",
+                "content": "safe",
+            },
         )
-        self.assertEqual(result["execution_request"]["capability_name"], "file_operations")
+        self.assertEqual(result["decision"], "DENY")
+        self.assertEqual(result["reason"], "forced_deny")
+        self.assertTrue(boundary.called)
+
+    def test_U_conversational_request_cannot_reach_file_read_executor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            executor = Mock(return_value={"status": "completed"})
+            boundary = ExecutionBoundary(execution_auth=_ApprovedAuth())
+            dispatcher = ToolDispatcher(
+                tool_registry=ToolRegistry(),
+                execution_boundary=boundary,
+                execution_authorization=_ApprovedAuth(),
+                executor=executor,
+                workspace_root=tmp,
+            )
+            result = dispatcher.dispatch(
+                tool_name="file.read",
+                guardian={"status": "pass"},
+                request_type="question",
+                intent="chat",
+                context={"target": self._make_runtime_workspace(tmp)},
+            )
+            self.assertEqual(result["decision"], "DENY")
+            self.assertEqual(result["reason"], "conversational_request_blocked")
+            executor.assert_not_called()
 
 
 if __name__ == "__main__":
