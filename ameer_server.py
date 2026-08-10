@@ -12,6 +12,11 @@ import uuid
 import importlib.util
 from datetime import datetime, timezone
 
+# ─── 06_Code on sys.path — must be first so kernel imports resolve everywhere ─
+_CODE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "06_Code")
+if _CODE_ROOT not in sys.path:
+    sys.path.insert(0, _CODE_ROOT)
+
 from ameer_runtime import (
     public_runtime_identity,
     print_runtime_banner,
@@ -47,7 +52,22 @@ def _log(event: str, level: str = "info", request_id: str | None = None, **kwarg
     if request_id:
         record["request_id"] = request_id
     record.update(kwargs)
-    getattr(_logger, level, _logger.info)(json.dumps(record, ensure_ascii=False))
+    # Sanitize before writing to logs so credentials never appear in log output.
+    safe_record = _sanitize_log_record(record)
+    getattr(_logger, level, _logger.info)(json.dumps(safe_record, ensure_ascii=False))
+
+
+def _sanitize_log_record(record: dict) -> dict:
+    """Apply credential sanitization to a log record.
+
+    Imported lazily to avoid circular-import issues during module load; the
+    sanitizer module lives inside 06_Code which is added to sys.path below.
+    """
+    try:
+        from kernel.credential_sanitizer import sanitize as _cs
+        return _cs(record)
+    except Exception:
+        return record
 
 
 def load_orchestrator_class():
@@ -141,6 +161,20 @@ EXECUTIVE_CONVERSATION_ENGINE = (
     ExecutiveConversationEngineClass(workspace_root=ROOT) if ExecutiveConversationEngineClass else None
 )
 
+# ─── Execution Boundary (central gate for all side-effecting execution) ────────
+
+def _load_execution_boundary():
+    try:
+        from kernel.execution_boundary import ExecutionBoundary
+        approval_gate = KERNEL.approvals if KERNEL else None
+        execution_auth = KERNEL.execution_auth if KERNEL else None
+        return ExecutionBoundary(approval_gate=approval_gate, execution_auth=execution_auth)
+    except Exception:
+        return None
+
+
+EXECUTION_BOUNDARY = _load_execution_boundary()
+
 def load_documents():
     # Paths (relative to ROOT) that must be excluded from the knowledge corpus.
     # Backups may contain outdated or conflicting information; root junk files are not
@@ -181,6 +215,7 @@ def refresh_documents():
 
 
 def _sanitize_response_payload(value):
+    # First remove internal debug fields (traceback, stack)
     if isinstance(value, dict):
         clean = {}
         for k, v in value.items():
@@ -188,10 +223,15 @@ def _sanitize_response_payload(value):
             if "traceback" in key or "stack" in key:
                 continue
             clean[k] = _sanitize_response_payload(v)
-        return clean
-    if isinstance(value, list):
-        return [_sanitize_response_payload(v) for v in value]
-    return value
+        value = clean
+    elif isinstance(value, list):
+        value = [_sanitize_response_payload(v) for v in value]
+    # Then apply credential sanitization
+    try:
+        from kernel.credential_sanitizer import sanitize as _cs
+        return _cs(value)
+    except Exception:
+        return value
 
 
 def utf8_json_response(payload, headers: dict[str, str] | None = None, status_code: int = 200):
@@ -434,6 +474,8 @@ async def ask(request: Request):
     )
     # ── 3b. Executive Kernel execution pipeline (when command has clear intent) ──
     # Must run BEFORE compose_final_reply so the reply can confirm the outcome.
+    # SECURITY: ExecutionBoundary is the mandatory gate before execute_command.
+    # It enforces Guardian fail-closed + conversational guard + auth chain.
     kernel_execution_trace: dict | None = None
     kernel_execution_reply: str | None = None
     kernel_detected_intent: str = "unknown"
@@ -442,24 +484,43 @@ async def ask(request: Request):
             decomp = KERNEL.task_decomposer.decompose(q)
             kernel_detected_intent = str(decomp.get("intent", "unknown") or "unknown").strip().lower()
             if kernel_detected_intent != "unknown":
-                kernel_execution_trace = KERNEL.execute_command(q)
-                final_exec = kernel_execution_trace.get("final", {})
-                if final_exec.get("accepted"):
-                    completed = final_exec.get("completed", 0)
-                    files = final_exec.get("files_created") or []
-                    file_list = "، ".join(f for f in files if f) if files else ""
-                    kernel_execution_reply = (
-                        f"✅ تم بناء الصفحة الرئيسية بنجاح! "
-                        f"أُنشئت {completed} ملفات"
-                        + (f": {file_list}" if file_list else "")
-                        + ".\n\n"
-                        "يمكنك معاينتها الآن عبر رابط Preview أدناه."
+                # ── Execution Boundary gate ───────────────────────────────────
+                _request_type_for_boundary = str(
+                    getattr(plan, "request_type", "")
+                ).strip().lower()
+                if EXECUTION_BOUNDARY is not None:
+                    _boundary_result = EXECUTION_BOUNDARY.evaluate(
+                        guardian=guardian,
+                        request_type=_request_type_for_boundary,
+                        intent=kernel_detected_intent,
+                        capability_name="file_operations",
+                        action="write",
+                        context={"query": q[:240]},
+                        requested_by="executive_kernel",
                     )
-                elif not final_exec.get("accepted") and kernel_execution_trace.get("pipeline"):
-                    kernel_execution_reply = (
-                        "⚠️ لم يتمكن أمير من إتمام التنفيذ. "
-                        "راجع خطوات Pipeline أدناه لمعرفة سبب التوقف."
-                    )
+                    _boundary_allowed = _boundary_result.allowed
+                else:
+                    # No boundary wired — deny by default (fail-closed).
+                    _boundary_allowed = False
+                if _boundary_allowed:
+                    kernel_execution_trace = KERNEL.execute_command(q)
+                    final_exec = kernel_execution_trace.get("final", {})
+                    if final_exec.get("accepted"):
+                        completed = final_exec.get("completed", 0)
+                        files = final_exec.get("files_created") or []
+                        file_list = "، ".join(f for f in files if f) if files else ""
+                        kernel_execution_reply = (
+                            f"✅ تم بناء الصفحة الرئيسية بنجاح! "
+                            f"أُنشئت {completed} ملفات"
+                            + (f": {file_list}" if file_list else "")
+                            + ".\n\n"
+                            "يمكنك معاينتها الآن عبر رابط Preview أدناه."
+                        )
+                    elif not final_exec.get("accepted") and kernel_execution_trace.get("pipeline"):
+                        kernel_execution_reply = (
+                            "⚠️ لم يتمكن أمير من إتمام التنفيذ. "
+                            "راجع خطوات Pipeline أدناه لمعرفة سبب التوقف."
+                        )
         except Exception:
             pass
     # ── 4. Compose fallback reply (used only if ECE is unavailable) ─────────────
@@ -505,10 +566,13 @@ async def ask(request: Request):
         reply_source = conversation_result.get("engine", reply_source)
 
     # ── 5b. Kernel execution reply is advisory only (Guardian/ECE authoritative) ─
-    _guardian_status = str((guardian or {}).get("status", "pass") or "pass").strip().lower()
-    _reasoning_guardian = str(
-        ((reasoning_output or {}).get("reasoning", {}).get("guardian_status") or _guardian_status)
-    ).strip().lower()
+    # SECURITY: fail-closed — a missing, empty, or unknown guardian status is
+    # treated as "deny", not as "pass".  Only an explicit "pass" string allows
+    # the kernel execution reply to be presented to the user.
+    _raw_guardian_status = (guardian or {}).get("status")
+    _guardian_status = str(_raw_guardian_status).strip().lower() if _raw_guardian_status else "missing"
+    _raw_reasoning_guardian = (reasoning_output or {}).get("reasoning", {}).get("guardian_status")
+    _reasoning_guardian = str(_raw_reasoning_guardian).strip().lower() if _raw_reasoning_guardian else _guardian_status
     _request_type = str(
         ((reasoning_output or {}).get("reasoning", {}).get("request_type") or getattr(plan, "request_type", ""))
     ).strip().lower()
@@ -1269,6 +1333,52 @@ async def execute_tasks(request: Request):
             status_code=422,
         )
 
+    # SECURITY: ExecutionBoundary is the mandatory gate before execute_task.
+    # Derive the most restrictive action present in the task list.
+    # Priority order is explicit so the result is deterministic even when multiple
+    # high-risk actions appear together.
+    # Fail-closed: if the boundary is unavailable or denies, no execution occurs.
+    _task_actions = {str(t.get("action", "")).strip().lower() for t in tasks if isinstance(t, dict)}
+    _ACTION_PRIORITY = ["financial", "delete", "publish", "external"]
+    if _task_actions & set(_ACTION_PRIORITY):
+        _derived_action = next(a for a in _ACTION_PRIORITY if a in _task_actions)
+    elif _task_actions - {"", "write"}:
+        _derived_action = next(a for a in sorted(_task_actions) if a not in {"", "write"})
+    elif "write" in _task_actions:
+        _derived_action = "write"
+    else:
+        # Unknown/missing action — fail closed
+        _log("execute_tasks_boundary_denied", reason="unknown_action", task_actions=list(_task_actions))
+        return utf8_json_response(
+            {"error": "execution denied", "reason": "boundary_denied", "detail": "unknown_action"},
+            status_code=403,
+        )
+
+    _guardian_for_execute: dict = body.get("guardian") or {}
+    if EXECUTION_BOUNDARY is not None:
+        _exec_boundary_result = EXECUTION_BOUNDARY.evaluate(
+            guardian=_guardian_for_execute,
+            request_type="execution",
+            intent="execute_tasks",
+            capability_name="file_operations",
+            action=_derived_action,
+            context={"task_count": len(tasks), "actions": list(_task_actions)},
+            requested_by="execute_endpoint",
+        )
+        _exec_boundary_allowed = _exec_boundary_result.allowed
+    else:
+        # No boundary wired — deny by default (fail-closed).
+        _exec_boundary_allowed = False
+        _log("execute_tasks_boundary_missing", level="warning")
+
+    if not _exec_boundary_allowed:
+        _deny_reason = "boundary_denied" if EXECUTION_BOUNDARY is not None else "boundary_missing"
+        _log("execute_tasks_boundary_denied", reason=_deny_reason)
+        return utf8_json_response(
+            {"error": "execution denied", "reason": _deny_reason},
+            status_code=403,
+        )
+
     try:
         report = KERNEL.execute_task(tasks)
     except Exception as exc:
@@ -1310,6 +1420,44 @@ async def execute_command(request: Request):
     command = str(body.get("command", "")).strip()
     if not command:
         return utf8_json_response({"error": "command field is required"}, status_code=422)
+
+    # SECURITY: ExecutionBoundary is the mandatory gate before execute_command.
+    # Use TaskDecomposer to derive intent/action, then gate through the boundary.
+    # Fail-closed: if the boundary is unavailable or denies, no execution occurs.
+    _cmd_guardian: dict = body.get("guardian") or {}
+    _cmd_intent = "unknown"
+    _cmd_action = "write"
+    try:
+        _decomp = KERNEL.task_decomposer.decompose(command)
+        _cmd_intent = str(_decomp.get("intent", "unknown") or "unknown").strip().lower()
+        _first_task = (_decomp.get("tasks") or [{}])[0]
+        _cmd_action = str(_first_task.get("action", "write") or "write").strip().lower() or "write"
+    except Exception:
+        pass
+
+    if EXECUTION_BOUNDARY is not None:
+        _cmd_boundary_result = EXECUTION_BOUNDARY.evaluate(
+            guardian=_cmd_guardian,
+            request_type="execution",
+            intent=_cmd_intent,
+            capability_name="file_operations",
+            action=_cmd_action,
+            context={"command": command[:240]},
+            requested_by="execute_command_endpoint",
+        )
+        _cmd_boundary_allowed = _cmd_boundary_result.allowed
+    else:
+        # No boundary wired — deny by default (fail-closed).
+        _cmd_boundary_allowed = False
+        _log("execute_command_boundary_missing", level="warning")
+
+    if not _cmd_boundary_allowed:
+        _cmd_deny_reason = "boundary_denied" if EXECUTION_BOUNDARY is not None else "boundary_missing"
+        _log("execute_command_boundary_denied", reason=_cmd_deny_reason, command=command[:240])
+        return utf8_json_response(
+            {"error": "execution denied", "reason": _cmd_deny_reason},
+            status_code=403,
+        )
 
     try:
         trace = KERNEL.execute_command(command)
