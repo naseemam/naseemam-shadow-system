@@ -572,6 +572,90 @@
       "resolved_at": null,
       "resolved_by": null,
       "execution_recorded": false
+    },
+    {
+      "request_id": "9c21fe27-dcfb-42a9-8f9e-ba6015bb4c84",
+      "status": "approved",
+      "capability_name": "file_operations",
+      "action": "read",
+      "reason": "Capability owned, enabled, and permission granted",
+      "context": {
+        "task_id": "file-read-a0baaf",
+        "target": "09_Assets/runtime_workspace/home/index.html",
+        "content": null,
+        "executor": "file",
+        "executor_payload": {
+          "id": "file-read-a0baaf",
+          "action": "read",
+          "executor": "file",
+          "target": "09_Assets/runtime_workspace/home/index.html",
+          "priority": "high",
+          "description": "قراءة الملف 09_Assets/runtime_workspace/home/index.html"
+        },
+        "tool_name": "file.read",
+        "risk_level": "low"
+      },
+      "requested_by": "ask_endpoint",
+      "created_at": "2026-08-10T21:00:20Z",
+      "resolved_at": null,
+      "resolved_by": null,
+      "execution_recorded": false
+    },
+    {
+      "request_id": "f254ff7b-4b13-4e65-8e28-ab453d02a52d",
+      "status": "approved",
+      "capability_name": "file_operations",
+      "action": "read",
+      "reason": "Capability owned, enabled, and permission granted",
+      "context": {
+        "task_id": "file-read-e3fba7",
+        "target": "09_Assets/runtime_workspace/home/index.html",
+        "content": null,
+        "executor": "file",
+        "executor_payload": {
+          "id": "file-read-e3fba7",
+          "action": "read",
+          "executor": "file",
+          "target": "09_Assets/runtime_workspace/home/index.html",
+          "priority": "high",
+          "description": "قراءة الملف 09_Assets/runtime_workspace/home/index.html"
+        },
+        "tool_name": "file.read",
+        "risk_level": "low"
+      },
+      "requested_by": "ask_endpoint",
+      "created_at": "2026-08-10T21:00:26Z",
+      "resolved_at": null,
+      "resolved_by": null,
+      "execution_recorded": false
+    },
+    {
+      "request_id": "c11c9198-90c7-41f8-a5dc-0283c643bd64",
+      "status": "approved",
+      "capability_name": "file_operations",
+      "action": "read",
+      "reason": "Capability owned, enabled, and permission granted",
+      "context": {
+        "task_id": "file-read-946873",
+        "target": "09_Assets/runtime_workspace/home/index.html",
+        "content": null,
+        "executor": "file",
+        "executor_payload": {
+          "id": "file-read-946873",
+          "action": "read",
+          "executor": "file",
+          "target": "09_Assets/runtime_workspace/home/index.html",
+          "priority": "high",
+          "description": "قراءة الملف 09_Assets/runtime_workspace/home/index.html"
+        },
+        "tool_name": "file.read",
+        "risk_level": "low"
+      },
+      "requested_by": "ask_endpoint",
+      "created_at": "2026-08-10T21:00:35Z",
+      "resolved_at": null,
+      "resolved_by": null,
+      "execution_recorded": false
     }
   ],
   "execution_log": []
