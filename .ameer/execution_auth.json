@@ -1,0 +1,179 @@
+{
+  "requests": [
+    {
+      "request_id": "fa3f7a27-5f07-434b-afa0-664ce5a4af99",
+      "status": "denied",
+      "capability_name": "file_operations",
+      "action": "write",
+      "reason": "Permission scope is limited to file.read/read only",
+      "context": {
+        "task_id": "home-html-d12cd2",
+        "target": "09_Assets/runtime_workspace/home/index.html",
+        "content": "<!DOCTYPE html>\n<html lang=\"ar\" dir=\"rtl\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  <title>أمير — الصفحة الرئيسية</title>\n  <link rel=\"stylesheet\" href=\"style.css\" />\n</head>\n<body>\n  <header class=\"site-header\">\n    <div class=\"logo\">\n      <span class=\"logo-icon\">🤖</span>\n      <span class=\"logo-text\">أمير</span>\n    </div>\n    <nav>\n      <a href=\"#about\">من أنا؟</a>\n      <a href=\"#capabilities\">قدراتي</a>\n      <a href=\"#contact\">تواصل</a>\n    </nav>\n  </header>\n\n  <main>\n    <section class=\"hero\">\n      <h1>مرحباً، أنا <span class=\"highlight\">أمير</span></h1>\n      <p class=\"subtitle\">مساعدك الذكي — أفهم أوامرك وأنفّذها.</p>\n      <div class=\"badges\">\n        <span class=\"badge\">⚡ تنفيذ فوري</span>\n        <span class=\"badge\">🧠 ذاكرة دائمة</span>\n        <span class=\"badge\">🔐 حوكمة آمنة</span>\n      </div>\n    </section>\n\n    <section id=\"about\" class=\"card-section\">\n      <h2>من أنا؟</h2>\n      <p>\n        أنا نظام ذكاء اصطناعي تنفيذي مبني خصيصاً لـ نسيم.\n        أحوّل الأوامر البشرية إلى مهام قابلة للتنفيذ عبر Pipeline متكامل.\n      </p>\n    </section>\n\n    <section id=\"capabilities\" class=\"card-section\">\n      <h2>قدراتي</h2>\n      <div class=\"capabilities-grid\">\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">📋</span>\n          <h3>Task Decomposer</h3>\n          <p>أكسر أي أمر إلى مهام واضحة</p>\n        </div>\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">✅</span>\n          <h3>Plan Validator</h3>\n          <p>أتحقق من كل مهمة قبل التنفيذ</p>\n        </div>\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">📅</span>\n          <h3>Scheduler</h3>\n          <p>أرتّب المهام بالأولوية الصحيحة</p>\n        </div>\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">💾</span>\n          <h3>File Executor</h3>\n          <p>أكتب الملفات الحقيقية في البيئة</p>\n        </div>\n      </div>\n    </section>\n\n    <section id=\"contact\" class=\"card-section\">\n      <h2>تواصل معي</h2>\n      <p>أرسل لي أمرًا عبر الواجهة وسأنفّذه فورًا.</p>\n    </section>\n  </main>\n\n  <footer>\n    <p>أمير © 2025 — Proof of Execution</p>\n  </footer>\n  <script src=\"script.js\"></script>\n</body>\n</html>\n",
+        "executor": "file",
+        "executor_payload": {
+          "id": "home-html-d12cd2",
+          "action": "write",
+          "executor": "file",
+          "target": "09_Assets/runtime_workspace/home/index.html",
+          "content": "<!DOCTYPE html>\n<html lang=\"ar\" dir=\"rtl\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  <title>أمير — الصفحة الرئيسية</title>\n  <link rel=\"stylesheet\" href=\"style.css\" />\n</head>\n<body>\n  <header class=\"site-header\">\n    <div class=\"logo\">\n      <span class=\"logo-icon\">🤖</span>\n      <span class=\"logo-text\">أمير</span>\n    </div>\n    <nav>\n      <a href=\"#about\">من أنا؟</a>\n      <a href=\"#capabilities\">قدراتي</a>\n      <a href=\"#contact\">تواصل</a>\n    </nav>\n  </header>\n\n  <main>\n    <section class=\"hero\">\n      <h1>مرحباً، أنا <span class=\"highlight\">أمير</span></h1>\n      <p class=\"subtitle\">مساعدك الذكي — أفهم أوامرك وأنفّذها.</p>\n      <div class=\"badges\">\n        <span class=\"badge\">⚡ تنفيذ فوري</span>\n        <span class=\"badge\">🧠 ذاكرة دائمة</span>\n        <span class=\"badge\">🔐 حوكمة آمنة</span>\n      </div>\n    </section>\n\n    <section id=\"about\" class=\"card-section\">\n      <h2>من أنا؟</h2>\n      <p>\n        أنا نظام ذكاء اصطناعي تنفيذي مبني خصيصاً لـ نسيم.\n        أحوّل الأوامر البشرية إلى مهام قابلة للتنفيذ عبر Pipeline متكامل.\n      </p>\n    </section>\n\n    <section id=\"capabilities\" class=\"card-section\">\n      <h2>قدراتي</h2>\n      <div class=\"capabilities-grid\">\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">📋</span>\n          <h3>Task Decomposer</h3>\n          <p>أكسر أي أمر إلى مهام واضحة</p>\n        </div>\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">✅</span>\n          <h3>Plan Validator</h3>\n          <p>أتحقق من كل مهمة قبل التنفيذ</p>\n        </div>\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">📅</span>\n          <h3>Scheduler</h3>\n          <p>أرتّب المهام بالأولوية الصحيحة</p>\n        </div>\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">💾</span>\n          <h3>File Executor</h3>\n          <p>أكتب الملفات الحقيقية في البيئة</p>\n        </div>\n      </div>\n    </section>\n\n    <section id=\"contact\" class=\"card-section\">\n      <h2>تواصل معي</h2>\n      <p>أرسل لي أمرًا عبر الواجهة وسأنفّذه فورًا.</p>\n    </section>\n  </main>\n\n  <footer>\n    <p>أمير © 2025 — Proof of Execution</p>\n  </footer>\n  <script src=\"script.js\"></script>\n</body>\n</html>\n",
+          "priority": "high",
+          "description": "كتابة index.html — هيكل الصفحة الرئيسية"
+        },
+        "tool_name": "file.create",
+        "risk_level": "medium"
+      },
+      "requested_by": "ask_endpoint",
+      "created_at": "2026-08-10T17:47:20Z",
+      "resolved_at": null,
+      "resolved_by": null,
+      "execution_recorded": false
+    },
+    {
+      "request_id": "b0d196b2-9cbc-43db-9575-8b40e352a55e",
+      "status": "denied",
+      "capability_name": "file_operations",
+      "action": "write",
+      "reason": "Permission scope is limited to file.read/read only",
+      "context": {
+        "task_id": "home-css-57c57f",
+        "target": "09_Assets/runtime_workspace/home/style.css",
+        "content": "*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }\n\n:root {\n  --bg: #f5f7fa;\n  --surface: #ffffff;\n  --border: #e2e8f0;\n  --ink: #0f172a;\n  --muted: #64748b;\n  --accent: #2563eb;\n  --accent-light: #eff6ff;\n  --success: #16a34a;\n  --radius: 14px;\n  --shadow: 0 2px 12px rgba(0,0,0,.08);\n}\n\nhtml, body {\n  font-family: \"Segoe UI\", Tahoma, \"Arabic UI Text\", Arial, sans-serif;\n  background: var(--bg);\n  color: var(--ink);\n  line-height: 1.6;\n  font-size: 16px;\n}\n\n/* ─── Header ─── */\n.site-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 1rem 2rem;\n  background: var(--surface);\n  border-bottom: 1px solid var(--border);\n  position: sticky;\n  top: 0;\n  z-index: 10;\n}\n\n.logo { display: flex; align-items: center; gap: .5rem; font-size: 1.3rem; font-weight: 700; }\n.logo-icon { font-size: 1.5rem; }\n\nnav a {\n  color: var(--muted);\n  text-decoration: none;\n  margin-inline-start: 1.5rem;\n  font-size: .9rem;\n  transition: color .2s;\n}\nnav a:hover { color: var(--accent); }\n\n/* ─── Hero ─── */\n.hero {\n  text-align: center;\n  padding: 4rem 1rem 3rem;\n  max-width: 700px;\n  margin: 0 auto;\n}\n\n.hero h1 { font-size: 2.4rem; font-weight: 800; margin-bottom: .75rem; }\n.highlight { color: var(--accent); }\n.subtitle { font-size: 1.15rem; color: var(--muted); margin-bottom: 1.5rem; }\n\n.badges { display: flex; justify-content: center; gap: .6rem; flex-wrap: wrap; }\n.badge {\n  background: var(--accent-light);\n  color: var(--accent);\n  border: 1px solid #bfdbfe;\n  border-radius: 999px;\n  padding: .25rem .85rem;\n  font-size: .85rem;\n  font-weight: 600;\n}\n\n/* ─── Sections ─── */\nmain { max-width: 900px; margin: 0 auto; padding: 1rem 1.5rem 3rem; }\n\n.card-section {\n  background: var(--surface);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  padding: 2rem;\n  margin-bottom: 1.5rem;\n  box-shadow: var(--shadow);\n}\n\n.card-section h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 1rem; }\n.card-section p { color: var(--muted); }\n\n/* ─── Capabilities grid ─── */\n.capabilities-grid {\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));\n  gap: 1rem;\n  margin-top: .5rem;\n}\n\n.cap-card {\n  background: var(--bg);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  padding: 1.25rem;\n  text-align: center;\n  transition: transform .2s, box-shadow .2s;\n}\n.cap-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,.1); }\n.cap-icon { font-size: 2rem; display: block; margin-bottom: .5rem; }\n.cap-card h3 { font-size: .95rem; font-weight: 700; margin-bottom: .3rem; color: var(--accent); }\n.cap-card p { font-size: .83rem; color: var(--muted); }\n\n/* ─── Footer ─── */\nfooter {\n  text-align: center;\n  padding: 2rem;\n  color: var(--muted);\n  font-size: .85rem;\n  border-top: 1px solid var(--border);\n}\n",
+        "executor": "file",
+        "executor_payload": {
+          "id": "home-css-57c57f",
+          "action": "write",
+          "executor": "file",
+          "target": "09_Assets/runtime_workspace/home/style.css",
+          "content": "*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }\n\n:root {\n  --bg: #f5f7fa;\n  --surface: #ffffff;\n  --border: #e2e8f0;\n  --ink: #0f172a;\n  --muted: #64748b;\n  --accent: #2563eb;\n  --accent-light: #eff6ff;\n  --success: #16a34a;\n  --radius: 14px;\n  --shadow: 0 2px 12px rgba(0,0,0,.08);\n}\n\nhtml, body {\n  font-family: \"Segoe UI\", Tahoma, \"Arabic UI Text\", Arial, sans-serif;\n  background: var(--bg);\n  color: var(--ink);\n  line-height: 1.6;\n  font-size: 16px;\n}\n\n/* ─── Header ─── */\n.site-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 1rem 2rem;\n  background: var(--surface);\n  border-bottom: 1px solid var(--border);\n  position: sticky;\n  top: 0;\n  z-index: 10;\n}\n\n.logo { display: flex; align-items: center; gap: .5rem; font-size: 1.3rem; font-weight: 700; }\n.logo-icon { font-size: 1.5rem; }\n\nnav a {\n  color: var(--muted);\n  text-decoration: none;\n  margin-inline-start: 1.5rem;\n  font-size: .9rem;\n  transition: color .2s;\n}\nnav a:hover { color: var(--accent); }\n\n/* ─── Hero ─── */\n.hero {\n  text-align: center;\n  padding: 4rem 1rem 3rem;\n  max-width: 700px;\n  margin: 0 auto;\n}\n\n.hero h1 { font-size: 2.4rem; font-weight: 800; margin-bottom: .75rem; }\n.highlight { color: var(--accent); }\n.subtitle { font-size: 1.15rem; color: var(--muted); margin-bottom: 1.5rem; }\n\n.badges { display: flex; justify-content: center; gap: .6rem; flex-wrap: wrap; }\n.badge {\n  background: var(--accent-light);\n  color: var(--accent);\n  border: 1px solid #bfdbfe;\n  border-radius: 999px;\n  padding: .25rem .85rem;\n  font-size: .85rem;\n  font-weight: 600;\n}\n\n/* ─── Sections ─── */\nmain { max-width: 900px; margin: 0 auto; padding: 1rem 1.5rem 3rem; }\n\n.card-section {\n  background: var(--surface);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  padding: 2rem;\n  margin-bottom: 1.5rem;\n  box-shadow: var(--shadow);\n}\n\n.card-section h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 1rem; }\n.card-section p { color: var(--muted); }\n\n/* ─── Capabilities grid ─── */\n.capabilities-grid {\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));\n  gap: 1rem;\n  margin-top: .5rem;\n}\n\n.cap-card {\n  background: var(--bg);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  padding: 1.25rem;\n  text-align: center;\n  transition: transform .2s, box-shadow .2s;\n}\n.cap-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,.1); }\n.cap-icon { font-size: 2rem; display: block; margin-bottom: .5rem; }\n.cap-card h3 { font-size: .95rem; font-weight: 700; margin-bottom: .3rem; color: var(--accent); }\n.cap-card p { font-size: .83rem; color: var(--muted); }\n\n/* ─── Footer ─── */\nfooter {\n  text-align: center;\n  padding: 2rem;\n  color: var(--muted);\n  font-size: .85rem;\n  border-top: 1px solid var(--border);\n}\n",
+          "priority": "high",
+          "description": "كتابة style.css — تنسيق الصفحة الرئيسية"
+        },
+        "tool_name": "file.create",
+        "risk_level": "medium"
+      },
+      "requested_by": "ask_endpoint",
+      "created_at": "2026-08-10T17:47:20Z",
+      "resolved_at": null,
+      "resolved_by": null,
+      "execution_recorded": false
+    },
+    {
+      "request_id": "dc5aa367-9aba-4db1-8048-f69a19f80d5e",
+      "status": "denied",
+      "capability_name": "file_operations",
+      "action": "write",
+      "reason": "Permission scope is limited to file.read/read only",
+      "context": {
+        "task_id": "home-js-b8c70e",
+        "target": "09_Assets/runtime_workspace/home/script.js",
+        "content": "/* Ameer Home — script.js */\n\ndocument.addEventListener('DOMContentLoaded', () => {\n  // Smooth scroll for nav links\n  document.querySelectorAll('a[href^=\"#\"]').forEach(anchor => {\n    anchor.addEventListener('click', e => {\n      e.preventDefault();\n      const target = document.querySelector(anchor.getAttribute('href'));\n      if (target) {\n        target.scrollIntoView({ behavior: 'smooth', block: 'start' });\n      }\n    });\n  });\n\n  // Animate capability cards on scroll\n  const cards = document.querySelectorAll('.cap-card');\n  const observer = new IntersectionObserver(\n    entries => {\n      entries.forEach(entry => {\n        if (entry.isIntersecting) {\n          entry.target.style.opacity = '1';\n          entry.target.style.transform = 'translateY(0)';\n        }\n      });\n    },\n    { threshold: 0.1 }\n  );\n\n  cards.forEach(card => {\n    card.style.opacity = '0';\n    card.style.transform = 'translateY(20px)';\n    card.style.transition = 'opacity .4s ease, transform .4s ease';\n    observer.observe(card);\n  });\n\n  console.log('[Ameer] Home page loaded — Proof of Execution active.');\n});\n",
+        "executor": "file",
+        "executor_payload": {
+          "id": "home-js-b8c70e",
+          "action": "write",
+          "executor": "file",
+          "target": "09_Assets/runtime_workspace/home/script.js",
+          "content": "/* Ameer Home — script.js */\n\ndocument.addEventListener('DOMContentLoaded', () => {\n  // Smooth scroll for nav links\n  document.querySelectorAll('a[href^=\"#\"]').forEach(anchor => {\n    anchor.addEventListener('click', e => {\n      e.preventDefault();\n      const target = document.querySelector(anchor.getAttribute('href'));\n      if (target) {\n        target.scrollIntoView({ behavior: 'smooth', block: 'start' });\n      }\n    });\n  });\n\n  // Animate capability cards on scroll\n  const cards = document.querySelectorAll('.cap-card');\n  const observer = new IntersectionObserver(\n    entries => {\n      entries.forEach(entry => {\n        if (entry.isIntersecting) {\n          entry.target.style.opacity = '1';\n          entry.target.style.transform = 'translateY(0)';\n        }\n      });\n    },\n    { threshold: 0.1 }\n  );\n\n  cards.forEach(card => {\n    card.style.opacity = '0';\n    card.style.transform = 'translateY(20px)';\n    card.style.transition = 'opacity .4s ease, transform .4s ease';\n    observer.observe(card);\n  });\n\n  console.log('[Ameer] Home page loaded — Proof of Execution active.');\n});\n",
+          "priority": "normal",
+          "description": "كتابة script.js — سلوك الصفحة الرئيسية"
+        },
+        "tool_name": "file.create",
+        "risk_level": "medium"
+      },
+      "requested_by": "ask_endpoint",
+      "created_at": "2026-08-10T17:47:20Z",
+      "resolved_at": null,
+      "resolved_by": null,
+      "execution_recorded": false
+    },
+    {
+      "request_id": "f0fa03c8-a013-4f1d-bfef-f9b35511a1c6",
+      "status": "denied",
+      "capability_name": "file_operations",
+      "action": "write",
+      "reason": "Permission scope is limited to file.read/read only",
+      "context": {
+        "task_id": "home-html-236e08",
+        "target": "09_Assets/runtime_workspace/home/index.html",
+        "content": "<!DOCTYPE html>\n<html lang=\"ar\" dir=\"rtl\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  <title>أمير — الصفحة الرئيسية</title>\n  <link rel=\"stylesheet\" href=\"style.css\" />\n</head>\n<body>\n  <header class=\"site-header\">\n    <div class=\"logo\">\n      <span class=\"logo-icon\">🤖</span>\n      <span class=\"logo-text\">أمير</span>\n    </div>\n    <nav>\n      <a href=\"#about\">من أنا؟</a>\n      <a href=\"#capabilities\">قدراتي</a>\n      <a href=\"#contact\">تواصل</a>\n    </nav>\n  </header>\n\n  <main>\n    <section class=\"hero\">\n      <h1>مرحباً، أنا <span class=\"highlight\">أمير</span></h1>\n      <p class=\"subtitle\">مساعدك الذكي — أفهم أوامرك وأنفّذها.</p>\n      <div class=\"badges\">\n        <span class=\"badge\">⚡ تنفيذ فوري</span>\n        <span class=\"badge\">🧠 ذاكرة دائمة</span>\n        <span class=\"badge\">🔐 حوكمة آمنة</span>\n      </div>\n    </section>\n\n    <section id=\"about\" class=\"card-section\">\n      <h2>من أنا؟</h2>\n      <p>\n        أنا نظام ذكاء اصطناعي تنفيذي مبني خصيصاً لـ نسيم.\n        أحوّل الأوامر البشرية إلى مهام قابلة للتنفيذ عبر Pipeline متكامل.\n      </p>\n    </section>\n\n    <section id=\"capabilities\" class=\"card-section\">\n      <h2>قدراتي</h2>\n      <div class=\"capabilities-grid\">\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">📋</span>\n          <h3>Task Decomposer</h3>\n          <p>أكسر أي أمر إلى مهام واضحة</p>\n        </div>\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">✅</span>\n          <h3>Plan Validator</h3>\n          <p>أتحقق من كل مهمة قبل التنفيذ</p>\n        </div>\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">📅</span>\n          <h3>Scheduler</h3>\n          <p>أرتّب المهام بالأولوية الصحيحة</p>\n        </div>\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">💾</span>\n          <h3>File Executor</h3>\n          <p>أكتب الملفات الحقيقية في البيئة</p>\n        </div>\n      </div>\n    </section>\n\n    <section id=\"contact\" class=\"card-section\">\n      <h2>تواصل معي</h2>\n      <p>أرسل لي أمرًا عبر الواجهة وسأنفّذه فورًا.</p>\n    </section>\n  </main>\n\n  <footer>\n    <p>أمير © 2025 — Proof of Execution</p>\n  </footer>\n  <script src=\"script.js\"></script>\n</body>\n</html>\n",
+        "executor": "file",
+        "executor_payload": {
+          "id": "home-html-236e08",
+          "action": "write",
+          "executor": "file",
+          "target": "09_Assets/runtime_workspace/home/index.html",
+          "content": "<!DOCTYPE html>\n<html lang=\"ar\" dir=\"rtl\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  <title>أمير — الصفحة الرئيسية</title>\n  <link rel=\"stylesheet\" href=\"style.css\" />\n</head>\n<body>\n  <header class=\"site-header\">\n    <div class=\"logo\">\n      <span class=\"logo-icon\">🤖</span>\n      <span class=\"logo-text\">أمير</span>\n    </div>\n    <nav>\n      <a href=\"#about\">من أنا؟</a>\n      <a href=\"#capabilities\">قدراتي</a>\n      <a href=\"#contact\">تواصل</a>\n    </nav>\n  </header>\n\n  <main>\n    <section class=\"hero\">\n      <h1>مرحباً، أنا <span class=\"highlight\">أمير</span></h1>\n      <p class=\"subtitle\">مساعدك الذكي — أفهم أوامرك وأنفّذها.</p>\n      <div class=\"badges\">\n        <span class=\"badge\">⚡ تنفيذ فوري</span>\n        <span class=\"badge\">🧠 ذاكرة دائمة</span>\n        <span class=\"badge\">🔐 حوكمة آمنة</span>\n      </div>\n    </section>\n\n    <section id=\"about\" class=\"card-section\">\n      <h2>من أنا؟</h2>\n      <p>\n        أنا نظام ذكاء اصطناعي تنفيذي مبني خصيصاً لـ نسيم.\n        أحوّل الأوامر البشرية إلى مهام قابلة للتنفيذ عبر Pipeline متكامل.\n      </p>\n    </section>\n\n    <section id=\"capabilities\" class=\"card-section\">\n      <h2>قدراتي</h2>\n      <div class=\"capabilities-grid\">\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">📋</span>\n          <h3>Task Decomposer</h3>\n          <p>أكسر أي أمر إلى مهام واضحة</p>\n        </div>\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">✅</span>\n          <h3>Plan Validator</h3>\n          <p>أتحقق من كل مهمة قبل التنفيذ</p>\n        </div>\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">📅</span>\n          <h3>Scheduler</h3>\n          <p>أرتّب المهام بالأولوية الصحيحة</p>\n        </div>\n        <div class=\"cap-card\">\n          <span class=\"cap-icon\">💾</span>\n          <h3>File Executor</h3>\n          <p>أكتب الملفات الحقيقية في البيئة</p>\n        </div>\n      </div>\n    </section>\n\n    <section id=\"contact\" class=\"card-section\">\n      <h2>تواصل معي</h2>\n      <p>أرسل لي أمرًا عبر الواجهة وسأنفّذه فورًا.</p>\n    </section>\n  </main>\n\n  <footer>\n    <p>أمير © 2025 — Proof of Execution</p>\n  </footer>\n  <script src=\"script.js\"></script>\n</body>\n</html>\n",
+          "priority": "high",
+          "description": "كتابة index.html — هيكل الصفحة الرئيسية"
+        },
+        "tool_name": "file.create",
+        "risk_level": "medium"
+      },
+      "requested_by": "ask_endpoint",
+      "created_at": "2026-08-10T17:47:21Z",
+      "resolved_at": null,
+      "resolved_by": null,
+      "execution_recorded": false
+    },
+    {
+      "request_id": "42346665-2e7a-4910-b1db-110f1f671f05",
+      "status": "denied",
+      "capability_name": "file_operations",
+      "action": "write",
+      "reason": "Permission scope is limited to file.read/read only",
+      "context": {
+        "task_id": "home-css-a7f199",
+        "target": "09_Assets/runtime_workspace/home/style.css",
+        "content": "*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }\n\n:root {\n  --bg: #f5f7fa;\n  --surface: #ffffff;\n  --border: #e2e8f0;\n  --ink: #0f172a;\n  --muted: #64748b;\n  --accent: #2563eb;\n  --accent-light: #eff6ff;\n  --success: #16a34a;\n  --radius: 14px;\n  --shadow: 0 2px 12px rgba(0,0,0,.08);\n}\n\nhtml, body {\n  font-family: \"Segoe UI\", Tahoma, \"Arabic UI Text\", Arial, sans-serif;\n  background: var(--bg);\n  color: var(--ink);\n  line-height: 1.6;\n  font-size: 16px;\n}\n\n/* ─── Header ─── */\n.site-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 1rem 2rem;\n  background: var(--surface);\n  border-bottom: 1px solid var(--border);\n  position: sticky;\n  top: 0;\n  z-index: 10;\n}\n\n.logo { display: flex; align-items: center; gap: .5rem; font-size: 1.3rem; font-weight: 700; }\n.logo-icon { font-size: 1.5rem; }\n\nnav a {\n  color: var(--muted);\n  text-decoration: none;\n  margin-inline-start: 1.5rem;\n  font-size: .9rem;\n  transition: color .2s;\n}\nnav a:hover { color: var(--accent); }\n\n/* ─── Hero ─── */\n.hero {\n  text-align: center;\n  padding: 4rem 1rem 3rem;\n  max-width: 700px;\n  margin: 0 auto;\n}\n\n.hero h1 { font-size: 2.4rem; font-weight: 800; margin-bottom: .75rem; }\n.highlight { color: var(--accent); }\n.subtitle { font-size: 1.15rem; color: var(--muted); margin-bottom: 1.5rem; }\n\n.badges { display: flex; justify-content: center; gap: .6rem; flex-wrap: wrap; }\n.badge {\n  background: var(--accent-light);\n  color: var(--accent);\n  border: 1px solid #bfdbfe;\n  border-radius: 999px;\n  padding: .25rem .85rem;\n  font-size: .85rem;\n  font-weight: 600;\n}\n\n/* ─── Sections ─── */\nmain { max-width: 900px; margin: 0 auto; padding: 1rem 1.5rem 3rem; }\n\n.card-section {\n  background: var(--surface);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  padding: 2rem;\n  margin-bottom: 1.5rem;\n  box-shadow: var(--shadow);\n}\n\n.card-section h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 1rem; }\n.card-section p { color: var(--muted); }\n\n/* ─── Capabilities grid ─── */\n.capabilities-grid {\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));\n  gap: 1rem;\n  margin-top: .5rem;\n}\n\n.cap-card {\n  background: var(--bg);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  padding: 1.25rem;\n  text-align: center;\n  transition: transform .2s, box-shadow .2s;\n}\n.cap-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,.1); }\n.cap-icon { font-size: 2rem; display: block; margin-bottom: .5rem; }\n.cap-card h3 { font-size: .95rem; font-weight: 700; margin-bottom: .3rem; color: var(--accent); }\n.cap-card p { font-size: .83rem; color: var(--muted); }\n\n/* ─── Footer ─── */\nfooter {\n  text-align: center;\n  padding: 2rem;\n  color: var(--muted);\n  font-size: .85rem;\n  border-top: 1px solid var(--border);\n}\n",
+        "executor": "file",
+        "executor_payload": {
+          "id": "home-css-a7f199",
+          "action": "write",
+          "executor": "file",
+          "target": "09_Assets/runtime_workspace/home/style.css",
+          "content": "*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }\n\n:root {\n  --bg: #f5f7fa;\n  --surface: #ffffff;\n  --border: #e2e8f0;\n  --ink: #0f172a;\n  --muted: #64748b;\n  --accent: #2563eb;\n  --accent-light: #eff6ff;\n  --success: #16a34a;\n  --radius: 14px;\n  --shadow: 0 2px 12px rgba(0,0,0,.08);\n}\n\nhtml, body {\n  font-family: \"Segoe UI\", Tahoma, \"Arabic UI Text\", Arial, sans-serif;\n  background: var(--bg);\n  color: var(--ink);\n  line-height: 1.6;\n  font-size: 16px;\n}\n\n/* ─── Header ─── */\n.site-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 1rem 2rem;\n  background: var(--surface);\n  border-bottom: 1px solid var(--border);\n  position: sticky;\n  top: 0;\n  z-index: 10;\n}\n\n.logo { display: flex; align-items: center; gap: .5rem; font-size: 1.3rem; font-weight: 700; }\n.logo-icon { font-size: 1.5rem; }\n\nnav a {\n  color: var(--muted);\n  text-decoration: none;\n  margin-inline-start: 1.5rem;\n  font-size: .9rem;\n  transition: color .2s;\n}\nnav a:hover { color: var(--accent); }\n\n/* ─── Hero ─── */\n.hero {\n  text-align: center;\n  padding: 4rem 1rem 3rem;\n  max-width: 700px;\n  margin: 0 auto;\n}\n\n.hero h1 { font-size: 2.4rem; font-weight: 800; margin-bottom: .75rem; }\n.highlight { color: var(--accent); }\n.subtitle { font-size: 1.15rem; color: var(--muted); margin-bottom: 1.5rem; }\n\n.badges { display: flex; justify-content: center; gap: .6rem; flex-wrap: wrap; }\n.badge {\n  background: var(--accent-light);\n  color: var(--accent);\n  border: 1px solid #bfdbfe;\n  border-radius: 999px;\n  padding: .25rem .85rem;\n  font-size: .85rem;\n  font-weight: 600;\n}\n\n/* ─── Sections ─── */\nmain { max-width: 900px; margin: 0 auto; padding: 1rem 1.5rem 3rem; }\n\n.card-section {\n  background: var(--surface);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  padding: 2rem;\n  margin-bottom: 1.5rem;\n  box-shadow: var(--shadow);\n}\n\n.card-section h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 1rem; }\n.card-section p { color: var(--muted); }\n\n/* ─── Capabilities grid ─── */\n.capabilities-grid {\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));\n  gap: 1rem;\n  margin-top: .5rem;\n}\n\n.cap-card {\n  background: var(--bg);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  padding: 1.25rem;\n  text-align: center;\n  transition: transform .2s, box-shadow .2s;\n}\n.cap-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,.1); }\n.cap-icon { font-size: 2rem; display: block; margin-bottom: .5rem; }\n.cap-card h3 { font-size: .95rem; font-weight: 700; margin-bottom: .3rem; color: var(--accent); }\n.cap-card p { font-size: .83rem; color: var(--muted); }\n\n/* ─── Footer ─── */\nfooter {\n  text-align: center;\n  padding: 2rem;\n  color: var(--muted);\n  font-size: .85rem;\n  border-top: 1px solid var(--border);\n}\n",
+          "priority": "high",
+          "description": "كتابة style.css — تنسيق الصفحة الرئيسية"
+        },
+        "tool_name": "file.create",
+        "risk_level": "medium"
+      },
+      "requested_by": "ask_endpoint",
+      "created_at": "2026-08-10T17:47:21Z",
+      "resolved_at": null,
+      "resolved_by": null,
+      "execution_recorded": false
+    },
+    {
+      "request_id": "db181aa9-3b64-4167-9b0a-7cebd4132adc",
+      "status": "denied",
+      "capability_name": "file_operations",
+      "action": "write",
+      "reason": "Permission scope is limited to file.read/read only",
+      "context": {
+        "task_id": "home-js-e91702",
+        "target": "09_Assets/runtime_workspace/home/script.js",
+        "content": "/* Ameer Home — script.js */\n\ndocument.addEventListener('DOMContentLoaded', () => {\n  // Smooth scroll for nav links\n  document.querySelectorAll('a[href^=\"#\"]').forEach(anchor => {\n    anchor.addEventListener('click', e => {\n      e.preventDefault();\n      const target = document.querySelector(anchor.getAttribute('href'));\n      if (target) {\n        target.scrollIntoView({ behavior: 'smooth', block: 'start' });\n      }\n    });\n  });\n\n  // Animate capability cards on scroll\n  const cards = document.querySelectorAll('.cap-card');\n  const observer = new IntersectionObserver(\n    entries => {\n      entries.forEach(entry => {\n        if (entry.isIntersecting) {\n          entry.target.style.opacity = '1';\n          entry.target.style.transform = 'translateY(0)';\n        }\n      });\n    },\n    { threshold: 0.1 }\n  );\n\n  cards.forEach(card => {\n    card.style.opacity = '0';\n    card.style.transform = 'translateY(20px)';\n    card.style.transition = 'opacity .4s ease, transform .4s ease';\n    observer.observe(card);\n  });\n\n  console.log('[Ameer] Home page loaded — Proof of Execution active.');\n});\n",
+        "executor": "file",
+        "executor_payload": {
+          "id": "home-js-e91702",
+          "action": "write",
+          "executor": "file",
+          "target": "09_Assets/runtime_workspace/home/script.js",
+          "content": "/* Ameer Home — script.js */\n\ndocument.addEventListener('DOMContentLoaded', () => {\n  // Smooth scroll for nav links\n  document.querySelectorAll('a[href^=\"#\"]').forEach(anchor => {\n    anchor.addEventListener('click', e => {\n      e.preventDefault();\n      const target = document.querySelector(anchor.getAttribute('href'));\n      if (target) {\n        target.scrollIntoView({ behavior: 'smooth', block: 'start' });\n      }\n    });\n  });\n\n  // Animate capability cards on scroll\n  const cards = document.querySelectorAll('.cap-card');\n  const observer = new IntersectionObserver(\n    entries => {\n      entries.forEach(entry => {\n        if (entry.isIntersecting) {\n          entry.target.style.opacity = '1';\n          entry.target.style.transform = 'translateY(0)';\n        }\n      });\n    },\n    { threshold: 0.1 }\n  );\n\n  cards.forEach(card => {\n    card.style.opacity = '0';\n    card.style.transform = 'translateY(20px)';\n    card.style.transition = 'opacity .4s ease, transform .4s ease';\n    observer.observe(card);\n  });\n\n  console.log('[Ameer] Home page loaded — Proof of Execution active.');\n});\n",
+          "priority": "normal",
+          "description": "كتابة script.js — سلوك الصفحة الرئيسية"
+        },
+        "tool_name": "file.create",
+        "risk_level": "medium"
+      },
+      "requested_by": "ask_endpoint",
+      "created_at": "2026-08-10T17:47:21Z",
+      "resolved_at": null,
+      "resolved_by": null,
+      "execution_recorded": false
+    }
+  ],
+  "execution_log": []
+}
