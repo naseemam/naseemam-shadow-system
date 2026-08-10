@@ -167,17 +167,22 @@ class ToolDispatcherTests(unittest.TestCase):
         self.assertEqual(result_missing["decision"], "DENY")
         self.assertEqual(result_missing["reason"], "execution_authorization_missing")
 
-        boundary = ExecutionBoundary(execution_auth=_DeniedAuth())
-        dispatcher_denied = ToolDispatcher(
-            tool_registry=ToolRegistry(),
-            execution_boundary=boundary,
-            execution_authorization=_DeniedAuth(),
-        )
-        result_denied = dispatcher_denied.dispatch(
-            tool_name="file.read", guardian={"status": "pass"}
-        )
-        self.assertEqual(result_denied["decision"], "DENY")
-        self.assertEqual(result_denied["reason"], "execution_authorization_denied")
+        with tempfile.TemporaryDirectory() as tmp:
+            denied_auth = _TrackingAuth(tmp, status="denied")
+            boundary = ExecutionBoundary(execution_auth=denied_auth)
+            dispatcher_denied = ToolDispatcher(
+                tool_registry=ToolRegistry(),
+                execution_boundary=boundary,
+                execution_authorization=denied_auth,
+                workspace_root=tmp,
+            )
+            result_denied = dispatcher_denied.dispatch(
+                tool_name="file.read",
+                guardian={"status": "pass"},
+                context={"target": self._make_runtime_workspace(tmp)},
+            )
+            self.assertEqual(result_denied["decision"], "DENY")
+            self.assertEqual(result_denied["reason"], "execution_authorization_denied")
 
     def test_H_file_read_without_permission_denies(self):
         with tempfile.TemporaryDirectory() as tmp:
