@@ -1333,6 +1333,52 @@ async def execute_tasks(request: Request):
             status_code=422,
         )
 
+    # SECURITY: ExecutionBoundary is the mandatory gate before execute_task.
+    # Derive the most restrictive action present in the task list.
+    # Priority order is explicit so the result is deterministic even when multiple
+    # high-risk actions appear together.
+    # Fail-closed: if the boundary is unavailable or denies, no execution occurs.
+    _task_actions = {str(t.get("action", "")).strip().lower() for t in tasks if isinstance(t, dict)}
+    _ACTION_PRIORITY = ["financial", "delete", "publish", "external"]
+    if _task_actions & set(_ACTION_PRIORITY):
+        _derived_action = next(a for a in _ACTION_PRIORITY if a in _task_actions)
+    elif _task_actions - {"", "write"}:
+        _derived_action = next(a for a in sorted(_task_actions) if a not in {"", "write"})
+    elif "write" in _task_actions:
+        _derived_action = "write"
+    else:
+        # Unknown/missing action — fail closed
+        _log("execute_tasks_boundary_denied", reason="unknown_action", task_actions=list(_task_actions))
+        return utf8_json_response(
+            {"error": "execution denied", "reason": "boundary_denied", "detail": "unknown_action"},
+            status_code=403,
+        )
+
+    _guardian_for_execute: dict = body.get("guardian") or {}
+    if EXECUTION_BOUNDARY is not None:
+        _exec_boundary_result = EXECUTION_BOUNDARY.evaluate(
+            guardian=_guardian_for_execute,
+            request_type="execution",
+            intent="execute_tasks",
+            capability_name="file_operations",
+            action=_derived_action,
+            context={"task_count": len(tasks), "actions": list(_task_actions)},
+            requested_by="execute_endpoint",
+        )
+        _exec_boundary_allowed = _exec_boundary_result.allowed
+    else:
+        # No boundary wired — deny by default (fail-closed).
+        _exec_boundary_allowed = False
+        _log("execute_tasks_boundary_missing", level="warning")
+
+    if not _exec_boundary_allowed:
+        _deny_reason = "boundary_denied" if EXECUTION_BOUNDARY is not None else "boundary_missing"
+        _log("execute_tasks_boundary_denied", reason=_deny_reason)
+        return utf8_json_response(
+            {"error": "execution denied", "reason": _deny_reason},
+            status_code=403,
+        )
+
     try:
         report = KERNEL.execute_task(tasks)
     except Exception as exc:
@@ -1374,6 +1420,44 @@ async def execute_command(request: Request):
     command = str(body.get("command", "")).strip()
     if not command:
         return utf8_json_response({"error": "command field is required"}, status_code=422)
+
+    # SECURITY: ExecutionBoundary is the mandatory gate before execute_command.
+    # Use TaskDecomposer to derive intent/action, then gate through the boundary.
+    # Fail-closed: if the boundary is unavailable or denies, no execution occurs.
+    _cmd_guardian: dict = body.get("guardian") or {}
+    _cmd_intent = "unknown"
+    _cmd_action = "write"
+    try:
+        _decomp = KERNEL.task_decomposer.decompose(command)
+        _cmd_intent = str(_decomp.get("intent", "unknown") or "unknown").strip().lower()
+        _first_task = (_decomp.get("tasks") or [{}])[0]
+        _cmd_action = str(_first_task.get("action", "write") or "write").strip().lower() or "write"
+    except Exception:
+        pass
+
+    if EXECUTION_BOUNDARY is not None:
+        _cmd_boundary_result = EXECUTION_BOUNDARY.evaluate(
+            guardian=_cmd_guardian,
+            request_type="execution",
+            intent=_cmd_intent,
+            capability_name="file_operations",
+            action=_cmd_action,
+            context={"command": command[:240]},
+            requested_by="execute_command_endpoint",
+        )
+        _cmd_boundary_allowed = _cmd_boundary_result.allowed
+    else:
+        # No boundary wired — deny by default (fail-closed).
+        _cmd_boundary_allowed = False
+        _log("execute_command_boundary_missing", level="warning")
+
+    if not _cmd_boundary_allowed:
+        _cmd_deny_reason = "boundary_denied" if EXECUTION_BOUNDARY is not None else "boundary_missing"
+        _log("execute_command_boundary_denied", reason=_cmd_deny_reason, command=command[:240])
+        return utf8_json_response(
+            {"error": "execution denied", "reason": _cmd_deny_reason},
+            status_code=403,
+        )
 
     try:
         trace = KERNEL.execute_command(command)

@@ -605,5 +605,349 @@ class TestExtractGuardianStatus(unittest.TestCase):
         self.assertEqual(self.ExecutionBoundary._extract_guardian_status({"status": "needs_approval"}), "needs_approval")
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# N — POST /execute endpoint boundary integration tests
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _boundary_logic_execute_tasks(tasks, guardian, boundary):
+    """
+    Mirrors the ExecutionBoundary gate logic added to POST /execute in ameer_server.py.
+    Returns (allowed: bool, deny_reason: str | None).
+    """
+    _HIGH_RISK = {"delete", "publish", "external", "financial"}
+    _ACTION_PRIORITY = ["financial", "delete", "publish", "external"]
+    _task_actions = {str(t.get("action", "")).strip().lower() for t in tasks if isinstance(t, dict)}
+    if _task_actions & _HIGH_RISK:
+        derived_action = next(a for a in _ACTION_PRIORITY if a in _task_actions)
+    elif _task_actions - {"", "write"}:
+        derived_action = next(a for a in sorted(_task_actions) if a not in {"", "write"})
+    elif "write" in _task_actions:
+        derived_action = "write"
+    else:
+        return False, "unknown_action"
+
+    if boundary is None:
+        return False, "boundary_missing"
+
+    result = boundary.evaluate(
+        guardian=guardian,
+        request_type="execution",
+        intent="execute_tasks",
+        capability_name="file_operations",
+        action=derived_action,
+        context={"task_count": len(tasks), "actions": list(_task_actions)},
+        requested_by="execute_endpoint",
+    )
+    return result.allowed, (None if result.allowed else result.reason)
+
+
+def _boundary_logic_execute_command(command, guardian, boundary, decomposer=None):
+    """
+    Mirrors the ExecutionBoundary gate logic added to POST /execute/command in ameer_server.py.
+    Returns (allowed: bool, deny_reason: str | None).
+    """
+    intent = "unknown"
+    action = "write"
+    if decomposer is not None:
+        try:
+            decomp = decomposer.decompose(command)
+            intent = str(decomp.get("intent", "unknown") or "unknown").strip().lower()
+            first_task = (decomp.get("tasks") or [{}])[0]
+            action = str(first_task.get("action", "write") or "write").strip().lower() or "write"
+        except Exception:
+            pass
+
+    if boundary is None:
+        return False, "boundary_missing"
+
+    result = boundary.evaluate(
+        guardian=guardian,
+        request_type="execution",
+        intent=intent,
+        capability_name="file_operations",
+        action=action,
+        context={"command": command[:240]},
+        requested_by="execute_command_endpoint",
+    )
+    return result.allowed, (None if result.allowed else result.reason)
+
+
+class _ApprovedAuthForEndpoints:
+    def check(self, **kwargs):
+        return {"status": "approved", "request_id": "req-endpoint-ok"}
+
+
+class _DeniedAuthForEndpoints:
+    def check(self, **kwargs):
+        return {"status": "denied", "request_id": "req-endpoint-denied", "reason": "permission_denied"}
+
+
+_WRITE_TASK = {"id": "t1", "action": "write", "executor": "file",
+               "target": "09_Assets/runtime_workspace/home/index.html", "content": "<html/>"}
+
+
+class TestPostExecuteEndpointBoundary(unittest.TestCase):
+    """
+    N — POST /execute endpoint must be gated by ExecutionBoundary.
+
+    These tests replicate the exact guard logic inserted into the endpoint
+    to prove the gate behaviour without requiring a live HTTP server.
+    """
+
+    def setUp(self):
+        mod = _load_execution_boundary()
+        self.ExecutionBoundary = mod.ExecutionBoundary
+        self.BoundaryVerdict = mod.BoundaryVerdict
+
+    def _make_boundary(self, execution_auth=None):
+        return self.ExecutionBoundary(execution_auth=execution_auth)
+
+    # ── N-A: No guardian → DENY, KERNEL.execute_task must NOT be called ──────
+
+    def test_NA_no_guardian_denies(self):
+        """POST /execute with no guardian field → boundary denies, execute_task skipped."""
+        boundary = self._make_boundary(execution_auth=_ApprovedAuthForEndpoints())
+        allowed, reason = _boundary_logic_execute_tasks(
+            tasks=[_WRITE_TASK],
+            guardian={},          # missing guardian
+            boundary=boundary,
+        )
+        self.assertFalse(allowed, "Expected boundary to deny when guardian is absent")
+        self.assertEqual(reason, "guardian_not_pass")
+
+    # ── N-B: Guardian blocked → DENY ─────────────────────────────────────────
+
+    def test_NB_guardian_blocked_denies(self):
+        boundary = self._make_boundary(execution_auth=_ApprovedAuthForEndpoints())
+        allowed, reason = _boundary_logic_execute_tasks(
+            tasks=[_WRITE_TASK],
+            guardian={"status": "blocked"},
+            boundary=boundary,
+        )
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "guardian_not_pass")
+
+    # ── N-C: ExecutionAuthorization denied → DENY ────────────────────────────
+
+    def test_NC_execution_auth_denied_denies(self):
+        boundary = self._make_boundary(execution_auth=_DeniedAuthForEndpoints())
+        allowed, reason = _boundary_logic_execute_tasks(
+            tasks=[_WRITE_TASK],
+            guardian={"status": "pass"},
+            boundary=boundary,
+        )
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "execution_authorization_denied")
+
+    # ── N-D: Boundary missing → DENY (fail-closed) ───────────────────────────
+
+    def test_ND_missing_boundary_denies(self):
+        allowed, reason = _boundary_logic_execute_tasks(
+            tasks=[_WRITE_TASK],
+            guardian={"status": "pass"},
+            boundary=None,
+        )
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "boundary_missing")
+
+    # ── N-E: Unknown action → DENY ───────────────────────────────────────────
+
+    def test_NE_unknown_action_denies(self):
+        task_no_action = {"id": "t1", "executor": "file",
+                          "target": "09_Assets/runtime_workspace/home/index.html", "content": "x"}
+        allowed, reason = _boundary_logic_execute_tasks(
+            tasks=[task_no_action],
+            guardian={"status": "pass"},
+            boundary=self._make_boundary(execution_auth=_ApprovedAuthForEndpoints()),
+        )
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "unknown_action")
+
+    # ── N-F: Guardian pass + auth approved → ALLOW ───────────────────────────
+
+    def test_NF_pass_guardian_approved_auth_allows(self):
+        boundary = self._make_boundary(execution_auth=_ApprovedAuthForEndpoints())
+        allowed, reason = _boundary_logic_execute_tasks(
+            tasks=[_WRITE_TASK],
+            guardian={"status": "pass"},
+            boundary=boundary,
+        )
+        self.assertTrue(allowed, f"Expected ALLOW but got DENY: {reason}")
+        self.assertIsNone(reason)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# O — POST /execute/command endpoint boundary integration tests
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class _FakeDecomposer:
+    """Minimal TaskDecomposer stub that returns a deterministic intent and task."""
+    def decompose(self, command: str) -> dict:
+        return {
+            "intent": "build_homepage",
+            "task_count": 1,
+            "tasks": [{"id": "t1", "action": "write", "executor": "file",
+                        "target": "09_Assets/runtime_workspace/home/index.html",
+                        "content": "<html/>"}],
+        }
+
+
+class _UnknownDecomposer:
+    def decompose(self, command: str) -> dict:
+        return {"intent": "unknown", "task_count": 0, "tasks": []}
+
+
+class TestPostExecuteCommandEndpointBoundary(unittest.TestCase):
+    """
+    O — POST /execute/command endpoint must be gated by ExecutionBoundary.
+    """
+
+    def setUp(self):
+        mod = _load_execution_boundary()
+        self.ExecutionBoundary = mod.ExecutionBoundary
+
+    def _make_boundary(self, execution_auth=None):
+        return self.ExecutionBoundary(execution_auth=execution_auth)
+
+    # ── O-A: No guardian → DENY, execute_command must NOT be called ──────────
+
+    def test_OA_no_guardian_denies(self):
+        boundary = self._make_boundary(execution_auth=_ApprovedAuthForEndpoints())
+        allowed, reason = _boundary_logic_execute_command(
+            command="ابنِ الصفحة الرئيسية",
+            guardian={},
+            boundary=boundary,
+            decomposer=_FakeDecomposer(),
+        )
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "guardian_not_pass")
+
+    # ── O-B: Guardian blocked → DENY ─────────────────────────────────────────
+
+    def test_OB_guardian_blocked_denies(self):
+        boundary = self._make_boundary(execution_auth=_ApprovedAuthForEndpoints())
+        allowed, reason = _boundary_logic_execute_command(
+            command="ابنِ الصفحة الرئيسية",
+            guardian={"status": "blocked"},
+            boundary=boundary,
+            decomposer=_FakeDecomposer(),
+        )
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "guardian_not_pass")
+
+    # ── O-C: ExecutionAuthorization denied → DENY ────────────────────────────
+
+    def test_OC_execution_auth_denied_denies(self):
+        boundary = self._make_boundary(execution_auth=_DeniedAuthForEndpoints())
+        allowed, reason = _boundary_logic_execute_command(
+            command="ابنِ الصفحة الرئيسية",
+            guardian={"status": "pass"},
+            boundary=boundary,
+            decomposer=_FakeDecomposer(),
+        )
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "execution_authorization_denied")
+
+    # ── O-D: Boundary missing → DENY (fail-closed) ───────────────────────────
+
+    def test_OD_missing_boundary_denies(self):
+        allowed, reason = _boundary_logic_execute_command(
+            command="ابنِ الصفحة الرئيسية",
+            guardian={"status": "pass"},
+            boundary=None,
+            decomposer=_FakeDecomposer(),
+        )
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "boundary_missing")
+
+    # ── O-E: Guardian pass + auth approved → ALLOW ───────────────────────────
+
+    def test_OE_pass_guardian_approved_auth_allows(self):
+        boundary = self._make_boundary(execution_auth=_ApprovedAuthForEndpoints())
+        allowed, reason = _boundary_logic_execute_command(
+            command="ابنِ الصفحة الرئيسية",
+            guardian={"status": "pass"},
+            boundary=boundary,
+            decomposer=_FakeDecomposer(),
+        )
+        self.assertTrue(allowed, f"Expected ALLOW but got DENY: {reason}")
+        self.assertIsNone(reason)
+
+    # ── O-F: Decomposer unavailable → falls back to write, still gated ───────
+
+    def test_OF_no_decomposer_falls_back_to_write(self):
+        """Without a decomposer, action defaults to 'write'; guardian still enforced."""
+        boundary = self._make_boundary(execution_auth=_ApprovedAuthForEndpoints())
+        allowed, reason = _boundary_logic_execute_command(
+            command="some command",
+            guardian={},            # missing guardian
+            boundary=boundary,
+            decomposer=None,        # no decomposer
+        )
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "guardian_not_pass")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# P — No external execution path bypasses ExecutionBoundary (static callers audit)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestNoDirectExecutionBypass(unittest.TestCase):
+    """
+    P — Repository-wide verification that every external execution path in
+    ameer_server.py is gated by the boundary logic.
+
+    Reads ameer_server.py as source text and verifies that each KERNEL call
+    to execute_task / execute_command is preceded (in the same function block)
+    by the boundary guard pattern.
+    """
+
+    _SERVER_PATH = os.path.join(ROOT, "ameer_server.py")
+
+    def _server_source(self) -> str:
+        with open(self._SERVER_PATH, encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_P_execute_task_gated(self):
+        """KERNEL.execute_task() in POST /execute must be preceded by boundary deny path."""
+        src = self._server_source()
+        # Find the /execute endpoint body — look for the guard keyword we inserted
+        self.assertIn("execute_tasks_boundary_denied", src,
+                      "POST /execute is missing ExecutionBoundary gate log")
+        self.assertIn("_exec_boundary_allowed", src,
+                      "POST /execute is missing _exec_boundary_allowed guard variable")
+
+    def test_P_execute_command_gated(self):
+        """KERNEL.execute_command() in POST /execute/command must be preceded by boundary deny path."""
+        src = self._server_source()
+        self.assertIn("execute_command_boundary_denied", src,
+                      "POST /execute/command is missing ExecutionBoundary gate log")
+        self.assertIn("_cmd_boundary_allowed", src,
+                      "POST /execute/command is missing _cmd_boundary_allowed guard variable")
+
+    def test_P_execute_task_cannot_run_without_allowed_flag(self):
+        """
+        In the execute_tasks function body, KERNEL.execute_task must only appear
+        after 'if _exec_boundary_allowed' or 'if not _exec_boundary_allowed' (the deny path).
+        """
+        src = self._server_source()
+        # The deny-path guard must appear before the kernel call in textual order
+        boundary_guard_pos = src.find("_exec_boundary_allowed")
+        kernel_call_pos = src.find("KERNEL.execute_task(tasks)", boundary_guard_pos)
+        self.assertGreater(
+            kernel_call_pos, boundary_guard_pos,
+            "KERNEL.execute_task(tasks) must come after the boundary guard in source",
+        )
+
+    def test_P_execute_command_cannot_run_without_allowed_flag(self):
+        src = self._server_source()
+        boundary_guard_pos = src.find("_cmd_boundary_allowed")
+        kernel_call_pos = src.find("KERNEL.execute_command(command)", boundary_guard_pos)
+        self.assertGreater(
+            kernel_call_pos, boundary_guard_pos,
+            "KERNEL.execute_command(command) must come after the boundary guard in source",
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
