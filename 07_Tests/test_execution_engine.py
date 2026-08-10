@@ -195,6 +195,49 @@ class ExecutionEngineTests(unittest.TestCase):
             self.assertEqual(result["file"]["status"], "blocked",
                              "Writing to workspace root should be blocked by governance policy")
 
+    def test_conversational_file_read_request_does_not_execute_direct_read(self):
+        brain = ExecutiveBrain(normalize_fn=lambda x: x)
+        plan = type(
+            "Plan",
+            (),
+            {
+                "request_type": "question",
+                "ambiguous": False,
+                "clarification_needed": False,
+                "clarification_question": None,
+                "context_links": [],
+                "context_summary": "",
+                "plan_type": "single_step",
+                "steps": ["read file"],
+                "selected_agent": "research_agent",
+                "supporting_agents": [],
+                "agent_reasoning": "",
+                "guardian_status": "pass",
+                "guardian_reason": "",
+                "autonomy_level": "advice_only",
+                "should_remember": False,
+                "memory_note": None,
+                "executive_message": "",
+            },
+        )()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target = os.path.join(tmpdir, "09_Assets", "runtime_workspace", "home")
+            os.makedirs(target, exist_ok=True)
+            with open(os.path.join(target, "secret.txt"), "w", encoding="utf-8") as handle:
+                handle.write("secret-content")
+
+            result = brain._execute_plan(
+                "اقرأ ملف 09_Assets/runtime_workspace/home/secret.txt",
+                plan,
+                workspace_root=tmpdir,
+            )
+
+            self.assertEqual(result["file"]["status"], "blocked")
+            self.assertEqual(result["file"]["reason"], "file_read_requires_tool_dispatcher")
+            self.assertEqual(result["file"]["content_preview"], "")
+            self.assertNotIn("file.create", result["tool_calls"])
+
 
 if __name__ == "__main__":
     unittest.main()

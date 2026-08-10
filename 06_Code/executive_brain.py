@@ -1306,24 +1306,21 @@ class ExecutiveBrain:
             filename, content, operation = self._extract_file_operation(query)
             if filename:
                 if operation == "read":
-                    target_path = Path(workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))) / filename
-                    if target_path.exists():
-                        file_result = {
-                            "status": "read",
-                            "path": str(target_path),
-                            "relative_path": os.path.relpath(target_path, workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))).replace("\\", "/"),
-                            "content_preview": target_path.read_text(encoding="utf-8")[:240],
-                        }
-                    else:
-                        file_result = {"status": "missing", "path": str(target_path), "relative_path": filename, "content_preview": ""}
+                    file_result = {
+                        "status": "blocked",
+                        "reason": "file_read_requires_tool_dispatcher",
+                        "relative_path": filename,
+                        "content_preview": "",
+                    }
                 elif operation == "update":
                     file_result = self._append_to_existing_file(filename, content or "", workspace_root=workspace_root)
                 else:
                     file_result = self._create_file(filename, content or "", workspace_root=workspace_root)
                 result["file"] = file_result
-                result["actions"].append({"tool": "file.create", "status": file_result.get("status", "created")})
-                result["tool_calls"].append("file.create")
-                file_ok = file_result.get("status") in {"created", "updated", "read"} and os.path.exists(file_result.get("path", ""))
+                if operation != "read":
+                    result["actions"].append({"tool": "file.create", "status": file_result.get("status", "created")})
+                    result["tool_calls"].append("file.create")
+                file_ok = file_result.get("status") in {"created", "updated"} and os.path.exists(file_result.get("path", ""))
                 result["verification"].append({
                     "name": "created_file_exists",
                     "status": "succeeded" if file_ok else "failed",

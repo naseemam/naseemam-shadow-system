@@ -13,8 +13,9 @@ if CODE_ROOT not in sys.path:
     sys.path.insert(0, CODE_ROOT)
 
 from kernel.capability_registry import CapabilityRegistry
-from kernel.execution_authorization import ExecutionAuthorization
+from kernel.execution_authorization import ExecutionAuthorization, file_read_permission_scope
 from kernel.execution_boundary import BoundaryVerdict, ExecutionBoundary
+from kernel.executor_file import FileExecutor
 from kernel.permission_registry import PermissionRegistry
 from kernel.tool_dispatcher import ToolDispatcher
 from kernel.tool_registry import ToolRegistry
@@ -230,6 +231,44 @@ class ToolDispatcherTests(unittest.TestCase):
             self.assertEqual(len(auth.calls), 1)
             self.assertEqual(auth.calls[0]["context"]["target"], target)
 
+    def test_H_file_read_inside_workspace_allows_and_executes_real_chain(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = self._make_runtime_workspace(tmp)
+            cap_reg = CapabilityRegistry(tmp)
+            perm_reg = PermissionRegistry(tmp)
+            file_cap = cap_reg.get_by_name("file_operations")
+            perm_reg.grant(
+                file_cap["capability_id"],
+                scope=file_read_permission_scope(),
+                granted_by="Naseem",
+            )
+            auth = ExecutionAuthorization(tmp, cap_reg, perm_reg)
+            boundary = Mock(wraps=ExecutionBoundary(execution_auth=auth))
+            registry = Mock(wraps=ToolRegistry())
+            executor = Mock(wraps=FileExecutor(tmp).execute)
+            dispatcher = ToolDispatcher(
+                tool_registry=registry,
+                execution_boundary=boundary,
+                execution_authorization=auth,
+                executor=executor,
+                workspace_root=tmp,
+            )
+
+            result = dispatcher.dispatch(
+                tool_name="file.read",
+                guardian={"status": "pass"},
+                context={"target": target},
+            )
+
+            self.assertEqual(result["decision"], "ALLOW")
+            self.assertTrue(result["executed"])
+            self.assertEqual(result["result"]["status"], "completed")
+            self.assertEqual(result["result"]["relative_path"], target)
+            self.assertEqual(result["result"]["content"], "<html></html>")
+            registry.resolve.assert_called_once()
+            boundary.evaluate.assert_called_once()
+            executor.assert_called_once()
+
     def test_I_file_create_without_permission_denies(self):
         with tempfile.TemporaryDirectory() as tmp:
             cap_reg = CapabilityRegistry(tmp)
@@ -433,23 +472,32 @@ class ToolDispatcherTests(unittest.TestCase):
             self.assertEqual(auth.calls, [])
 
     def test_T_file_create_unaffected_by_file_read_scope_policy(self):
-        boundary = _SpyBoundary(verdict=BoundaryVerdict.DENY, reason="forced_deny")
-        dispatcher = ToolDispatcher(
-            tool_registry=ToolRegistry(),
-            execution_boundary=boundary,
-            execution_authorization=_ApprovedAuth(),
-        )
-        result = dispatcher.dispatch(
-            tool_name="file.create",
-            guardian={"status": "pass"},
-            context={
-                "target": "/tmp/absolute-create-path-is-not-validated-here",
-                "content": "safe",
-            },
-        )
-        self.assertEqual(result["decision"], "DENY")
-        self.assertEqual(result["reason"], "forced_deny")
-        self.assertTrue(boundary.called)
+        with tempfile.TemporaryDirectory() as tmp:
+            cap_reg = CapabilityRegistry(tmp)
+            perm_reg = PermissionRegistry(tmp)
+            file_cap = cap_reg.get_by_name("file_operations")
+            perm_reg.grant(
+                file_cap["capability_id"],
+                scope=file_read_permission_scope(),
+                granted_by="Naseem",
+            )
+            auth = ExecutionAuthorization(tmp, cap_reg, perm_reg)
+            dispatcher = ToolDispatcher(
+                tool_registry=ToolRegistry(),
+                execution_boundary=ExecutionBoundary(execution_auth=auth),
+                execution_authorization=auth,
+                workspace_root=tmp,
+            )
+            result = dispatcher.dispatch(
+                tool_name="file.create",
+                guardian={"status": "pass"},
+                context={
+                    "target": "/tmp/absolute-create-path-is-not-validated-here",
+                    "content": "safe",
+                },
+            )
+            self.assertEqual(result["decision"], "DENY")
+            self.assertEqual(result["reason"], "execution_authorization_denied")
 
     def test_U_conversational_request_cannot_reach_file_read_executor(self):
         with tempfile.TemporaryDirectory() as tmp:

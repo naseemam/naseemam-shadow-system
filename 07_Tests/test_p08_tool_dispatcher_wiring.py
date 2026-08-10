@@ -168,10 +168,13 @@ class ToolDispatcherWiringTests(unittest.TestCase):
         self.assertEqual(report["execution"]["results"][0]["reason"], "execution_boundary_unavailable")
 
     # G. file.read without permission -> DENY
-    def test_G_file_read_without_permission_denies(self):
+    def test_G_file_read_inside_runtime_scope_allows(self):
+        runtime_home = Path(self.tmp, "09_Assets", "runtime_workspace", "home")
+        runtime_home.mkdir(parents=True, exist_ok=True)
+        (runtime_home / "index.html").write_text("<html></html>", encoding="utf-8")
         report = self.kernel.execute_task([_task("read")], guardian={"status": "pass"})
-        self.assertFalse(report["accepted"])
-        self.assertEqual(report["execution"]["results"][0]["reason"], "execution_authorization_denied")
+        self.assertTrue(report["accepted"])
+        self.assertEqual(report["execution"]["results"][0]["status"], "completed")
 
     # H. file.create without permission -> DENY
     def test_H_file_create_without_permission_denies(self):

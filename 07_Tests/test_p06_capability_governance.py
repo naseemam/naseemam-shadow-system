@@ -534,6 +534,55 @@ class TestFileOperationsContract(unittest.TestCase):
         self.assertEqual(read_result["status"], "denied")
         self.assertEqual(create_result["status"], "denied")
 
+    def test_file_read_scope_grant_approves_only_registry_owned_read(self):
+        from kernel.execution_authorization import file_read_permission_scope
+
+        read_tool = self.tools.get("file.read")
+        cap = self.cap_reg.get_by_name("file_operations")
+        self.perm_reg.grant(
+            cap["capability_id"],
+            scope=file_read_permission_scope(),
+            granted_by="Naseem",
+        )
+
+        read_result = self.auth.check(
+            capability_name=read_tool.capability,
+            action=read_tool.action,
+            context={
+                "tool_name": read_tool.tool_name,
+                "target": "09_Assets/runtime_workspace/home/index.html",
+            },
+        )
+        create_result = self.auth.check(
+            capability_name=read_tool.capability,
+            action="write",
+            context={
+                "tool_name": "file.create",
+                "target": "09_Assets/runtime_workspace/home/index.html",
+            },
+        )
+
+        self.assertEqual(read_result["status"], "approved")
+        self.assertEqual(create_result["status"], "denied")
+
+    def test_file_read_scope_grant_fails_closed_without_registry_context(self):
+        from kernel.execution_authorization import file_read_permission_scope
+
+        cap = self.cap_reg.get_by_name("file_operations")
+        self.perm_reg.grant(
+            cap["capability_id"],
+            scope=file_read_permission_scope(),
+            granted_by="Naseem",
+        )
+
+        result = self.auth.check(
+            capability_name="file_operations",
+            action="read",
+            context={"target": "01_Docs/outside.md"},
+        )
+
+        self.assertEqual(result["status"], "denied")
+
 
 # ── ExecutiveKernel integration tests ─────────────────────────────────────────
 

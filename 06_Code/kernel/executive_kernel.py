@@ -30,7 +30,7 @@ from kernel.learning_engine import LearningEngine
 from kernel.memory_governance import MemoryGovernanceEngine
 from kernel.capability_registry import CapabilityRegistry
 from kernel.permission_registry import PermissionRegistry
-from kernel.execution_authorization import ExecutionAuthorization
+from kernel.execution_authorization import ExecutionAuthorization, file_read_permission_scope
 from kernel.execution_boundary import ExecutionBoundary
 from kernel.tool_registry import ToolRegistry
 from kernel.tool_dispatcher import ToolDispatcher
@@ -79,6 +79,7 @@ class ExecutiveKernel:
         # P0.6 — Executive Capability Governance
         self.capabilities: CapabilityRegistry = CapabilityRegistry(self._root)
         self.permissions: PermissionRegistry = PermissionRegistry(self._root)
+        self._enable_file_read_permission()
         self.execution_auth: ExecutionAuthorization = ExecutionAuthorization(
             self._root, self.capabilities, self.permissions
         )
@@ -103,6 +104,16 @@ class ExecutiveKernel:
             executor=self.file_executor.execute,
         )
         self.task_decomposer: TaskDecomposer = TaskDecomposer(str(self._root))
+
+    def _enable_file_read_permission(self) -> None:
+        file_cap = self.capabilities.get_by_name("file_operations")
+        if file_cap is None:
+            return
+        self.permissions.grant(
+            file_cap["capability_id"],
+            scope=file_read_permission_scope(),
+            granted_by="system:file.read_activation",
+        )
 
     # ── Startup helpers ───────────────────────────────────────────────────────
 

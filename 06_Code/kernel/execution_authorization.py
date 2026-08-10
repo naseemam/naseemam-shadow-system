@@ -36,10 +36,27 @@ from kernel.permission_registry import PermissionRegistry
 _EXEC_AUTH_FILENAME = "execution_auth.json"
 
 AUTHORIZATION_STATUSES = {"approved", "denied", "pending"}
+_FILE_READ_SCOPE_KIND = "runtime_workspace_only"
+_FILE_READ_SCOPE_ROOT = "09_Assets/runtime_workspace"
+_FILE_READ_TOOL_NAME = "file.read"
+_FILE_READ_ACTION = "read"
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def file_read_permission_scope() -> str:
+    return json.dumps(
+        {
+            "tool_name": _FILE_READ_TOOL_NAME,
+            "action": _FILE_READ_ACTION,
+            "scope_kind": _FILE_READ_SCOPE_KIND,
+            "scope_root": _FILE_READ_SCOPE_ROOT,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
 
 
 class ExecutionAuthorization:
@@ -107,6 +124,47 @@ class ExecutionAuthorization:
             if r["request_id"] == request_id:
                 return r
         return None
+
+    @staticmethod
+    def _parse_scope_policy(scope: Any) -> Dict[str, Any]:
+        if not isinstance(scope, str) or not scope.strip():
+            return {}
+        try:
+            parsed = json.loads(scope)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+
+    def _file_operation_scope_denial_reason(
+        self,
+        *,
+        action: str,
+        context: Optional[Dict[str, Any]],
+        perm_card: Dict[str, Any],
+    ) -> str:
+        policy = self._parse_scope_policy(perm_card.get("scope"))
+        required_policy = self._parse_scope_policy(file_read_permission_scope())
+        if policy != required_policy:
+            return "Permission scope does not authorize registry-owned file.read"
+
+        if str(action or "").strip().lower() != _FILE_READ_ACTION:
+            return "Permission scope is limited to file.read/read only"
+
+        safe_context = context or {}
+        tool_name = str(safe_context.get("tool_name") or "").strip().lower()
+        if tool_name != _FILE_READ_TOOL_NAME:
+            return "Permission scope requires registry-owned tool file.read"
+
+        target = safe_context.get("target")
+        if not isinstance(target, str) or not target.strip():
+            return "Permission scope requires an in-scope file.read target"
+
+        normalized_target = target.strip().replace("\\", "/")
+        allowed_prefix = f"{_FILE_READ_SCOPE_ROOT}/"
+        if normalized_target != _FILE_READ_SCOPE_ROOT and not normalized_target.startswith(allowed_prefix):
+            return "Permission scope requires target inside 09_Assets/runtime_workspace"
+
+        return ""
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -207,6 +265,26 @@ class ExecutionAuthorization:
             )
             self._persist_request(result)
             return result
+
+        if capability_name == "file_operations":
+            scope_denial_reason = self._file_operation_scope_denial_reason(
+                action=action,
+                context=context,
+                perm_card=perm_card,
+            )
+            if scope_denial_reason:
+                result = self._make_result(
+                    request_id,
+                    "denied",
+                    capability_name,
+                    action,
+                    scope_denial_reason,
+                    context,
+                    requested_by,
+                    now,
+                )
+                self._persist_request(result)
+                return result
 
         # permission_status == "granted"
         result = self._make_result(
