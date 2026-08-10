@@ -137,7 +137,7 @@ MD_GLOB = os.path.join(REPO_ROOT, "**", "*.md")
 WEB_INDEX = os.path.join(REPO_ROOT, "09_Assets", "web", "index.html")
 DEBUG_MODE = os.getenv("AMEER_DEBUG", "0").lower() in {"1", "true", "yes", "on"}
 RUNTIME_METADATA = runtime_metadata(workspace_root=REPO_ROOT)
-KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic"}
+KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic", "file_read"}
 
 # ─── Executive Operating Kernel ───────────────────────────────────────────────
 
@@ -498,17 +498,29 @@ async def ask(request: Request):
                     requested_by="ask_endpoint",
                 )
                 final_exec = kernel_execution_trace.get("final", {})
+                exec_results = final_exec.get("results") or []
                 if final_exec.get("accepted"):
-                    completed = final_exec.get("completed", 0)
-                    files = final_exec.get("files_created") or []
-                    file_list = "، ".join(f for f in files if f) if files else ""
-                    kernel_execution_reply = (
-                        f"✅ تم بناء الصفحة الرئيسية بنجاح! "
-                        f"أُنشئت {completed} ملفات"
-                        + (f": {file_list}" if file_list else "")
-                        + ".\n\n"
-                        "يمكنك معاينتها الآن عبر رابط Preview أدناه."
-                    )
+                    if kernel_detected_intent == "file_read":
+                        read_result = next(
+                            (
+                                item for item in exec_results
+                                if item.get("status") == "completed" and item.get("content") is not None
+                            ),
+                            None,
+                        )
+                        if read_result is not None:
+                            kernel_execution_reply = str(read_result.get("content") or "")
+                    else:
+                        completed = final_exec.get("completed", 0)
+                        files = final_exec.get("files_created") or []
+                        file_list = "، ".join(f for f in files if f) if files else ""
+                        kernel_execution_reply = (
+                            f"✅ تم بناء الصفحة الرئيسية بنجاح! "
+                            f"أُنشئت {completed} ملفات"
+                            + (f": {file_list}" if file_list else "")
+                            + ".\n\n"
+                            "يمكنك معاينتها الآن عبر رابط Preview أدناه."
+                        )
                 elif not final_exec.get("accepted") and kernel_execution_trace.get("pipeline"):
                     kernel_execution_reply = (
                         "⚠️ لم يتمكن أمير من إتمام التنفيذ. "

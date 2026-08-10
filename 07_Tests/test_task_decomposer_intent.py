@@ -5,7 +5,7 @@ Covers:
 - "ابنِ الصفحة الرئيسية"  → build_homepage  (must not regress)
 - "أنشئ صفحة عن حلم الندى" → build_generic   (new fix)
 - "انشئ صفحة عن حلم الندى" → build_generic   (new fix)
-- "اقرأ ملف .../home/index.html" → unknown    (file.read misrouting fix)
+- "اقرأ ملف .../home/index.html" → file_read  (file.read governed path)
   path tokens like home/index must NOT misroute a read command to build_homepage.
 """
 import importlib.util
@@ -41,32 +41,32 @@ class TestDetectIntentRegression(unittest.TestCase):
 
     # ── file.read misrouting regression tests ────────────────────────────────
     # A read command whose path contains tokens like "home" or "index" must NOT
-    # be routed to build_homepage.
+    # be routed to build_homepage and must remain executable as file_read.
 
     def test_read_home_index_arabic(self):
-        """اقرأ ملف 09_Assets/runtime_workspace/home/index.html → unknown (not build_homepage)"""
+        """اقرأ ملف 09_Assets/runtime_workspace/home/index.html → file_read (not build_homepage)"""
         result = _detect_intent("اقرأ ملف 09_Assets/runtime_workspace/home/index.html")
         self.assertNotEqual(result, "build_homepage",
                             "read command with home/index path must not be misrouted to build_homepage")
-        self.assertEqual(result, "unknown")
+        self.assertEqual(result, "file_read")
 
     def test_read_home_index_english(self):
-        """read file 09_Assets/runtime_workspace/home/index.html → unknown"""
+        """read file 09_Assets/runtime_workspace/home/index.html → file_read"""
         result = _detect_intent("read file 09_Assets/runtime_workspace/home/index.html")
         self.assertNotEqual(result, "build_homepage")
-        self.assertEqual(result, "unknown")
+        self.assertEqual(result, "file_read")
 
     def test_show_home_index(self):
-        """show home/index.html → unknown"""
+        """show home/index.html → file_read"""
         result = _detect_intent("show home/index.html")
         self.assertNotEqual(result, "build_homepage")
-        self.assertEqual(result, "unknown")
+        self.assertEqual(result, "file_read")
 
     def test_read_landing_page_file(self):
         """read landing.html — contains HOME_PAGE_HINTS token but read wins"""
         result = _detect_intent("read landing.html")
         self.assertNotEqual(result, "build_homepage")
-        self.assertEqual(result, "unknown")
+        self.assertEqual(result, "file_read")
 
     def test_build_homepage_still_works_no_read(self):
         """home — no read marker → still build_homepage"""
@@ -97,6 +97,17 @@ class TestDecomposeIntentRegression(unittest.TestCase):
         result = self.decomposer.decompose("انشئ صفحة عن حلم الندى")
         self.assertEqual(result["intent"], "build_generic")
         self.assertGreater(result["task_count"], 0)
+
+    def test_decompose_read_file_generates_governed_read_task(self):
+        result = self.decomposer.decompose("اقرأ ملف 09_Assets/runtime_workspace/home/index.html")
+        self.assertEqual(result["intent"], "file_read")
+        self.assertEqual(result["task_count"], 1)
+        self.assertEqual(result["tasks"][0]["action"], "read")
+        self.assertEqual(result["tasks"][0]["executor"], "file")
+        self.assertEqual(
+            result["tasks"][0]["target"],
+            "09_Assets/runtime_workspace/home/index.html",
+        )
 
 
 if __name__ == "__main__":

@@ -8,10 +8,10 @@
       "permission_status": "granted",
       "scope": "{\"action\": \"read\", \"scope_kind\": \"runtime_workspace_only\", \"scope_root\": \"09_Assets/runtime_workspace\", \"tool_name\": \"file.read\"}",
       "granted_by": "system:file.read_activation",
-      "granted_at": "2026-08-10T20:07:11Z",
+      "granted_at": "2026-08-10T20:53:32Z",
       "expires_at": null,
       "created_at": "2026-08-10T17:27:23Z",
-      "updated_at": "2026-08-10T20:07:11Z"
+      "updated_at": "2026-08-10T20:53:32Z"
     },
     {
       "permission_id": "9ba514c5-aa0c-4b36-be36-8c6067551172",
@@ -132,6 +132,12 @@
     },
     {
       "timestamp": "2026-08-10T20:07:11Z",
+      "permission_id": "73ce3ccb-addf-4e45-b7e2-e6681421365a",
+      "action": "granted",
+      "detail": "scope={\"action\": \"read\", \"scope_kind\": \"runtime_workspace_only\", \"scope_root\": \"09_Assets/runtime_workspace\", \"tool_name\": \"file.read\"}, granted_by=system:file.read_activation, expires_at=None"
+    },
+    {
+      "timestamp": "2026-08-10T20:53:32Z",
       "permission_id": "73ce3ccb-addf-4e45-b7e2-e6681421365a",
       "action": "granted",
       "detail": "scope={\"action\": \"read\", \"scope_kind\": \"runtime_workspace_only\", \"scope_root\": \"09_Assets/runtime_workspace\", \"tool_name\": \"file.read\"}, granted_by=system:file.read_activation, expires_at=None"

@@ -352,6 +352,19 @@ class TestConversationalRequestBlocked(unittest.TestCase):
         # Conversational behavior stays the same for actionable intents when auth approves.
         self.assertEqual(result.verdict, self.BoundaryVerdict.ALLOW)
 
+    def test_H_file_read_intent_with_pass_guardian_allowed(self):
+        class _ApprovedAuth:
+            def check(self, **kwargs):
+                return {"status": "approved", "request_id": "req-read"}
+
+        boundary = self.ExecutionBoundary(execution_auth=_ApprovedAuth())
+        result = boundary.evaluate(
+            guardian={"status": "pass"},
+            request_type="question",
+            intent="file_read",
+        )
+        self.assertEqual(result.verdict, self.BoundaryVerdict.ALLOW)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # I — kernel_execution_reply cannot bypass the boundary
@@ -369,7 +382,7 @@ class TestKernelReplyDoesNotBypassBoundary(unittest.TestCase):
                                         request_type="execution", intent="build_homepage",
                                         kernel_execution_reply="some_reply"):
         """Mirrors the fail-closed logic in ameer_server.py section 5b."""
-        KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic"}
+        KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic", "file_read"}
         _CONVERSATIONAL_TYPES = {"question", "greeting", "analysis", "memory", "creative"}
 
         _raw_gs = guardian_status_raw

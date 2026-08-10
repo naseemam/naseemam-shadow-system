@@ -696,6 +696,7 @@ class ExecutiveKernel:
             "tasks_queued": result["tasks_queued"],
             "completed": result["execution"]["completed"],
             "failed": result["execution"]["failed"],
+            "results": exec_results,
             "files_created": [
                 r.get("relative_path") for r in exec_results
                 if r.get("status") == "completed"
