@@ -656,6 +656,34 @@
       "resolved_at": null,
       "resolved_by": null,
       "execution_recorded": false
+    },
+    {
+      "request_id": "55a17934-ca49-43d7-a21c-cdd2601b5f86",
+      "status": "approved",
+      "capability_name": "file_operations",
+      "action": "read",
+      "reason": "Capability owned, enabled, and permission granted",
+      "context": {
+        "task_id": "file-read-fbeb4c",
+        "target": "09_Assets/runtime_workspace/home/index.html",
+        "content": null,
+        "executor": "file",
+        "executor_payload": {
+          "id": "file-read-fbeb4c",
+          "action": "read",
+          "executor": "file",
+          "target": "09_Assets/runtime_workspace/home/index.html",
+          "priority": "high",
+          "description": "قراءة الملف 09_Assets/runtime_workspace/home/index.html"
+        },
+        "tool_name": "file.read",
+        "risk_level": "low"
+      },
+      "requested_by": "ask_endpoint",
+      "created_at": "2026-08-10T21:07:21Z",
+      "resolved_at": null,
+      "resolved_by": null,
+      "execution_recorded": false
     }
   ],
   "execution_log": []
