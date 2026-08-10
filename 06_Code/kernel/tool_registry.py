@@ -56,7 +56,7 @@ class ToolDefinition:
 class ToolRegistry:
     """Closed-source, declarative registry for the initial tool set."""
 
-    _DEFINITIONS = {
+    _DEFINITIONS = MappingProxyType({
         "file.read": ToolDefinition(
             tool_name="file.read",
             capability="file_operations",
@@ -73,7 +73,7 @@ class ToolRegistry:
             input_policy={"required": ("target", "content"), "additional": False},
             output_policy={"content": "metadata_only", "metadata": "relative_path_only"},
         ),
-    }
+    })
 
     def __init__(self) -> None:
         self._definitions = MappingProxyType(dict(self._DEFINITIONS))

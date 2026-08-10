@@ -41,6 +41,14 @@ class ToolRegistryTests(unittest.TestCase):
         self.assertEqual(tool.risk_level, "medium")
 
     def test_incomplete_or_invalid_definitions_are_rejected(self):
+        with self.assertRaises(TypeError):
+            ToolDefinition(
+                tool_name="file.invalid",
+                capability="file_operations",
+                action="read",
+                risk_level="low",
+                input_policy={"required": ()},
+            )
         with self.assertRaises(ValueError):
             ToolDefinition(
                 tool_name="",
