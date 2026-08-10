@@ -110,6 +110,9 @@ class ExecutionEngineTests(unittest.TestCase):
         self.assertIn("04_Memory", result["memory"]["file"])
 
     def test_file_operation_creates_markdown_file(self):
+        # Legacy direct path is now CLOSED — file.create must route through
+        # ToolDispatcher.  _execute_plan / _create_file no longer writes directly;
+        # the file result carries status "blocked" with the canonical reason.
         brain = ExecutiveBrain(normalize_fn=lambda x: x)
         plan = self._plan(["create file"])
 
@@ -121,10 +124,11 @@ class ExecutionEngineTests(unittest.TestCase):
                 workspace_root=tmpdir,
             )
 
-            self.assertIn("created", result["file"]["status"])
-            self.assertTrue(os.path.exists(result["file"]["path"]))
-            self.assertTrue(os.path.exists(os.path.join(tmpdir, result["file"]["relative_path"])))
-            self.assertTrue(any(item["name"] == "created_file_exists" for item in result["verification"]))
+            file_result = result["file"]
+            self.assertEqual(file_result["status"], "blocked")
+            self.assertEqual(file_result["reason"], "file_create_requires_tool_dispatcher")
+            # No file must have been written to disk
+            self.assertFalse(os.path.exists(file_result["path"]))
 
     def test_workspace_page_creation_updates_site_navigation_and_loader(self):
         brain = ExecutiveBrain(normalize_fn=lambda x: x)

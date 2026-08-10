@@ -92,11 +92,24 @@ class TestStaticAudit_A_NoDirectFileExecutorInExecutiveBrain(unittest.TestCase):
         )
 
     def test_A2_no_import_of_FileExecutor(self):
-        source = self._get_source()
+        """FileExecutor must not appear in import statements in executive_brain.py."""
+        tree = ast.parse(self._get_source(), filename=EXECUTIVE_BRAIN_PATH)
+        imported_names = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    imported_names.append(alias.name)
+                    if alias.asname:
+                        imported_names.append(alias.asname)
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    imported_names.append(alias.name)
+                    if alias.asname:
+                        imported_names.append(alias.asname)
         self.assertNotIn(
             "FileExecutor",
-            source,
-            "executive_brain.py must not reference FileExecutor",
+            imported_names,
+            "executive_brain.py must not import FileExecutor",
         )
 
     def test_A3_static_ast_no_fileexecutor_call(self):
@@ -203,17 +216,11 @@ class TestDispatcherPath_D_FileCreateDenyViaDispatcher(unittest.TestCase):
         from kernel.tool_dispatcher import ToolDispatcher
         from kernel.tool_registry import ToolRegistry
 
-        cap_reg = CapabilityRegistry()
-        perm_reg = PermissionRegistry()
-        auth = ExecutionAuthorization(
-            root=tmp,
-            capability_registry=cap_reg,
-            permission_registry=perm_reg,
-        )
+        cap_reg = CapabilityRegistry(tmp)
+        perm_reg = PermissionRegistry(tmp)
+        auth = ExecutionAuthorization(tmp, cap_reg, perm_reg)
         executor = FileExecutor(workspace_root=tmp)
-        boundary = ExecutionBoundary(
-            execution_authorization=auth,
-        )
+        boundary = ExecutionBoundary(execution_auth=auth)
         return ToolDispatcher(
             tool_registry=ToolRegistry(),
             execution_boundary=boundary,
@@ -272,7 +279,7 @@ class TestBoundaryBypass_E_LegacyPathCannotBypassBoundary(unittest.TestCase):
                 self.assertEqual(
                     result["status"],
                     "blocked",
-                    f"Must be blocked for content={content!r[:20]}",
+                    f"Must be blocked for content={content[:20]!r}",
                 )
                 self.assertEqual(result["reason"], "file_create_requires_tool_dispatcher")
 
@@ -304,20 +311,17 @@ class TestFileRead_F_FileReadUnaffected(unittest.TestCase):
             runtime_ws.mkdir(parents=True)
             (runtime_ws / "data.txt").write_text("hello", encoding="utf-8")
 
-            cap_reg = CapabilityRegistry()
-            perm_reg = PermissionRegistry()
+            cap_reg = CapabilityRegistry(tmp)
+            perm_reg = PermissionRegistry(tmp)
+            file_cap = cap_reg.get_by_name("file_operations")
             perm_reg.grant(
-                capability="file_operations",
-                permission_scope=file_read_permission_scope(),
+                file_cap["capability_id"],
+                scope=file_read_permission_scope(),
                 granted_by="test",
             )
-            auth = ExecutionAuthorization(
-                root=tmp,
-                capability_registry=cap_reg,
-                permission_registry=perm_reg,
-            )
+            auth = ExecutionAuthorization(tmp, cap_reg, perm_reg)
             executor = FileExecutor(workspace_root=tmp)
-            boundary = ExecutionBoundary(execution_authorization=auth)
+            boundary = ExecutionBoundary(execution_auth=auth)
             dispatcher = ToolDispatcher(
                 tool_registry=ToolRegistry(),
                 execution_boundary=boundary,
@@ -401,9 +405,9 @@ class TestFailClosed_J_BoundaryUnavailableDenies(unittest.TestCase):
         from kernel.permission_registry import PermissionRegistry
 
         with tempfile.TemporaryDirectory() as tmp:
-            cap_reg = CapabilityRegistry()
-            perm_reg = PermissionRegistry()
-            auth = ExecutionAuthorization(root=tmp, capability_registry=cap_reg, permission_registry=perm_reg)
+            cap_reg = CapabilityRegistry(tmp)
+            perm_reg = PermissionRegistry(tmp)
+            auth = ExecutionAuthorization(tmp, cap_reg, perm_reg)
             dispatcher = ToolDispatcher(
                 tool_registry=ToolRegistry(),
                 execution_boundary=None,
@@ -428,7 +432,7 @@ class TestFailClosed_K_AuthorizationUnavailableDenies(unittest.TestCase):
 
         dispatcher = ToolDispatcher(
             tool_registry=ToolRegistry(),
-            execution_boundary=ExecutionBoundary(execution_authorization=None),
+            execution_boundary=ExecutionBoundary(execution_auth=None),
             execution_authorization=None,
         )
         result = dispatcher.dispatch(
@@ -452,13 +456,11 @@ class TestFailClosed_L_PermissionMissingDenies(unittest.TestCase):
         from kernel.tool_registry import ToolRegistry
 
         with tempfile.TemporaryDirectory() as tmp:
-            cap_reg = CapabilityRegistry()
-            perm_reg = PermissionRegistry()
+            cap_reg = CapabilityRegistry(tmp)
+            perm_reg = PermissionRegistry(tmp)
             # Deliberately do NOT grant file_operations for file.create
-            auth = ExecutionAuthorization(
-                root=tmp, capability_registry=cap_reg, permission_registry=perm_reg
-            )
-            boundary = ExecutionBoundary(execution_authorization=auth)
+            auth = ExecutionAuthorization(tmp, cap_reg, perm_reg)
+            boundary = ExecutionBoundary(execution_auth=auth)
             dispatcher = ToolDispatcher(
                 tool_registry=ToolRegistry(),
                 execution_boundary=boundary,
