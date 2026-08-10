@@ -193,9 +193,90 @@ class ToolDispatcher:
         context: Mapping[str, Any],
         execution_request: dict[str, Any],
     ) -> Optional[Mapping[str, Any] | dict[str, Any]]:
-        if tool_name != "file.read":
-            return None
-        return self._enforce_file_read_policy(tool_def, context, execution_request)
+        if tool_name == "file.read":
+            return self._enforce_file_read_policy(tool_def, context, execution_request)
+        if tool_name == "file.create":
+            return self._enforce_file_create_policy(tool_def, context, execution_request)
+        return None
+
+    def _enforce_file_create_policy(
+        self,
+        tool_def: Any,
+        context: Mapping[str, Any],
+        execution_request: dict[str, Any],
+    ) -> Mapping[str, Any] | dict[str, Any]:
+        if self._contains_scope_override(context):
+            return self._deny(
+                "file_create_scope_override_denied",
+                execution_request,
+                detail={"fields": sorted(_FILE_READ_SCOPE_OVERRIDE_FIELDS.intersection(context))},
+            )
+
+        target = context.get("target")
+        if not isinstance(target, str) or not target.strip():
+            return self._deny(
+                "file_create_scope_denied",
+                execution_request,
+                detail={"error": "missing_target"},
+            )
+
+        workspace_root = self._resolve_workspace_root()
+        scope_root = self._resolve_scope_root(tool_def, workspace_root)
+        if workspace_root is None or scope_root is None:
+            return self._deny(
+                "file_create_scope_denied",
+                execution_request,
+                detail={"error": "scope_root_unavailable"},
+            )
+
+        try:
+            raw_target = Path(target.strip())
+            resolved = (
+                raw_target.resolve()
+                if raw_target.is_absolute()
+                else (workspace_root / raw_target).resolve()
+            )
+            if not resolved.is_relative_to(scope_root):
+                raise ValueError("target_outside_file_create_scope")
+            normalized_target = str(resolved.relative_to(workspace_root)).replace("\\", "/")
+        except ValueError as exc:
+            return self._deny(
+                "file_create_scope_denied",
+                execution_request,
+                detail={"error": str(exc), "target": target},
+            )
+
+        payload = context.get("executor_payload")
+        if payload is not None and not isinstance(payload, Mapping):
+            return self._deny(
+                "file_create_scope_denied",
+                execution_request,
+                detail={"error": "invalid_executor_payload"},
+            )
+        if isinstance(payload, Mapping):
+            if self._contains_scope_override(payload):
+                return self._deny(
+                    "file_create_scope_override_denied",
+                    execution_request,
+                    detail={"fields": sorted(_FILE_READ_SCOPE_OVERRIDE_FIELDS.intersection(payload))},
+                )
+            payload_target = payload.get("target")
+            if payload_target is not None and str(payload_target).strip() != target.strip():
+                return self._deny(
+                    "file_create_scope_override_denied",
+                    execution_request,
+                    detail={"error": "executor_payload_target_override"},
+                )
+
+        trusted_payload = dict(payload or {})
+        trusted_payload["target"] = str(resolved.relative_to(workspace_root)).replace("\\", "/")
+        trusted_payload["action"] = str(tool_def.action)
+
+        trusted_context = dict(context)
+        trusted_context["target"] = normalized_target
+        trusted_context["executor_payload"] = trusted_payload
+        execution_request["context"] = trusted_context
+        return trusted_context
 
     def _enforce_file_read_policy(
         self,

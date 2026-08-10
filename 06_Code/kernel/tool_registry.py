@@ -90,7 +90,13 @@ class ToolRegistry:
             capability="file_operations",
             action="write",
             risk_level="medium",
-            input_policy={"required": ("target", "content"), "additional": False},
+            input_policy={
+                "required": ("target", "content"),
+                "additional": False,
+                "scope_kind": "runtime_workspace_only",
+                "scope_root": _FILE_READ_SCOPE_ROOT,
+                "caller_scope_override": False,
+            },
             output_policy={"content": "metadata_only", "metadata": "relative_path_only"},
         ),
     })

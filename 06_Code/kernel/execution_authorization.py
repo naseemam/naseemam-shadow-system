@@ -36,10 +36,18 @@ from kernel.permission_registry import PermissionRegistry
 _EXEC_AUTH_FILENAME = "execution_auth.json"
 
 AUTHORIZATION_STATUSES = {"approved", "denied", "pending"}
+
+# file.read scope constants
 _FILE_READ_SCOPE_KIND = "runtime_workspace_only"
 _FILE_READ_SCOPE_ROOT = "09_Assets/runtime_workspace"
 _FILE_READ_TOOL_NAME = "file.read"
 _FILE_READ_ACTION = "read"
+
+# file.create scope constants
+_FILE_CREATE_SCOPE_KIND = "runtime_workspace_only"
+_FILE_CREATE_SCOPE_ROOT = "09_Assets/runtime_workspace"
+_FILE_CREATE_TOOL_NAME = "file.create"
+_FILE_CREATE_ACTION = "write"
 
 
 def _now_iso() -> str:
@@ -53,6 +61,19 @@ def file_read_permission_scope() -> str:
             "action": _FILE_READ_ACTION,
             "scope_kind": _FILE_READ_SCOPE_KIND,
             "scope_root": _FILE_READ_SCOPE_ROOT,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
+def file_create_permission_scope() -> str:
+    return json.dumps(
+        {
+            "tool_name": _FILE_CREATE_TOOL_NAME,
+            "action": _FILE_CREATE_ACTION,
+            "scope_kind": _FILE_CREATE_SCOPE_KIND,
+            "scope_root": _FILE_CREATE_SCOPE_ROOT,
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -142,12 +163,30 @@ class ExecutionAuthorization:
         context: Optional[Dict[str, Any]],
         perm_card: Dict[str, Any],
     ) -> str:
+        action_lower = str(action or "").strip().lower()
+        if action_lower == _FILE_READ_ACTION:
+            return self._file_read_scope_denial_reason(
+                action=action_lower, context=context, perm_card=perm_card
+            )
+        if action_lower == _FILE_CREATE_ACTION:
+            return self._file_create_scope_denial_reason(
+                action=action_lower, context=context, perm_card=perm_card
+            )
+        return f"Unsupported file_operations action: {action_lower!r}"
+
+    def _file_read_scope_denial_reason(
+        self,
+        *,
+        action: str,
+        context: Optional[Dict[str, Any]],
+        perm_card: Dict[str, Any],
+    ) -> str:
         policy = self._parse_scope_policy(perm_card.get("scope"))
         required_policy = self._parse_scope_policy(file_read_permission_scope())
         if policy != required_policy:
             return "Permission scope does not authorize registry-owned file.read"
 
-        if str(action or "").strip().lower() != _FILE_READ_ACTION:
+        if action != _FILE_READ_ACTION:
             return "Permission scope is limited to file.read/read only"
 
         safe_context = context or {}
@@ -162,6 +201,37 @@ class ExecutionAuthorization:
         normalized_target = target.strip().replace("\\", "/")
         allowed_prefix = f"{_FILE_READ_SCOPE_ROOT}/"
         if normalized_target != _FILE_READ_SCOPE_ROOT and not normalized_target.startswith(allowed_prefix):
+            return "Permission scope requires target inside 09_Assets/runtime_workspace"
+
+        return ""
+
+    def _file_create_scope_denial_reason(
+        self,
+        *,
+        action: str,
+        context: Optional[Dict[str, Any]],
+        perm_card: Dict[str, Any],
+    ) -> str:
+        policy = self._parse_scope_policy(perm_card.get("scope"))
+        required_policy = self._parse_scope_policy(file_create_permission_scope())
+        if policy != required_policy:
+            return "Permission scope does not authorize registry-owned file.create"
+
+        if action != _FILE_CREATE_ACTION:
+            return "Permission scope is limited to file.create/write only"
+
+        safe_context = context or {}
+        tool_name = str(safe_context.get("tool_name") or "").strip().lower()
+        if tool_name != _FILE_CREATE_TOOL_NAME:
+            return "Permission scope requires registry-owned tool file.create"
+
+        target = safe_context.get("target")
+        if not isinstance(target, str) or not target.strip():
+            return "Permission scope requires an in-scope file.create target"
+
+        normalized_target = target.strip().replace("\\", "/")
+        allowed_prefix = f"{_FILE_CREATE_SCOPE_ROOT}/"
+        if normalized_target != _FILE_CREATE_SCOPE_ROOT and not normalized_target.startswith(allowed_prefix):
             return "Permission scope requires target inside 09_Assets/runtime_workspace"
 
         return ""
@@ -218,7 +288,14 @@ class ExecutionAuthorization:
             return result
 
         # Step 2: permission check
-        perm_card = self._perms.get_for_capability(cap["capability_id"])
+        # For file_operations, look up by tool_name first (allows per-tool permission cards),
+        # then fall back to the capability_id card.
+        tool_name_key = str((context or {}).get("tool_name") or "").strip().lower()
+        perm_card = None
+        if capability_name == "file_operations" and tool_name_key:
+            perm_card = self._perms.get_for_capability(tool_name_key)
+        if perm_card is None:
+            perm_card = self._perms.get_for_capability(cap["capability_id"])
         if perm_card is None or not perm_card.get("owned", False):
             result = self._make_result(
                 request_id, "denied", capability_name, action,

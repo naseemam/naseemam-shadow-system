@@ -8,23 +8,23 @@
       "permission_status": "granted",
       "scope": "{\"action\": \"read\", \"scope_kind\": \"runtime_workspace_only\", \"scope_root\": \"09_Assets/runtime_workspace\", \"tool_name\": \"file.read\"}",
       "granted_by": "system:file.read_activation",
-      "granted_at": "2026-08-10T17:47:03Z",
+      "granted_at": "2026-08-10T18:39:01Z",
       "expires_at": null,
       "created_at": "2026-08-10T17:27:23Z",
-      "updated_at": "2026-08-10T17:47:03Z"
+      "updated_at": "2026-08-10T18:39:01Z"
     },
     {
       "permission_id": "9ba514c5-aa0c-4b36-be36-8c6067551172",
       "capability_id": "file.create",
       "owned": true,
       "enabled": true,
-      "permission_status": "not_granted",
-      "scope": "",
-      "granted_by": null,
-      "granted_at": null,
+      "permission_status": "granted",
+      "scope": "{\"action\": \"write\", \"scope_kind\": \"runtime_workspace_only\", \"scope_root\": \"09_Assets/runtime_workspace\", \"tool_name\": \"file.create\"}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-10T18:38:44Z",
       "expires_at": null,
       "created_at": "2026-08-10T17:28:50Z",
-      "updated_at": "2026-08-10T17:28:50Z"
+      "updated_at": "2026-08-10T18:38:44Z"
     }
   ],
   "audit_log": [
@@ -72,6 +72,24 @@
     },
     {
       "timestamp": "2026-08-10T17:47:03Z",
+      "permission_id": "73ce3ccb-addf-4e45-b7e2-e6681421365a",
+      "action": "granted",
+      "detail": "scope={\"action\": \"read\", \"scope_kind\": \"runtime_workspace_only\", \"scope_root\": \"09_Assets/runtime_workspace\", \"tool_name\": \"file.read\"}, granted_by=system:file.read_activation, expires_at=None"
+    },
+    {
+      "timestamp": "2026-08-10T18:38:44Z",
+      "permission_id": "9ba514c5-aa0c-4b36-be36-8c6067551172",
+      "action": "granted",
+      "detail": "scope={\"action\": \"write\", \"scope_kind\": \"runtime_workspace_only\", \"scope_root\": \"09_Assets/runtime_workspace\", \"tool_name\": \"file.create\"}, granted_by=Naseem, expires_at=None"
+    },
+    {
+      "timestamp": "2026-08-10T18:39:01Z",
+      "permission_id": "73ce3ccb-addf-4e45-b7e2-e6681421365a",
+      "action": "granted",
+      "detail": "scope={\"action\": \"read\", \"scope_kind\": \"runtime_workspace_only\", \"scope_root\": \"09_Assets/runtime_workspace\", \"tool_name\": \"file.read\"}, granted_by=system:file.read_activation, expires_at=None"
+    },
+    {
+      "timestamp": "2026-08-10T18:39:01Z",
       "permission_id": "73ce3ccb-addf-4e45-b7e2-e6681421365a",
       "action": "granted",
       "detail": "scope={\"action\": \"read\", \"scope_kind\": \"runtime_workspace_only\", \"scope_root\": \"09_Assets/runtime_workspace\", \"tool_name\": \"file.read\"}, granted_by=system:file.read_activation, expires_at=None"
