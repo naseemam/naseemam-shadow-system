@@ -109,9 +109,18 @@ class ExecutiveKernel:
         file_cap = self.capabilities.get_by_name("file_operations")
         if file_cap is None:
             return
+        existing = self.permissions.get_for_capability(file_cap["capability_id"])
+        expected_scope = file_read_permission_scope()
+        if (
+            existing
+            and existing.get("permission_status") == "granted"
+            and existing.get("enabled", False)
+            and existing.get("scope") == expected_scope
+        ):
+            return
         self.permissions.grant(
             file_cap["capability_id"],
-            scope=file_read_permission_scope(),
+            scope=expected_scope,
             granted_by="system:file.read_activation",
         )
 
@@ -478,6 +487,43 @@ class ExecutiveKernel:
             requested_by=requested_by,
         )
 
+    @staticmethod
+    def _serialize_boundary_result(boundary_result: object | None) -> dict:
+        if boundary_result is None:
+            return {}
+        verdict = getattr(boundary_result, "verdict", None)
+        if hasattr(verdict, "value"):
+            verdict_value = str(verdict.value)
+        else:
+            verdict_value = str(verdict) if verdict is not None else ""
+        return {
+            "verdict": verdict_value,
+            "reason": getattr(boundary_result, "reason", ""),
+            "request_id": getattr(boundary_result, "request_id", None),
+            "authorization_request_id": getattr(boundary_result, "authorization_request_id", None),
+            "detail": getattr(boundary_result, "detail", {}) or {},
+        }
+
+    def _governance_step_from_dispatch(self, dispatch_result: dict) -> dict:
+        boundary_payload = self._serialize_boundary_result(dispatch_result.get("boundary_result"))
+        auth_detail = {}
+        if isinstance(boundary_payload.get("detail"), dict):
+            auth_detail = boundary_payload.get("detail") or {}
+        return {
+            "dispatcher": {
+                "decision": dispatch_result.get("decision"),
+                "reason": dispatch_result.get("reason"),
+            },
+            "execution_boundary": boundary_payload,
+            "execution_authorization": {
+                "request_id": auth_detail.get("request_id"),
+                "status": auth_detail.get("status"),
+                "reason": auth_detail.get("reason"),
+                "capability_name": auth_detail.get("capability_name"),
+                "action": auth_detail.get("action"),
+            },
+        }
+
     def execute_task(
         self,
         tasks: list,
@@ -563,6 +609,11 @@ class ExecutiveKernel:
                             "status": "failed",
                             "reason": "executor_result_missing",
                         }
+                        if isinstance(outcome, dict):
+                            outcome = {
+                                **outcome,
+                                "governance": self._governance_step_from_dispatch(dispatch_result),
+                            }
                     else:
                         outcome = {
                             "task_id": task_id,
@@ -570,6 +621,7 @@ class ExecutiveKernel:
                             "reason": dispatch_result.get("reason", "dispatcher_denied"),
                             "decision": dispatch_result.get("decision", "DENY"),
                             "tool": (dispatch_result.get("execution_request") or {}).get("tool_name"),
+                            "governance": self._governance_step_from_dispatch(dispatch_result),
                         }
                     execution_results.append(outcome)
                     if outcome.get("status") == "completed":
@@ -674,16 +726,57 @@ class ExecutiveKernel:
             "output": result["schedule"].get("summary", {}),
         })
 
-        # Step 4 — ToolDispatcher / FileExecutor
+        # Step 4 — ToolDispatcher
         exec_results = result["execution"]["results"]
+        governance = [
+            item.get("governance", {})
+            for item in exec_results
+            if isinstance(item, dict) and isinstance(item.get("governance"), dict)
+        ]
+        auth_events = [g.get("execution_authorization", {}) for g in governance if isinstance(g, dict)]
+        boundary_events = [g.get("execution_boundary", {}) for g in governance if isinstance(g, dict)]
         pipeline_trace["pipeline"].append({
             "step": 4,
-            "name": "ToolDispatcher → FileExecutor",
+            "name": "ToolDispatcher",
             "status": "completed" if result["execution"]["completed"] == len(tasks) else "partial",
             "output": {
                 "completed": result["execution"]["completed"],
                 "failed": result["execution"]["failed"],
                 "blocked": result["execution"]["blocked"],
+                "decisions": [
+                    {
+                        "decision": (g.get("dispatcher") or {}).get("decision"),
+                        "reason": (g.get("dispatcher") or {}).get("reason"),
+                    }
+                    for g in governance
+                    if isinstance(g, dict)
+                ],
+            },
+        })
+
+        pipeline_trace["pipeline"].append({
+            "step": 5,
+            "name": "ExecutionBoundary",
+            "status": "completed" if boundary_events else "unavailable",
+            "output": {
+                "events": boundary_events,
+            },
+        })
+
+        pipeline_trace["pipeline"].append({
+            "step": 6,
+            "name": "ExecutionAuthorization",
+            "status": "completed" if auth_events else "unavailable",
+            "output": {
+                "events": auth_events,
+            },
+        })
+
+        pipeline_trace["pipeline"].append({
+            "step": 7,
+            "name": "FileExecutor",
+            "status": "completed" if result["execution"]["completed"] == len(tasks) else "partial",
+            "output": {
                 "files": [
                     r.get("relative_path", r.get("task_id")) for r in exec_results
                     if r.get("status") == "completed"
@@ -700,6 +793,7 @@ class ExecutiveKernel:
             "files_created": [
                 r.get("relative_path") for r in exec_results
                 if r.get("status") == "completed"
+                and str(r.get("action", "")).strip().lower() in {"write", "create", "append"}
             ],
             "preview_path": (
                 "09_Assets/runtime_workspace/home/index.html"

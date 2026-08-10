@@ -652,6 +652,14 @@ async def ask(request: Request):
             "message": "أنا معك.",
             "assistant": "أمير",
         }
+    if (
+        _can_use_kernel_reply
+        and kernel_detected_intent == "file_read"
+        and isinstance(kernel_execution_reply, str)
+        and kernel_execution_reply
+    ):
+        user_payload["reply"] = kernel_execution_reply
+        user_payload["message"] = kernel_execution_reply
     user_payload.update(public_runtime_identity(workspace_root=REPO_ROOT))
     user_payload["request_id"] = request_id
     if kernel_execution_trace is not None:
