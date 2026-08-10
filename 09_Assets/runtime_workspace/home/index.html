@@ -58,7 +58,7 @@
       <section id="chat" class="panel">
         <div class="panel-head">
           <h2>مساحة محادثة مع أمير</h2>
-          <span class="muted">Prototype</span>
+          <span class="muted" id="chat-connection-status">جاهز للاتصال</span>
         </div>
         <div class="chat-log" id="chat-log" aria-live="polite">
           <div class="message ameer">أهلاً نسيم، جاهز لتنفيذ أوامرك حسب الأولوية الحالية.</div>
@@ -70,7 +70,7 @@
           <input id="chat-message" type="text" placeholder="اكتب أمرك هنا..." required />
           <button type="submit">إرسال</button>
         </form>
-        <p class="integration-note">نقطة ربط مستقبلية: إرسال الرسائل إلى Runtime API واستقبال الردود المباشرة.</p>
+        <p class="integration-note">الواجهة متصلة حاليًا بـ <code>/ask</code> عبر <code>POST</code> باستخدام حقل <code>query</code>.</p>
       </section>
 
       <aside class="side-stack">
@@ -98,13 +98,16 @@
         <section id="runtime" class="panel">
           <div class="panel-head">
             <h2>حالة النظام والـ Runtime</h2>
+            <span class="muted" id="health-updated-at">بانتظار الفحص</span>
           </div>
           <ul class="status-list" id="runtime-status">
-            <li><span>Execution Boundary</span><b class="ok">مفعل</b></li>
-            <li><span>Authorization Layer</span><b class="ok">مفعل</b></li>
-            <li><span>آخر مزامنة</span><b id="last-sync">منذ 3 دقائق</b></li>
-            <li><span>Queue Load</span><b class="warn">متوسط</b></li>
+            <li><span>Server</span><b id="health-server">—</b></li>
+            <li><span>Documents</span><b id="health-documents">—</b></li>
+            <li><span>Brain</span><b id="health-brain">—</b></li>
+            <li><span>Memory</span><b id="health-memory">—</b></li>
+            <li><span>Projects</span><b id="health-projects">—</b></li>
           </ul>
+          <p class="integration-note">تعتمد البيانات على الاستجابة الحقيقية من <code>/health</code>.</p>
         </section>
 
         <section id="files" class="panel">
