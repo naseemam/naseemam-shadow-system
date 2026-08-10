@@ -299,6 +299,10 @@ def score_text(query, text):
     return score
 
 
+def _boundary_for_server_execution():
+    return EXECUTION_BOUNDARY or _load_execution_boundary()
+
+
 def _manage_project_context(query: str) -> dict | None:
     text = (query or "").strip()
     if not text:
@@ -1323,8 +1327,46 @@ async def execute_tasks(request: Request):
         )
 
     _guardian_for_execute: dict = body.get("guardian") or {}
+    _task_actions = {str(t.get("action", "")).strip().lower() for t in tasks if isinstance(t, dict)}
+    _high_risk_actions = {"delete", "publish", "external", "financial"}
+    _action_priority = ["financial", "delete", "publish", "external"]
+    if _task_actions & _high_risk_actions:
+        _derived_action = next(action for action in _action_priority if action in _task_actions)
+    elif _task_actions - {"", "write"}:
+        _derived_action = next(action for action in sorted(_task_actions) if action not in {"", "write"})
+    elif "write" in _task_actions:
+        _derived_action = "write"
+    else:
+        _log("execute_tasks_boundary_denied", reason="unknown_action")
+        return utf8_json_response(
+            {"accepted": False, "reason": "unknown_action"},
+            status_code=422,
+        )
+
+    _exec_boundary = _boundary_for_server_execution()
+    _exec_boundary_result = None
+    _exec_boundary_allowed = False
+    if _exec_boundary is not None:
+        _exec_boundary_result = _exec_boundary.evaluate(
+            guardian=_guardian_for_execute,
+            request_type="execution",
+            intent="execute_tasks",
+            capability_name="file_operations",
+            action=_derived_action,
+            context={"task_count": len(tasks), "actions": list(_task_actions)},
+            requested_by="execute_endpoint",
+        )
+        _exec_boundary_allowed = bool(getattr(_exec_boundary_result, "allowed", False))
+    if not _exec_boundary_allowed:
+        _deny_reason = getattr(_exec_boundary_result, "reason", "boundary_missing")
+        _log("execute_tasks_boundary_denied", reason=_deny_reason)
+        return utf8_json_response(
+            {"accepted": False, "reason": _deny_reason},
+            status_code=422,
+        )
 
     try:
+        # KERNEL.execute_task(tasks)
         report = KERNEL.execute_task(
             tasks,
             guardian=_guardian_for_execute,
@@ -1373,8 +1415,40 @@ async def execute_command(request: Request):
         return utf8_json_response({"error": "command field is required"}, status_code=422)
 
     _cmd_guardian: dict = body.get("guardian") or {}
+    _cmd_intent = "unknown"
+    _cmd_action = "write"
+    try:
+        _cmd_decomposition = KERNEL.task_decomposer.decompose(command)
+        _cmd_intent = str(_cmd_decomposition.get("intent", "unknown") or "unknown").strip().lower()
+        _cmd_first_task = (_cmd_decomposition.get("tasks") or [{}])[0]
+        _cmd_action = str(_cmd_first_task.get("action", "write") or "write").strip().lower() or "write"
+    except Exception:
+        pass
+
+    _cmd_boundary = _boundary_for_server_execution()
+    _cmd_boundary_result = None
+    _cmd_boundary_allowed = False
+    if _cmd_boundary is not None:
+        _cmd_boundary_result = _cmd_boundary.evaluate(
+            guardian=_cmd_guardian,
+            request_type="execution",
+            intent=_cmd_intent,
+            capability_name="file_operations",
+            action=_cmd_action,
+            context={"command": command[:240]},
+            requested_by="execute_command_endpoint",
+        )
+        _cmd_boundary_allowed = bool(getattr(_cmd_boundary_result, "allowed", False))
+    if not _cmd_boundary_allowed:
+        _cmd_deny_reason = getattr(_cmd_boundary_result, "reason", "boundary_missing")
+        _log("execute_command_boundary_denied", reason=_cmd_deny_reason, command=command[:120])
+        return utf8_json_response(
+            {"accepted": False, "reason": _cmd_deny_reason},
+            status_code=422,
+        )
 
     try:
+        # KERNEL.execute_command(command)
         trace = KERNEL.execute_command(
             command,
             guardian=_cmd_guardian,
