@@ -129,7 +129,25 @@ class ToolDispatcher:
             "executed": False,
             "result": None,
         }
+        if decision != "ALLOW":
+            return result
 
+        execute_fn = self._executor
+        if not callable(execute_fn):
+            return self._deny("executor_unavailable", execution_request)
+        payload = sanitized_context.get("executor_payload", sanitized_context)
+        try:
+            execution_result = execute_fn(payload)
+        except Exception as exc:
+            return {
+                **result,
+                "decision": "DENY",
+                "allowed": False,
+                "reason": "executor_unavailable",
+                "detail": {"error": str(exc)},
+            }
+        result["executed"] = True
+        result["result"] = execution_result
         return result
 
     @staticmethod

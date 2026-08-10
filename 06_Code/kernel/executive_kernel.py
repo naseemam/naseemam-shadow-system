@@ -31,6 +31,9 @@ from kernel.memory_governance import MemoryGovernanceEngine
 from kernel.capability_registry import CapabilityRegistry
 from kernel.permission_registry import PermissionRegistry
 from kernel.execution_authorization import ExecutionAuthorization
+from kernel.execution_boundary import ExecutionBoundary
+from kernel.tool_registry import ToolRegistry
+from kernel.tool_dispatcher import ToolDispatcher
 from kernel.plan_validator import PlanValidator
 from kernel.scheduler import Scheduler
 from kernel.executor_file import FileExecutor
@@ -79,6 +82,11 @@ class ExecutiveKernel:
         self.execution_auth: ExecutionAuthorization = ExecutionAuthorization(
             self._root, self.capabilities, self.permissions
         )
+        self.execution_boundary: ExecutionBoundary = ExecutionBoundary(
+            approval_gate=self.approvals,
+            execution_auth=self.execution_auth,
+        )
+        self.tool_registry: ToolRegistry = ToolRegistry()
         # P1.3 — Plan Validator (the single gate before the Scheduler)
         self.plan_validator: PlanValidator = PlanValidator(
             self._root,
@@ -87,6 +95,13 @@ class ExecutiveKernel:
         )
         self.scheduler: Scheduler = Scheduler(self._root, self.state)
         self.file_executor: FileExecutor = FileExecutor(self._root)
+        self.tool_dispatcher: ToolDispatcher = ToolDispatcher(
+            tool_registry=self.tool_registry,
+            execution_boundary=self.execution_boundary,
+            execution_authorization=self.execution_auth,
+            approval_gate=self.approvals,
+            executor=self.file_executor.execute,
+        )
         self.task_decomposer: TaskDecomposer = TaskDecomposer(str(self._root))
 
     # ── Startup helpers ───────────────────────────────────────────────────────
@@ -246,6 +261,38 @@ class ExecutiveKernel:
             self._health["execution_authorization"] = f"error: {exc}"
             errors.append("execution_authorization")
 
+        # 13. Tool Registry
+        try:
+            _ = self.tool_registry.list_tools()
+            self._health["tool_registry"] = "ok"
+        except Exception as exc:
+            self._health["tool_registry"] = f"error: {exc}"
+            errors.append("tool_registry")
+
+        # 14. Execution Boundary
+        try:
+            _ = self.execution_boundary.evaluate(
+                guardian={"status": "pass"},
+                request_type="question",
+                intent="health_check",
+                capability_name="file_operations",
+                action="write",
+                context={"source": "kernel_boot_health"},
+                requested_by="executive_kernel",
+            )
+            self._health["execution_boundary"] = "ok"
+        except Exception as exc:
+            self._health["execution_boundary"] = f"error: {exc}"
+            errors.append("execution_boundary")
+
+        # 15. Tool Dispatcher
+        try:
+            _ = self.tool_dispatcher
+            self._health["tool_dispatcher"] = "ok"
+        except Exception as exc:
+            self._health["tool_dispatcher"] = f"error: {exc}"
+            errors.append("tool_dispatcher")
+
         overall = "degraded" if errors else "running"
         self.state.set_runtime_status(overall)
         self._initialized = True
@@ -347,7 +394,88 @@ class ExecutiveKernel:
 
     # ── Task Execution (P1.3 gated pipeline) ──────────────────────────────────
 
-    def execute_task(self, tasks: list) -> dict:
+    @staticmethod
+    def _tool_name_for_action(action: str) -> Optional[str]:
+        normalized = str(action or "").strip().lower()
+        if normalized == "read":
+            return "file.read"
+        if normalized in {"write", "create"}:
+            return "file.create"
+        return None
+
+    def _dispatch_task_tool(
+        self,
+        task: dict,
+        *,
+        guardian: Optional[dict],
+        request_type: str,
+        intent: str,
+        requested_by: str,
+    ) -> dict:
+        if self.tool_dispatcher is None:
+            return {
+                "decision": "DENY",
+                "allowed": False,
+                "reason": "tool_dispatcher_unavailable",
+                "executed": False,
+                "result": None,
+            }
+
+        executor_name = str(task.get("executor", "")).strip().lower()
+        if executor_name != "file":
+            return {
+                "decision": "DENY",
+                "allowed": False,
+                "reason": "executor_not_supported",
+                "executed": False,
+                "result": {
+                    "task_id": task.get("id"),
+                    "status": "failed",
+                    "reason": "executor_not_implemented",
+                    "executor": executor_name,
+                },
+            }
+
+        tool_name = self._tool_name_for_action(task.get("action", ""))
+        if not tool_name:
+            return {
+                "decision": "DENY",
+                "allowed": False,
+                "reason": "tool_not_registered",
+                "executed": False,
+                "result": {
+                    "task_id": task.get("id"),
+                    "status": "failed",
+                    "reason": "unsupported_action",
+                    "action": task.get("action", ""),
+                },
+            }
+
+        return self.tool_dispatcher.dispatch(
+            tool_name=tool_name,
+            context={
+                "task_id": task.get("id"),
+                "target": task.get("target"),
+                "content": task.get("content"),
+                "executor": executor_name,
+                "action": task.get("action"),
+                "executor_payload": dict(task),
+            },
+            guardian=guardian,
+            request_type=request_type,
+            intent=intent,
+            requested_by=requested_by,
+        )
+
+    def execute_task(
+        self,
+        tasks: list,
+        *,
+        guardian: Optional[dict] = None,
+        request_type: str = "execution",
+        intent: str = "execute_tasks",
+        requested_by: str = "executive_kernel",
+    ) -> dict:
         """
         نقطة الدخول الوحيدة لتنفيذ مهام.
 
@@ -358,7 +486,7 @@ class ExecutiveKernel:
                 ↓
             Scheduler (P1.4)
                 ↓
-            ExecutionEngine (P1.5+)
+            ToolDispatcher → ToolRegistry → ExecutionBoundary → ExecutionAuthorization → FileExecutor
 
         لا يُسمح لأي مكون بتجاوز PlanValidator.
 
@@ -410,16 +538,27 @@ class ExecutiveKernel:
             for batch in schedule.get("batches", []):
                 for task in batch.get("tasks", []):
                     task_id = task.get("id")
-                    executor = str(task.get("executor", "")).lower()
                     self.state.update_task(task_id, "in_progress")
-                    if executor == "file":
-                        outcome = self.file_executor.execute(task)
+                    dispatch_result = self._dispatch_task_tool(
+                        task,
+                        guardian=guardian,
+                        request_type=request_type,
+                        intent=intent,
+                        requested_by=requested_by,
+                    )
+                    if dispatch_result.get("executed"):
+                        outcome = dispatch_result.get("result") or {
+                            "task_id": task_id,
+                            "status": "failed",
+                            "reason": "executor_result_missing",
+                        }
                     else:
                         outcome = {
                             "task_id": task_id,
-                            "status": "failed",
-                            "reason": "executor_not_implemented",
-                            "executor": executor,
+                            "status": "blocked",
+                            "reason": dispatch_result.get("reason", "dispatcher_denied"),
+                            "decision": dispatch_result.get("decision", "DENY"),
+                            "tool": (dispatch_result.get("execution_request") or {}).get("tool_name"),
                         }
                     execution_results.append(outcome)
                     if outcome.get("status") == "completed":
@@ -432,8 +571,14 @@ class ExecutiveKernel:
                         failed += 1
                         self.state.update_task(task_id, "failed", result=json.dumps(outcome, ensure_ascii=False))
 
+        execution_accepted = (
+            schedule.get("accepted", False)
+            and failed == 0
+            and blocked == 0
+        )
+
         return {
-            "accepted": schedule.get("accepted", False),
+            "accepted": execution_accepted,
             "validation": validation,
             "schedule": schedule,
             "execution": {
@@ -447,9 +592,16 @@ class ExecutiveKernel:
 
     # ── Decision & Approval helpers ───────────────────────────────────────────
 
-    def execute_command(self, command: str) -> dict:
+    def execute_command(
+        self,
+        command: str,
+        *,
+        guardian: Optional[dict] = None,
+        request_type: str = "execution",
+        requested_by: str = "executive_kernel",
+    ) -> dict:
         """
-        المسار الكامل: أمر بشري → Task Batch → PlanValidator → Scheduler → FileExecutor.
+        المسار الكامل: أمر بشري → Task Batch → PlanValidator → Scheduler → ToolDispatcher → FileExecutor.
 
         يُعيد trace كامل لكل خطوة في الـ Pipeline.
         """
@@ -486,8 +638,14 @@ class ExecutiveKernel:
             }
             return pipeline_trace
 
-        # Steps 2–5 — PlanValidator → Scheduler → FileExecutor (via execute_task)
-        result = self.execute_task(tasks)
+        # Steps 2–5 — PlanValidator → Scheduler → ToolDispatcher → FileExecutor (via execute_task)
+        result = self.execute_task(
+            tasks,
+            guardian=guardian,
+            request_type=request_type,
+            intent=decomposition["intent"],
+            requested_by=requested_by,
+        )
 
         # Step 2 — PlanValidator
         pipeline_trace["pipeline"].append({
@@ -505,11 +663,11 @@ class ExecutiveKernel:
             "output": result["schedule"].get("summary", {}),
         })
 
-        # Step 4 — FileExecutor
+        # Step 4 — ToolDispatcher / FileExecutor
         exec_results = result["execution"]["results"]
         pipeline_trace["pipeline"].append({
             "step": 4,
-            "name": "FileExecutor",
+            "name": "ToolDispatcher → FileExecutor",
             "status": "completed" if result["execution"]["completed"] == len(tasks) else "partial",
             "output": {
                 "completed": result["execution"]["completed"],
