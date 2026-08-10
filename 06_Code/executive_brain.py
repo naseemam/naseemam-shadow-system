@@ -910,85 +910,32 @@ class ExecutiveBrain:
         return any(rel == prefix or rel.startswith(prefix + "/") for prefix in self._ALLOWED_WRITE_PREFIXES)
 
     def _create_file(self, filename: str, content: str, workspace_root: str | None = None) -> dict:
+        # Legacy direct path CLOSED — file.create must route through ToolDispatcher.
+        # Until file.create permission is granted via the governance pipeline, all
+        # create requests are fail-closed here.  Callers that need file creation
+        # must use: ExecutiveBrain → ToolDispatcher → ToolRegistry → ExecutionBoundary
+        # → ExecutionAuthorization → FileExecutor.
         root = workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         target_path = os.path.abspath(os.path.join(root, filename))
-        if not self._check_write_allowed(target_path, root):
-            return {
-                "status": "blocked",
-                "path": target_path,
-                "relative_path": os.path.relpath(target_path, root).replace("\\", "/"),
-                "content_preview": content[:120],
-                "reason": "write_not_permitted_outside_allowed_paths",
-            }
-        for attempt in range(2):
-            try:
-                os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                with open(target_path, "w", encoding="utf-8") as handle:
-                    handle.write(content)
-                return {
-                    "status": "created",
-                    "path": target_path,
-                    "relative_path": os.path.relpath(target_path, root).replace("\\", "/"),
-                    "content_preview": content[:120],
-                }
-            except Exception:
-                if attempt == 1:
-                    return {
-                        "status": "failed",
-                        "path": target_path,
-                        "relative_path": os.path.relpath(target_path, root).replace("\\", "/"),
-                        "content_preview": content[:120],
-                    }
         return {
-            "status": "failed",
+            "status": "blocked",
             "path": target_path,
             "relative_path": os.path.relpath(target_path, root).replace("\\", "/"),
             "content_preview": content[:120],
+            "reason": "file_create_requires_tool_dispatcher",
         }
 
     def _append_to_existing_file(self, filename: str, content: str, workspace_root: str | None = None) -> dict:
+        # Legacy direct write path CLOSED — file write/create must route through ToolDispatcher.
         root = workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         target_path = Path(os.path.abspath(os.path.join(root, filename)))
-        if not self._check_write_allowed(str(target_path), root):
-            return {
-                "status": "blocked",
-                "path": str(target_path),
-                "relative_path": os.path.relpath(target_path, root).replace("\\", "/"),
-                "content_preview": content[:120],
-                "reason": "write_not_permitted_outside_allowed_paths",
-            }
-        try:
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            if target_path.exists():
-                existing = target_path.read_text(encoding="utf-8")
-                if content and content in existing:
-                    return {
-                        "status": "unchanged",
-                        "path": str(target_path),
-                        "relative_path": os.path.relpath(target_path, root).replace("\\", "/"),
-                        "content_preview": existing[:120],
-                    }
-                if existing and not existing.endswith("\n"):
-                    existing = existing + "\n"
-                new_content = existing + content + "\n"
-                target_path.write_text(new_content, encoding="utf-8")
-                return {
-                    "status": "updated",
-                    "path": str(target_path),
-                    "relative_path": os.path.relpath(target_path, root).replace("\\", "/"),
-                    "content_preview": new_content[:120],
-                }
-
-            if not content:
-                content = "تم إنشاء هذا الملف عبر Ameer."
-            return self._create_file(filename, content, workspace_root=workspace_root)
-        except Exception:
-            return {
-                "status": "failed",
-                "path": str(target_path),
-                "relative_path": os.path.relpath(target_path, root).replace("\\", "/"),
-                "content_preview": content[:120],
-            }
+        return {
+            "status": "blocked",
+            "path": str(target_path),
+            "relative_path": os.path.relpath(target_path, root).replace("\\", "/"),
+            "content_preview": content[:120],
+            "reason": "file_create_requires_tool_dispatcher",
+        }
 
     def _read_text_file(self, path: Path) -> str:
         return path.read_text(encoding="utf-8")
