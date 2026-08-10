@@ -1,37 +1,56 @@
-/* Ameer Home — script.js */
+/* Ameer Executive Workspace — Prototype logic */
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Smooth scroll for nav links
-  document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', e => {
-      e.preventDefault();
-      const target = document.querySelector(anchor.getAttribute('href'));
+  document.querySelectorAll('a[href^="#"]').forEach(link => {
+    link.addEventListener('click', event => {
+      event.preventDefault();
+      const targetId = link.getAttribute('href');
+      const target = document.querySelector(targetId);
       if (target) {
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     });
   });
 
-  // Animate capability cards on scroll
-  const cards = document.querySelectorAll('.cap-card');
-  const observer = new IntersectionObserver(
-    entries => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.style.opacity = '1';
-          entry.target.style.transform = 'translateY(0)';
-        }
-      });
-    },
-    { threshold: 0.1 }
-  );
+  const chatForm = document.getElementById('chat-form');
+  const chatMessage = document.getElementById('chat-message');
+  const chatLog = document.getElementById('chat-log');
 
-  cards.forEach(card => {
-    card.style.opacity = '0';
-    card.style.transform = 'translateY(20px)';
-    card.style.transition = 'opacity .4s ease, transform .4s ease';
-    observer.observe(card);
-  });
+  if (chatForm && chatMessage && chatLog) {
+    chatForm.addEventListener('submit', event => {
+      event.preventDefault();
+      const text = chatMessage.value.trim();
+      if (!text) return;
 
-  console.log('[Ameer] Home page loaded — Proof of Execution active.');
+      appendMessage(chatLog, text, 'user');
+
+      // Future integration hook:
+      // sendToRuntimeApi(text).then(response => appendMessage(chatLog, response, 'ameer'))
+      const mockReply = 'تم استلام الأمر. سأقوم بتحديث الحالة بعد مزامنة الـ Runtime.';
+      appendMessage(chatLog, mockReply, 'ameer');
+
+      chatMessage.value = '';
+      chatMessage.focus();
+    });
+  }
+
+  const lastSync = document.getElementById('last-sync');
+  if (lastSync) {
+    const now = new Date();
+    lastSync.textContent = `آخر تحديث محلي: ${formatTime(now)}`;
+  }
+
+  console.log('[Ameer] Executive Workspace prototype loaded.');
 });
+
+function appendMessage(container, text, role) {
+  const message = document.createElement('div');
+  message.className = `message ${role}`;
+  message.textContent = text;
+  container.appendChild(message);
+  container.scrollTop = container.scrollHeight;
+}
+
+function formatTime(date) {
+  return date.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+}
