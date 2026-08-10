@@ -3,132 +3,76 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ameer Executive Workspace</title>
+  <title>أمير — الصفحة الرئيسية</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header class="site-header">
-    <div class="brand">
-      <span class="brand-icon">🤖</span>
-      <div>
-        <h1>Ameer Executive Workspace</h1>
-        <p>لوحة تنفيذ يومية للمؤسسة</p>
-      </div>
+    <div class="logo">
+      <span class="logo-icon">🤖</span>
+      <span class="logo-text">أمير</span>
     </div>
     <nav>
-      <a href="#dashboard">اللوحة</a>
-      <a href="#chat">المحادثة</a>
-      <a href="#projects">المشاريع</a>
-      <a href="#runtime">النظام</a>
-      <a href="#files">الملفات</a>
+      <a href="#about">من أنا؟</a>
+      <a href="#capabilities">قدراتي</a>
+      <a href="#contact">تواصل</a>
     </nav>
   </header>
 
-  <main class="workspace">
-    <section id="dashboard" class="panel">
-      <div class="panel-head">
-        <h2>Dashboard الحالة الحالية</h2>
-        <span class="status-pill online">متصل</span>
-      </div>
-      <div class="kpi-grid">
-        <article class="kpi-card">
-          <h3>المهام النشطة</h3>
-          <p class="kpi-value" id="kpi-active-tasks">5</p>
-          <small>2 عالية الأولوية</small>
-        </article>
-        <article class="kpi-card">
-          <h3>التنفيذ اليوم</h3>
-          <p class="kpi-value" id="kpi-executed">12</p>
-          <small>منها 9 مكتملة</small>
-        </article>
-        <article class="kpi-card">
-          <h3>المشاريع الجارية</h3>
-          <p class="kpi-value" id="kpi-projects">3</p>
-          <small>مشروع واحد يحتاج قرار</small>
-        </article>
-        <article class="kpi-card">
-          <h3>تنبيهات النظام</h3>
-          <p class="kpi-value" id="kpi-alerts">1</p>
-          <small>تنبيه متابعة غير حرج</small>
-        </article>
+  <main>
+    <section class="hero">
+      <h1>مرحباً، أنا <span class="highlight">أمير</span></h1>
+      <p class="subtitle">مساعدك الذكي — أفهم أوامرك وأنفّذها.</p>
+      <div class="badges">
+        <span class="badge">⚡ تنفيذ فوري</span>
+        <span class="badge">🧠 ذاكرة دائمة</span>
+        <span class="badge">🔐 حوكمة آمنة</span>
       </div>
     </section>
 
-    <section class="workspace-grid">
-      <section id="chat" class="panel">
-        <div class="panel-head">
-          <h2>مساحة محادثة مع أمير</h2>
-          <span class="muted" id="chat-connection-status">جاهز للاتصال</span>
+    <section id="about" class="card-section">
+      <h2>من أنا؟</h2>
+      <p>
+        أنا نظام ذكاء اصطناعي تنفيذي مبني خصيصاً لـ نسيم.
+        أحوّل الأوامر البشرية إلى مهام قابلة للتنفيذ عبر Pipeline متكامل.
+      </p>
+    </section>
+
+    <section id="capabilities" class="card-section">
+      <h2>قدراتي</h2>
+      <div class="capabilities-grid">
+        <div class="cap-card">
+          <span class="cap-icon">📋</span>
+          <h3>Task Decomposer</h3>
+          <p>أكسر أي أمر إلى مهام واضحة</p>
         </div>
-        <div class="chat-log" id="chat-log" aria-live="polite">
-          <div class="message ameer">أهلاً نسيم، جاهز لتنفيذ أوامرك حسب الأولوية الحالية.</div>
-          <div class="message user">اعرض لي ملخص الحالة الآن.</div>
-          <div class="message ameer">الحالة مستقرة، يوجد 5 مهام نشطة وتنبيه واحد للمراجعة.</div>
+        <div class="cap-card">
+          <span class="cap-icon">✅</span>
+          <h3>Plan Validator</h3>
+          <p>أتحقق من كل مهمة قبل التنفيذ</p>
         </div>
-        <form id="chat-form" class="chat-input" autocomplete="off">
-          <label class="visually-hidden" for="chat-message">رسالتك إلى أمير</label>
-          <input id="chat-message" type="text" placeholder="اكتب أمرك هنا..." required />
-          <button type="submit">إرسال</button>
-        </form>
-        <p class="integration-note">الواجهة متصلة حاليًا بـ <code>/ask</code> عبر <code>POST</code> باستخدام حقل <code>query</code>.</p>
-      </section>
+        <div class="cap-card">
+          <span class="cap-icon">📅</span>
+          <h3>Scheduler</h3>
+          <p>أرتّب المهام بالأولوية الصحيحة</p>
+        </div>
+        <div class="cap-card">
+          <span class="cap-icon">💾</span>
+          <h3>File Executor</h3>
+          <p>أكتب الملفات الحقيقية في البيئة</p>
+        </div>
+      </div>
+    </section>
 
-      <aside class="side-stack">
-        <section id="projects" class="panel">
-          <div class="panel-head">
-            <h2>المشاريع والمهام الجارية</h2>
-          </div>
-          <ul class="list" id="projects-list">
-            <li>
-              <strong>Shadow Runtime v1</strong>
-              <span>3/7 مهام مكتملة</span>
-            </li>
-            <li>
-              <strong>واجهة المؤسسة</strong>
-              <span>5/8 مهام مكتملة</span>
-            </li>
-            <li>
-              <strong>حوكمة التنفيذ</strong>
-              <span>2/4 مهام مكتملة</span>
-            </li>
-          </ul>
-          <p class="integration-note">نقطة ربط مستقبلية: جلب المشاريع من مصدر المهام المركزي.</p>
-        </section>
-
-        <section id="runtime" class="panel">
-          <div class="panel-head">
-            <h2>حالة النظام والـ Runtime</h2>
-            <span class="muted" id="health-updated-at">بانتظار الفحص</span>
-          </div>
-          <ul class="status-list" id="runtime-status">
-            <li><span>Server</span><b id="health-server">—</b></li>
-            <li><span>Documents</span><b id="health-documents">—</b></li>
-            <li><span>Brain</span><b id="health-brain">—</b></li>
-            <li><span>Memory</span><b id="health-memory">—</b></li>
-            <li><span>Projects</span><b id="health-projects">—</b></li>
-          </ul>
-          <p class="integration-note">تعتمد البيانات على الاستجابة الحقيقية من <code>/health</code>.</p>
-        </section>
-
-        <section id="files" class="panel">
-          <div class="panel-head">
-            <h2>الملفات التي يعمل عليها أمير</h2>
-          </div>
-          <ul class="list" id="active-files">
-            <li><strong>index.html</strong><span>تحديث واجهة</span></li>
-            <li><strong>style.css</strong><span>ضبط التصميم</span></li>
-            <li><strong>script.js</strong><span>سلوك Prototype</span></li>
-          </ul>
-          <p class="integration-note">نقطة ربط مستقبلية: عرض الملفات مباشرة من Runtime Workspace index.</p>
-        </section>
-      </aside>
+    <section id="contact" class="card-section">
+      <h2>تواصل معي</h2>
+      <p>أرسل لي أمرًا عبر الواجهة وسأنفّذه فورًا.</p>
     </section>
   </main>
 
   <footer>
-    <p>Ameer © 2026 — Executive Workspace Prototype</p>
+    <p>أمير © 2025 — Proof of Execution</p>
   </footer>
-
   <script src="script.js"></script>
 </body>
 </html>
