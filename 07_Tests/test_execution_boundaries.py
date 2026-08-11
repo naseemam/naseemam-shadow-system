@@ -188,6 +188,26 @@ class TestExecutionAuthorizationDenied(unittest.TestCase):
         self.assertIn(result.verdict, (self.BoundaryVerdict.DENY, self.BoundaryVerdict.PENDING))
         self.assertFalse(result.allowed)
 
+    def test_F_file_tools_not_granted_have_no_execution_fallback(self):
+        file_cap = self.cap_reg.get_by_name("file_operations")
+        self.assertIsNotNone(file_cap)
+        self.perm_reg.ensure(file_cap["capability_id"])  # keep default not_granted
+
+        boundary = self.ExecutionBoundary(execution_auth=self.auth)
+        for action, tool_name in (("read", "file.read"), ("write", "file.create")):
+            with self.subTest(action=action, tool_name=tool_name):
+                result = boundary.evaluate(
+                    guardian={"status": "pass"},
+                    request_type="execution",
+                    intent="build_homepage",
+                    capability_name="file_operations",
+                    action=action,
+                    context={"tool_name": tool_name},
+                )
+                self.assertEqual(result.verdict, self.BoundaryVerdict.DENY)
+                self.assertEqual(result.reason, "execution_authorization_denied")
+                self.assertFalse(result.allowed)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Regression — Phase 1 fail-closed dependency behavior
@@ -332,6 +352,19 @@ class TestConversationalRequestBlocked(unittest.TestCase):
         # Conversational behavior stays the same for actionable intents when auth approves.
         self.assertEqual(result.verdict, self.BoundaryVerdict.ALLOW)
 
+    def test_H_file_read_intent_with_pass_guardian_allowed(self):
+        class _ApprovedAuth:
+            def check(self, **kwargs):
+                return {"status": "approved", "request_id": "req-read"}
+
+        boundary = self.ExecutionBoundary(execution_auth=_ApprovedAuth())
+        result = boundary.evaluate(
+            guardian={"status": "pass"},
+            request_type="question",
+            intent="file_read",
+        )
+        self.assertEqual(result.verdict, self.BoundaryVerdict.ALLOW)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # I — kernel_execution_reply cannot bypass the boundary
@@ -349,7 +382,7 @@ class TestKernelReplyDoesNotBypassBoundary(unittest.TestCase):
                                         request_type="execution", intent="build_homepage",
                                         kernel_execution_reply="some_reply"):
         """Mirrors the fail-closed logic in ameer_server.py section 5b."""
-        KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic"}
+        KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic", "file_read"}
         _CONVERSATIONAL_TYPES = {"question", "greeting", "analysis", "memory", "creative"}
 
         _raw_gs = guardian_status_raw

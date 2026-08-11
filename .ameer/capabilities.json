@@ -95,6 +95,22 @@
       "updated_at": "2026-08-06T20:37:36Z",
       "history": [],
       "notes": ""
+    },
+    {
+      "capability_id": "94754cf4-650c-4a36-b308-52e87574f571",
+      "name": "file_operations",
+      "description": "Controlled file read/write operations within approved runtime boundaries",
+      "scope": "tooling",
+      "dependencies": [],
+      "risk_level": "medium",
+      "approved_by": "founder",
+      "approval_date": "2026-08-10T17:27:23Z",
+      "version": "1.0.0",
+      "status": "core",
+      "created_at": "2026-08-10T17:27:23Z",
+      "updated_at": "2026-08-10T17:27:23Z",
+      "history": [],
+      "notes": ""
     }
   ],
   "changelog": []

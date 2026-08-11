@@ -46,14 +46,51 @@ _HOME_PAGE_HINTS = [
     "index", "landing",
 ]
 
+# Markers that signal a read/display intent — must take priority over HOME_PAGE_HINTS
+# so that "اقرأ .../home/index.html" is never misrouted to build_homepage.
+_READ_MARKERS = [
+    "اقرأ", "read", "show", "اعرض", "عرض", "contents", "محتوى", "content",
+    "افتح", "open", "display",
+]
+
 
 def _matches(text: str, patterns: list[str]) -> bool:
     lower = text.lower()
     return any(p.lower() in lower for p in patterns)
 
 
+def _has_read_intent(command: str) -> bool:
+    """Return True when the command explicitly requests reading/displaying a file."""
+    return _matches(command, _READ_MARKERS)
+
+
+def _extract_read_target(command: str) -> str:
+    """Extract the requested file path from an explicit read/display command."""
+    patterns = (
+        r"(?:اقرأ|read|show|اعرض|عرض|افتح|open|display)\s+(?:محتوى\s+|contents?\s+of\s+)?(?:ملف|file)?\s*[\"'“”]?([^\"'“”\s]+)[\"'“”]?",
+        r"(?:ملف|file)\s+[\"'“”]?([^\"'“”\s]+)[\"'“”]?",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, command, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).strip(" .،؟")
+    return ""
+
+
 def _detect_intent(command: str) -> str:
-    """تحديد النية من الأمر البشري. يُعيد معرّف النية."""
+    """تحديد النية من الأمر البشري. يُعيد معرّف النية.
+
+    ترتيب الأولوية:
+    1. نية القراءة (file_read) — تأخذ الأولوية لمنع مسارات file-path مثل home/index
+       من تشغيل build_homepage خطأً، وتُمرَّر لاحقًا عبر مسار التنفيذ المحكوم.
+    2. build_homepage — يشترط وجود فعل بناء صريح أو ذكر الصفحة الرئيسية وحده.
+    3. build_generic — أوامر البناء العامة.
+    4. unknown — الاحتياطي.
+    """
+    # Priority-1: explicit read intent overrides all HOME_PAGE_HINTS path tokens.
+    if _has_read_intent(command):
+        return "file_read"
+
     if _matches(command, _HOME_PAGE_HINTS) or (
         _matches(command, _BUILD_HOME_PATTERNS) and
         any(h.lower() in command.lower() for h in _HOME_PAGE_HINTS)
@@ -475,12 +512,29 @@ class TaskDecomposer:
     # ── private ───────────────────────────────────────────────────────────────
 
     def _build_tasks(self, intent: str, command: str) -> List[Dict[str, Any]]:
+        if intent == "file_read":
+            return self._file_read_tasks(command)
         if intent == "build_homepage":
             return self._homepage_tasks()
         if intent == "build_generic":
             return self._generic_page_tasks(command)
         # Fallback — return an empty-but-valid placeholder
         return []
+
+    def _file_read_tasks(self, command: str) -> List[Dict[str, Any]]:
+        target = _extract_read_target(command)
+        if not target:
+            return []
+        return [
+            {
+                "id": f"file-read-{uuid.uuid4().hex[:6]}",
+                "action": "read",
+                "executor": "file",
+                "target": target,
+                "priority": "high",
+                "description": f"قراءة الملف {target}",
+            }
+        ]
 
     def _homepage_tasks(self) -> List[Dict[str, Any]]:
         prefix = f"{self.RUNTIME_PREFIX}/home"

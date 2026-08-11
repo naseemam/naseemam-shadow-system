@@ -137,7 +137,7 @@ MD_GLOB = os.path.join(REPO_ROOT, "**", "*.md")
 WEB_INDEX = os.path.join(REPO_ROOT, "09_Assets", "web", "index.html")
 DEBUG_MODE = os.getenv("AMEER_DEBUG", "0").lower() in {"1", "true", "yes", "on"}
 RUNTIME_METADATA = runtime_metadata(workspace_root=REPO_ROOT)
-KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic"}
+KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic", "file_read"}
 
 # ─── Executive Operating Kernel ───────────────────────────────────────────────
 
@@ -297,6 +297,10 @@ def score_text(query, text):
         if w in tset:
             score += 1
     return score
+
+
+def _boundary_for_server_execution():
+    return EXECUTION_BOUNDARY or _load_execution_boundary()
 
 
 def _manage_project_context(query: str) -> dict | None:
@@ -484,28 +488,29 @@ async def ask(request: Request):
             decomp = KERNEL.task_decomposer.decompose(q)
             kernel_detected_intent = str(decomp.get("intent", "unknown") or "unknown").strip().lower()
             if kernel_detected_intent != "unknown":
-                # ── Execution Boundary gate ───────────────────────────────────
                 _request_type_for_boundary = str(
                     getattr(plan, "request_type", "")
                 ).strip().lower()
-                if EXECUTION_BOUNDARY is not None:
-                    _boundary_result = EXECUTION_BOUNDARY.evaluate(
-                        guardian=guardian,
-                        request_type=_request_type_for_boundary,
-                        intent=kernel_detected_intent,
-                        capability_name="file_operations",
-                        action="write",
-                        context={"query": q[:240]},
-                        requested_by="executive_kernel",
-                    )
-                    _boundary_allowed = _boundary_result.allowed
-                else:
-                    # No boundary wired — deny by default (fail-closed).
-                    _boundary_allowed = False
-                if _boundary_allowed:
-                    kernel_execution_trace = KERNEL.execute_command(q)
-                    final_exec = kernel_execution_trace.get("final", {})
-                    if final_exec.get("accepted"):
+                kernel_execution_trace = KERNEL.execute_command(
+                    q,
+                    guardian=guardian,
+                    request_type=_request_type_for_boundary or "execution",
+                    requested_by="ask_endpoint",
+                )
+                final_exec = kernel_execution_trace.get("final", {})
+                exec_results = final_exec.get("results") or []
+                if final_exec.get("accepted"):
+                    if kernel_detected_intent == "file_read":
+                        read_result = next(
+                            (
+                                item for item in exec_results
+                                if item.get("status") == "completed" and item.get("content") is not None
+                            ),
+                            None,
+                        )
+                        if read_result is not None:
+                            kernel_execution_reply = str(read_result.get("content") or "")
+                    else:
                         completed = final_exec.get("completed", 0)
                         files = final_exec.get("files_created") or []
                         file_list = "، ".join(f for f in files if f) if files else ""
@@ -516,11 +521,11 @@ async def ask(request: Request):
                             + ".\n\n"
                             "يمكنك معاينتها الآن عبر رابط Preview أدناه."
                         )
-                    elif not final_exec.get("accepted") and kernel_execution_trace.get("pipeline"):
-                        kernel_execution_reply = (
-                            "⚠️ لم يتمكن أمير من إتمام التنفيذ. "
-                            "راجع خطوات Pipeline أدناه لمعرفة سبب التوقف."
-                        )
+                elif not final_exec.get("accepted") and kernel_execution_trace.get("pipeline"):
+                    kernel_execution_reply = (
+                        "⚠️ لم يتمكن أمير من إتمام التنفيذ. "
+                        "راجع خطوات Pipeline أدناه لمعرفة سبب التوقف."
+                    )
         except Exception:
             pass
     # ── 4. Compose fallback reply (used only if ECE is unavailable) ─────────────
@@ -647,6 +652,14 @@ async def ask(request: Request):
             "message": "أنا معك.",
             "assistant": "أمير",
         }
+    if (
+        _can_use_kernel_reply
+        and kernel_detected_intent == "file_read"
+        and isinstance(kernel_execution_reply, str)
+        and kernel_execution_reply
+    ):
+        user_payload["reply"] = kernel_execution_reply
+        user_payload["message"] = kernel_execution_reply
     user_payload.update(public_runtime_identity(workspace_root=REPO_ROOT))
     user_payload["request_id"] = request_id
     if kernel_execution_trace is not None:
@@ -1333,30 +1346,28 @@ async def execute_tasks(request: Request):
             status_code=422,
         )
 
-    # SECURITY: ExecutionBoundary is the mandatory gate before execute_task.
-    # Derive the most restrictive action present in the task list.
-    # Priority order is explicit so the result is deterministic even when multiple
-    # high-risk actions appear together.
-    # Fail-closed: if the boundary is unavailable or denies, no execution occurs.
+    _guardian_for_execute: dict = body.get("guardian") or {}
     _task_actions = {str(t.get("action", "")).strip().lower() for t in tasks if isinstance(t, dict)}
-    _ACTION_PRIORITY = ["financial", "delete", "publish", "external"]
-    if _task_actions & set(_ACTION_PRIORITY):
-        _derived_action = next(a for a in _ACTION_PRIORITY if a in _task_actions)
+    _high_risk_actions = {"delete", "publish", "external", "financial"}
+    _action_priority = ["financial", "delete", "publish", "external"]
+    if _task_actions & _high_risk_actions:
+        _derived_action = next(action for action in _action_priority if action in _task_actions)
     elif _task_actions - {"", "write"}:
-        _derived_action = next(a for a in sorted(_task_actions) if a not in {"", "write"})
+        _derived_action = next(action for action in sorted(_task_actions) if action not in {"", "write"})
     elif "write" in _task_actions:
         _derived_action = "write"
     else:
-        # Unknown/missing action — fail closed
-        _log("execute_tasks_boundary_denied", reason="unknown_action", task_actions=list(_task_actions))
+        _log("execute_tasks_boundary_denied", reason="unknown_action")
         return utf8_json_response(
-            {"error": "execution denied", "reason": "boundary_denied", "detail": "unknown_action"},
-            status_code=403,
+            {"accepted": False, "reason": "unknown_action"},
+            status_code=422,
         )
 
-    _guardian_for_execute: dict = body.get("guardian") or {}
-    if EXECUTION_BOUNDARY is not None:
-        _exec_boundary_result = EXECUTION_BOUNDARY.evaluate(
+    _exec_boundary = _boundary_for_server_execution()
+    _exec_boundary_result = None
+    _exec_boundary_allowed = False
+    if _exec_boundary is not None:
+        _exec_boundary_result = _exec_boundary.evaluate(
             guardian=_guardian_for_execute,
             request_type="execution",
             intent="execute_tasks",
@@ -1365,22 +1376,24 @@ async def execute_tasks(request: Request):
             context={"task_count": len(tasks), "actions": list(_task_actions)},
             requested_by="execute_endpoint",
         )
-        _exec_boundary_allowed = _exec_boundary_result.allowed
-    else:
-        # No boundary wired — deny by default (fail-closed).
-        _exec_boundary_allowed = False
-        _log("execute_tasks_boundary_missing", level="warning")
-
+        _exec_boundary_allowed = bool(getattr(_exec_boundary_result, "allowed", False))
     if not _exec_boundary_allowed:
-        _deny_reason = "boundary_denied" if EXECUTION_BOUNDARY is not None else "boundary_missing"
+        _deny_reason = getattr(_exec_boundary_result, "reason", "boundary_missing")
         _log("execute_tasks_boundary_denied", reason=_deny_reason)
         return utf8_json_response(
-            {"error": "execution denied", "reason": _deny_reason},
-            status_code=403,
+            {"accepted": False, "reason": _deny_reason},
+            status_code=422,
         )
 
     try:
-        report = KERNEL.execute_task(tasks)
+        # KERNEL.execute_task(tasks)
+        report = KERNEL.execute_task(
+            tasks,
+            guardian=_guardian_for_execute,
+            request_type="execution",
+            intent="execute_tasks",
+            requested_by="execute_endpoint",
+        )
     except Exception as exc:
         _log("execute_task_error", level="error", error=str(exc))
         return utf8_json_response({"error": "execution failed — see server logs"}, status_code=500)
@@ -1421,22 +1434,22 @@ async def execute_command(request: Request):
     if not command:
         return utf8_json_response({"error": "command field is required"}, status_code=422)
 
-    # SECURITY: ExecutionBoundary is the mandatory gate before execute_command.
-    # Use TaskDecomposer to derive intent/action, then gate through the boundary.
-    # Fail-closed: if the boundary is unavailable or denies, no execution occurs.
     _cmd_guardian: dict = body.get("guardian") or {}
     _cmd_intent = "unknown"
     _cmd_action = "write"
     try:
-        _decomp = KERNEL.task_decomposer.decompose(command)
-        _cmd_intent = str(_decomp.get("intent", "unknown") or "unknown").strip().lower()
-        _first_task = (_decomp.get("tasks") or [{}])[0]
-        _cmd_action = str(_first_task.get("action", "write") or "write").strip().lower() or "write"
+        _cmd_decomposition = KERNEL.task_decomposer.decompose(command)
+        _cmd_intent = str(_cmd_decomposition.get("intent", "unknown") or "unknown").strip().lower()
+        _cmd_first_task = (_cmd_decomposition.get("tasks") or [{}])[0]
+        _cmd_action = str(_cmd_first_task.get("action", "write") or "write").strip().lower() or "write"
     except Exception:
         pass
 
-    if EXECUTION_BOUNDARY is not None:
-        _cmd_boundary_result = EXECUTION_BOUNDARY.evaluate(
+    _cmd_boundary = _boundary_for_server_execution()
+    _cmd_boundary_result = None
+    _cmd_boundary_allowed = False
+    if _cmd_boundary is not None:
+        _cmd_boundary_result = _cmd_boundary.evaluate(
             guardian=_cmd_guardian,
             request_type="execution",
             intent=_cmd_intent,
@@ -1445,22 +1458,23 @@ async def execute_command(request: Request):
             context={"command": command[:240]},
             requested_by="execute_command_endpoint",
         )
-        _cmd_boundary_allowed = _cmd_boundary_result.allowed
-    else:
-        # No boundary wired — deny by default (fail-closed).
-        _cmd_boundary_allowed = False
-        _log("execute_command_boundary_missing", level="warning")
-
+        _cmd_boundary_allowed = bool(getattr(_cmd_boundary_result, "allowed", False))
     if not _cmd_boundary_allowed:
-        _cmd_deny_reason = "boundary_denied" if EXECUTION_BOUNDARY is not None else "boundary_missing"
-        _log("execute_command_boundary_denied", reason=_cmd_deny_reason, command=command[:240])
+        _cmd_deny_reason = getattr(_cmd_boundary_result, "reason", "boundary_missing")
+        _log("execute_command_boundary_denied", reason=_cmd_deny_reason, command=command[:120])
         return utf8_json_response(
-            {"error": "execution denied", "reason": _cmd_deny_reason},
-            status_code=403,
+            {"accepted": False, "reason": _cmd_deny_reason},
+            status_code=422,
         )
 
     try:
-        trace = KERNEL.execute_command(command)
+        # KERNEL.execute_command(command)
+        trace = KERNEL.execute_command(
+            command,
+            guardian=_cmd_guardian,
+            request_type="execution",
+            requested_by="execute_command_endpoint",
+        )
     except Exception as exc:
         _log("execute_command_error", level="error", command=command, error=str(exc))
         return utf8_json_response({"error": "execution failed — see server logs"}, status_code=500)

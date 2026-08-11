@@ -110,6 +110,9 @@ class ExecutionEngineTests(unittest.TestCase):
         self.assertIn("04_Memory", result["memory"]["file"])
 
     def test_file_operation_creates_markdown_file(self):
+        # Legacy direct path is now CLOSED — file.create must route through
+        # ToolDispatcher.  _execute_plan / _create_file no longer writes directly;
+        # the file result carries status "blocked" with the canonical reason.
         brain = ExecutiveBrain(normalize_fn=lambda x: x)
         plan = self._plan(["create file"])
 
@@ -121,10 +124,11 @@ class ExecutionEngineTests(unittest.TestCase):
                 workspace_root=tmpdir,
             )
 
-            self.assertIn("created", result["file"]["status"])
-            self.assertTrue(os.path.exists(result["file"]["path"]))
-            self.assertTrue(os.path.exists(os.path.join(tmpdir, result["file"]["relative_path"])))
-            self.assertTrue(any(item["name"] == "created_file_exists" for item in result["verification"]))
+            file_result = result["file"]
+            self.assertEqual(file_result["status"], "blocked")
+            self.assertEqual(file_result["reason"], "file_create_requires_tool_dispatcher")
+            # No file must have been written to disk
+            self.assertFalse(os.path.exists(file_result["path"]))
 
     def test_workspace_page_creation_updates_site_navigation_and_loader(self):
         brain = ExecutiveBrain(normalize_fn=lambda x: x)
@@ -194,6 +198,49 @@ class ExecutionEngineTests(unittest.TestCase):
             self.assertIsNotNone(result.get("file"))
             self.assertEqual(result["file"]["status"], "blocked",
                              "Writing to workspace root should be blocked by governance policy")
+
+    def test_conversational_file_read_request_does_not_execute_direct_read(self):
+        brain = ExecutiveBrain(normalize_fn=lambda x: x)
+        plan = type(
+            "Plan",
+            (),
+            {
+                "request_type": "question",
+                "ambiguous": False,
+                "clarification_needed": False,
+                "clarification_question": None,
+                "context_links": [],
+                "context_summary": "",
+                "plan_type": "single_step",
+                "steps": ["read file"],
+                "selected_agent": "research_agent",
+                "supporting_agents": [],
+                "agent_reasoning": "",
+                "guardian_status": "pass",
+                "guardian_reason": "",
+                "autonomy_level": "advice_only",
+                "should_remember": False,
+                "memory_note": None,
+                "executive_message": "",
+            },
+        )()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target = os.path.join(tmpdir, "09_Assets", "runtime_workspace", "home")
+            os.makedirs(target, exist_ok=True)
+            with open(os.path.join(target, "secret.txt"), "w", encoding="utf-8") as handle:
+                handle.write("secret-content")
+
+            result = brain._execute_plan(
+                "اقرأ ملف 09_Assets/runtime_workspace/home/secret.txt",
+                plan,
+                workspace_root=tmpdir,
+            )
+
+            self.assertEqual(result["file"]["status"], "blocked")
+            self.assertEqual(result["file"]["reason"], "file_read_requires_tool_dispatcher")
+            self.assertEqual(result["file"]["content_preview"], "")
+            self.assertNotIn("file.create", result["tool_calls"])
 
 
 if __name__ == "__main__":
