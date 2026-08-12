@@ -11,6 +11,7 @@ ShellExecutor — ينفّذ أوامر shell داخل بيئة محكومة و�
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -91,7 +92,6 @@ class ShellExecutor:
             return self._error_result(task_id, "blocked", str(exc))
 
         # ── 3. Build environment ─────────────────────────────────────────────
-        import os
         env = dict(os.environ)
         extra_env = task.get("env") or {}
         if isinstance(extra_env, dict):

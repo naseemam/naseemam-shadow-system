@@ -244,8 +244,7 @@ class ToolDispatcher:
         workspace_root = self._resolve_workspace_root()
         raw_cwd = context.get("cwd")
         if raw_cwd and workspace_root:
-            from pathlib import Path as _Path
-            candidate = _Path(str(raw_cwd).strip())
+            candidate = Path(str(raw_cwd).strip())
             resolved = (
                 candidate.resolve()
                 if candidate.is_absolute()
