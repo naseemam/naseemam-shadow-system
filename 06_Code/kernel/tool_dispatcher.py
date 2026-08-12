@@ -1,7 +1,16 @@
 from __future__ import annotations
 
+import json
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
+
+from kernel.shell_external_effect_classifier import ShellExternalEffectClassifier
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 _REGISTRY_OWNED_FIELDS = frozenset(
@@ -130,8 +139,10 @@ class ToolDispatcher:
         if self._approval_gate is None and action in {"delete", "publish", "external", "financial"}:
             return self._deny("approval_gate_required_missing", execution_request)
 
-        policy_result = self._enforce_tool_policy(tool_name, tool_def, sanitized_context, execution_request)
+        policy_result = self._enforce_tool_policy(tool_name, tool_def, sanitized_context, execution_request, requested_by)
         if isinstance(policy_result, dict) and policy_result.get("decision") == "DENY":
+            if tool_name == "shell.run":
+                self._emit_shell_audit(tool_name, sanitized_context, policy_result)
             return policy_result
         validated_context = policy_result or sanitized_context
 
@@ -167,6 +178,8 @@ class ToolDispatcher:
             "result": None,
         }
         if decision != "ALLOW":
+            if tool_name == "shell.run":
+                self._emit_shell_audit(tool_name, sanitized_context, result)
             return result
 
         execute_fn = self._resolve_executor(tool_name)
@@ -176,15 +189,20 @@ class ToolDispatcher:
         try:
             execution_result = execute_fn(payload)
         except Exception as exc:
-            return {
+            failed_result = {
                 **result,
                 "decision": "DENY",
                 "allowed": False,
                 "reason": "executor_unavailable",
                 "detail": {"error": str(exc)},
             }
+            if tool_name == "shell.run":
+                self._emit_shell_audit(tool_name, sanitized_context, failed_result)
+            return failed_result
         result["executed"] = True
         result["result"] = execution_result
+        if tool_name == "shell.run":
+            self._emit_shell_audit(tool_name, sanitized_context, result)
         return result
 
     @staticmethod
@@ -217,13 +235,14 @@ class ToolDispatcher:
         tool_def: Any,
         context: Mapping[str, Any],
         execution_request: dict[str, Any],
+        requested_by: str = "executive_kernel",
     ) -> Optional[Mapping[str, Any] | dict[str, Any]]:
         if tool_name == "file.read":
             return self._enforce_file_read_policy(tool_def, context, execution_request)
         if tool_name == "file.create":
             return self._enforce_file_create_policy(tool_def, context, execution_request)
         if tool_name == "shell.run":
-            return self._enforce_shell_run_policy(tool_def, context, execution_request)
+            return self._enforce_shell_run_policy(tool_def, context, execution_request, requested_by)
         return None
 
     def _enforce_shell_run_policy(
@@ -231,8 +250,9 @@ class ToolDispatcher:
         tool_def: Any,
         context: Mapping[str, Any],
         execution_request: dict[str, Any],
+        requested_by: str = "executive_kernel",
     ) -> Mapping[str, Any] | dict[str, Any]:
-        """Validate shell.run context; ensure command is present and workspace-bound."""
+        """Validate shell.run context; enforce external-effect approval policy."""
         command = context.get("command")
         if not command or (isinstance(command, str) and not command.strip()):
             return self._deny(
@@ -256,6 +276,79 @@ class ToolDispatcher:
                     execution_request,
                     detail={"cwd": raw_cwd},
                 )
+
+        # ── External-effect enforcement ────────────────────────────────────
+        # The ToolRegistry declares `approval_required_for_external_effects: True`
+        # in the shell.run input_policy.  This block makes that declaration
+        # an actual enforcement decision — not just metadata.
+        requires_ext_approval = bool(
+            getattr(tool_def, "input_policy", {}).get(
+                "approval_required_for_external_effects", False
+            )
+        )
+        if requires_ext_approval:
+            classification = ShellExternalEffectClassifier.classify(command)
+            if classification["is_external_effect"]:
+                if self._approval_gate is None:
+                    return self._deny(
+                        "approval_gate_required_for_external_effect",
+                        execution_request,
+                        detail={"command_classification": classification},
+                    )
+                # Caller may supply a pre-approved approval_id in context.
+                approval_id = context.get("approval_id")
+                if approval_id:
+                    is_approved_fn = getattr(self._approval_gate, "is_approved", None)
+                    if callable(is_approved_fn) and is_approved_fn(approval_id):
+                        # Pre-verified — annotate trusted context and proceed.
+                        pass  # fall through to build trusted_context below
+                    else:
+                        return {
+                            **self._deny(
+                                "external_effect_approval_not_verified",
+                                execution_request,
+                                detail={
+                                    "approval_id": approval_id,
+                                    "command_classification": classification,
+                                },
+                            ),
+                            "status": "approval_required",
+                            "approval_required": True,
+                            "approval_id": approval_id,
+                        }
+                else:
+                    # No prior approval — create approval request and block.
+                    request_fn = getattr(self._approval_gate, "request", None)
+                    if callable(request_fn):
+                        new_approval_id = request_fn(
+                            action="external",
+                            description=(
+                                f"shell.run external-effect command: "
+                                f"{classification['command_root']!r}"
+                            ),
+                            requested_by=requested_by,
+                            context={
+                                "command_root": classification["command_root"],
+                                "subcommand": classification["subcommand"],
+                                "tool_name": "shell.run",
+                            },
+                        )
+                    else:
+                        new_approval_id = None
+                    return {
+                        **self._deny(
+                            "approval_required",
+                            execution_request,
+                            detail={
+                                "command_classification": classification,
+                                "approval_id": new_approval_id,
+                            },
+                        ),
+                        "status": "approval_required",
+                        "approval_required": True,
+                        "approval_id": new_approval_id,
+                    }
+        # ── End external-effect enforcement ───────────────────────────────
 
         trusted_context = dict(context)
         trusted_payload: dict = dict(context.get("executor_payload") or {})
