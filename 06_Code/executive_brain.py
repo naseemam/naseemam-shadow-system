@@ -22,10 +22,15 @@ from __future__ import annotations
 import os
 import re
 import json
+import sys
 from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+
+CODE_ROOT = os.path.dirname(__file__)
+if CODE_ROOT not in sys.path:
+    sys.path.insert(0, CODE_ROOT)
 
 try:
     from adapters.inference_provider import InferenceProvider, OpenAIProvider, OllamaProvider
@@ -33,6 +38,11 @@ except Exception:  # pragma: no cover - fallback when run without package contex
     InferenceProvider = None  # type: ignore[assignment,misc]
     OpenAIProvider = None  # type: ignore[assignment]
     OllamaProvider = None  # type: ignore[assignment]
+
+try:
+    from language.arabic_language_layer import ArabicLanguageLayer
+except Exception:  # pragma: no cover - optional local helper
+    ArabicLanguageLayer = None
 
 try:
     from openai import OpenAI
@@ -258,6 +268,7 @@ class ExecutiveBrain:
 
     def __init__(self, normalize_fn=None):
         self._normalize = normalize_fn or (lambda x: x)
+        self._arabic_language_layer = ArabicLanguageLayer() if ArabicLanguageLayer is not None else None
         self._openai_client = None
         self._single_brain_mode = os.getenv("AMEER_SINGLE_BRAIN", "1").lower() in {"1", "true", "yes", "on"}
         self._model_name = os.getenv("AMEER_MODEL", "gpt-4o-mini")
@@ -517,10 +528,69 @@ class ExecutiveBrain:
             t = t.replace(src, dst)
         return t
 
+    def _analyze_semantics(self, query: str):
+        if self._arabic_language_layer is None:
+            return None
+        try:
+            return self._arabic_language_layer.analyze(query)
+        except Exception:
+            return None
+
     # ── Perception ────────────────────────────────────────────────────────────
 
     def perceive(self, query: str) -> PerceptionResult:
         """Classify the request type and detect ambiguity."""
+        semantic = self._analyze_semantics(query)
+        if semantic is not None:
+            if semantic.category in {"greeting", "identity_request", "direct_question", "direct_opinion"}:
+                return PerceptionResult(
+                    request_type="question",
+                    confidence=max(semantic.confidence, 0.9),
+                    ambiguous=False,
+                    clarification_needed=False,
+                    clarification_question=None,
+                )
+            if semantic.category == "analysis_request":
+                return PerceptionResult(
+                    request_type="analysis",
+                    confidence=max(semantic.confidence, 0.85),
+                    ambiguous=False,
+                    clarification_needed=False,
+                    clarification_question=None,
+                )
+            if semantic.category == "research_request":
+                return PerceptionResult(
+                    request_type="question",
+                    confidence=max(semantic.confidence, 0.85),
+                    ambiguous=False,
+                    clarification_needed=False,
+                    clarification_question=None,
+                )
+            if semantic.category == "memory_request":
+                return PerceptionResult(
+                    request_type="memory",
+                    confidence=max(semantic.confidence, 0.9),
+                    ambiguous=False,
+                    clarification_needed=False,
+                    clarification_question=None,
+                )
+            if semantic.category == "execution_request":
+                return PerceptionResult(
+                    request_type="execution",
+                    confidence=max(semantic.confidence, 0.95),
+                    ambiguous=False,
+                    clarification_needed=False,
+                    clarification_question=None,
+                )
+            if semantic.category == "project_request":
+                return PerceptionResult(
+                    request_type="planning",
+                    confidence=max(semantic.confidence, 0.82),
+                    ambiguous=False,
+                    clarification_needed=False,
+                    clarification_question=None,
+                )
+
         q = self._normalize_for_classification(query)
         q_words = set(re.findall(r"\w+", q))
 
@@ -549,10 +619,11 @@ class ExecutiveBrain:
         }
 
         execution_markers = [
-            "أنشئ", "انشئ", "إنشاء", "اكتب", "create", "write", "build", "make", "new file", "new project", "new website",
-            "ملف", "موقع", "مشروع", "أضف", "append", "update", "modify", "عدل", "تعديل", "سطر", "insert", "أدخل"
+            "أنشئ", "انشئ", "إنشاء", "اكتب", "create", "write", "build", "make",
+            "أضف", "اضف", "append", "update", "modify", "عدل", "تعديل", "insert", "أدخل",
+            "نفذ", "نفّذ", "شغل", "شغّل",
         ]
-        if any(keyword in q for keyword in execution_markers):
+        if any(keyword in q for keyword in execution_markers) and not any(keyword in q for keyword in ["كيف", "لماذا", "ليش", "ماذا", "وش", "ايش", "إيش", "هل"]):
             scores["execution"] = 12
         else:
             scores["execution"] = 0
@@ -630,6 +701,14 @@ class ExecutiveBrain:
     def select_agents(self, query: str, request_type: str) -> AgentSelection:
         """Choose the best specialist agent(s) for this request."""
         q = self._normalize_for_classification(query)
+        semantic = self._analyze_semantics(query)
+
+        if semantic is not None and semantic.preferred_agent == "ameer_core":
+            return AgentSelection(
+                primary_agent="ameer_core",
+                supporting_agents=[],
+                reasoning="الطبقة العربية الدلالية صنّفت الطلب كسؤال/رأي مباشر موجّه لأمير، لذا يتولاه أمير مباشرة.",
+            )
 
         direct_core_markers = [
             "من أنت",

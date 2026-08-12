@@ -14,6 +14,11 @@ from agents.base import AgentContext, AgentOutput
 from agents.registry import AGENTS, AGENT_CAPABILITIES
 from adapters.agent_brain_adapter import AgentBrainAdapter
 
+try:
+    from language.arabic_language_layer import ArabicLanguageLayer
+except Exception:  # pragma: no cover - optional semantic helper
+    ArabicLanguageLayer = None
+
 
 ROUTE_AGENT_MAP = {
     "greeting": "greeting_agent",
@@ -117,6 +122,7 @@ class AmeerOrchestrator:
             "message",
             "response_data",
         ]
+        self._arabic_language_layer = ArabicLanguageLayer() if ArabicLanguageLayer is not None else None
 
     def _validate_agent_output(self, agent_output) -> Dict[str, List[str] | bool]:
         missing = [field for field in self._required_agent_fields if not hasattr(agent_output, field)]
@@ -177,6 +183,28 @@ class AmeerOrchestrator:
                 force_first_group=False,
             ),
         ]
+
+    def _semantic_route(self, query: str) -> Dict[str, str | float | List[str]] | None:
+        if self._arabic_language_layer is None:
+            return None
+
+        try:
+            evidence = self._arabic_language_layer.analyze(query)
+        except Exception:
+            return None
+
+        if evidence.category == "unknown":
+            return None
+
+        return {
+            "intent": evidence.preferred_intent,
+            "agent": evidence.preferred_agent,
+            "confidence": evidence.confidence,
+            "reason": "matched execution request" if evidence.category == "execution_request" else f"semantic layer classified as {evidence.category}",
+            "identity_layer": evidence.preferred_intent == "identity",
+            "semantic_category": evidence.category,
+            "semantic_signals": list(evidence.matched_signals),
+        }
 
     def _is_identity_question(self, query: str) -> bool:
         q = self.normalize_fn(query.lower())
@@ -496,6 +524,22 @@ class AmeerOrchestrator:
 
     def route_query(self, query: str) -> Dict[str, str | bool | float | List[str]]:
         q = self.normalize_fn(query.lower())
+
+        semantic_route = self._semantic_route(query)
+        if semantic_route is not None:
+            intent = str(semantic_route["intent"])
+            agent = str(semantic_route["agent"])
+            capabilities = self._capabilities_for_executor(agent)
+            return {
+                "intent": intent,
+                "agent": agent,
+                "confidence": float(semantic_route["confidence"]),
+                "reason": str(semantic_route["reason"]),
+                "identity_layer": bool(semantic_route["identity_layer"]),
+                "agent_capabilities": capabilities,
+                "semantic_category": semantic_route["semantic_category"],
+                "semantic_signals": semantic_route["semantic_signals"],
+            }
 
         semantic_route = self._infer_semantic_intent(query)
         if semantic_route is not None:

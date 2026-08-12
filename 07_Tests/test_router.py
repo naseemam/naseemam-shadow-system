@@ -53,6 +53,20 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(result["routing"]["intent"], "identity")
         self.assertEqual(result["selected_agent"], "ameer_core")
 
+    def test_saudi_colloquial_opinion_routes_to_core(self):
+        result = self.orchestrator.answer("أمير، وش رأيك في Manus؟")
+        self.assertEqual(result["routing"]["intent"], "identity")
+        self.assertEqual(result["selected_agent"], "ameer_core")
+
+    def test_research_request_stays_in_research_agent(self):
+        result = self.orchestrator.answer("أمير، هات لي مصادر عن Manus")
+        self.assertEqual(result["routing"]["intent"], "knowledge_lookup")
+        self.assertEqual(result["selected_agent"], "research_agent")
+
+    def test_execution_request_is_not_triggered_by_nouns_alone(self):
+        result = self.orchestrator.answer("كيف أتعامل مع ملف المشروع؟")
+        self.assertNotEqual(result["routing"]["intent"], "execution")
+
 
 if __name__ == "__main__":
     unittest.main()
