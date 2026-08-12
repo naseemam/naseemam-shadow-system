@@ -93,6 +93,13 @@ _CORE_CAPABILITIES: List[Dict[str, Any]] = [
         "dependencies": [],
         "risk_level": "medium",
     },
+    {
+        "name": "shell_execution",
+        "description": "Controlled shell command execution within workspace boundaries; subject to ApprovalGate for external effects",
+        "scope": "tooling",
+        "dependencies": [],
+        "risk_level": "medium",
+    },
 ]
 
 

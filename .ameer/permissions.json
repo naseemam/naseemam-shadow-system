@@ -25,6 +25,17 @@
       "expires_at": null,
       "created_at": "2026-08-10T17:28:50Z",
       "updated_at": "2026-08-10T18:38:44Z"
+    },
+    {
+      "permission_id": "0bdfcfb5-a4f4-4a1d-b4ad-6149c566f462",
+      "capability_id": "d949de78-c820-4f0b-8937-21c500962d86",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"action\": \"run\", \"scope_kind\": \"workspace_only\", \"tool_name\": \"shell.run\", \"approval_required_for_external_effects\": true}",
+      "granted_by": "system:shell.run_activation",
+      "granted_at": "2026-08-12T19:57:14Z",
+      "notes": "Grants Ameer ability to run controlled shell commands within workspace. External-effect operations still require ApprovalGate."
     }
   ],
   "audit_log": [

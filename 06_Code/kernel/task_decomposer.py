@@ -53,6 +53,12 @@ _READ_MARKERS = [
     "افتح", "open", "display",
 ]
 
+_RUN_TEST_MARKERS = [
+    "تشغيل الاختبارات", "شغّل الاختبارات", "شغل الاختبارات",
+    "run test", "run tests", "pytest", "test",
+    "اختبار", "اختبارات", "نفّذ الاختبارات", "نفذ الاختبارات",
+]
+
 
 def _matches(text: str, patterns: list[str]) -> bool:
     lower = text.lower()
@@ -83,13 +89,18 @@ def _detect_intent(command: str) -> str:
     ترتيب الأولوية:
     1. نية القراءة (file_read) — تأخذ الأولوية لمنع مسارات file-path مثل home/index
        من تشغيل build_homepage خطأً، وتُمرَّر لاحقًا عبر مسار التنفيذ المحكوم.
-    2. build_homepage — يشترط وجود فعل بناء صريح أو ذكر الصفحة الرئيسية وحده.
-    3. build_generic — أوامر البناء العامة.
-    4. unknown — الاحتياطي.
+    2. run_test — تشغيل الاختبارات.
+    3. build_homepage — يشترط وجود فعل بناء صريح أو ذكر الصفحة الرئيسية وحده.
+    4. build_generic — أوامر البناء العامة.
+    5. unknown — الاحتياطي.
     """
     # Priority-1: explicit read intent overrides all HOME_PAGE_HINTS path tokens.
     if _has_read_intent(command):
         return "file_read"
+
+    # Priority-2: test execution
+    if _matches(command, _RUN_TEST_MARKERS):
+        return "run_test"
 
     if _matches(command, _HOME_PAGE_HINTS) or (
         _matches(command, _BUILD_HOME_PATTERNS) and
@@ -518,6 +529,8 @@ class TaskDecomposer:
             return self._homepage_tasks()
         if intent == "build_generic":
             return self._generic_page_tasks(command)
+        if intent == "run_test":
+            return self._run_test_tasks(command)
         # Fallback — return an empty-but-valid placeholder
         return []
 
@@ -533,6 +546,25 @@ class TaskDecomposer:
                 "target": target,
                 "priority": "high",
                 "description": f"قراءة الملف {target}",
+            }
+        ]
+
+    def _run_test_tasks(self, command: str) -> List[Dict[str, Any]]:
+        """Generate a shell task to run pytest inside the workspace."""
+        # Extract optional path from command (e.g. "run tests in 07_Tests/test_foo.py")
+        path_match = re.search(
+            r"(?:in|في|of|على)\s+([^\s،؟]+)", command, flags=re.IGNORECASE
+        )
+        test_path = path_match.group(1).strip() if path_match else "07_Tests/"
+
+        return [
+            {
+                "id": f"run-test-{uuid.uuid4().hex[:6]}",
+                "action": "run",
+                "executor": "shell",
+                "command": ["python3", "-m", "pytest", test_path, "-v", "--tb=short"],
+                "priority": "high",
+                "description": f"تشغيل الاختبارات: {test_path}",
             }
         ]
 

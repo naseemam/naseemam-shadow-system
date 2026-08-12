@@ -30,13 +30,14 @@ from kernel.learning_engine import LearningEngine
 from kernel.memory_governance import MemoryGovernanceEngine
 from kernel.capability_registry import CapabilityRegistry
 from kernel.permission_registry import PermissionRegistry
-from kernel.execution_authorization import ExecutionAuthorization, file_read_permission_scope
+from kernel.execution_authorization import ExecutionAuthorization, file_read_permission_scope, shell_run_permission_scope
 from kernel.execution_boundary import ExecutionBoundary
 from kernel.tool_registry import ToolRegistry
 from kernel.tool_dispatcher import ToolDispatcher
 from kernel.plan_validator import PlanValidator
 from kernel.scheduler import Scheduler
 from kernel.executor_file import FileExecutor
+from kernel.executor_shell import ShellExecutor
 from kernel.task_decomposer import TaskDecomposer
 from context.workspace_awareness import WorkspaceAwareness
 from context.session_context import SessionContext
@@ -80,6 +81,7 @@ class ExecutiveKernel:
         self.capabilities: CapabilityRegistry = CapabilityRegistry(self._root)
         self.permissions: PermissionRegistry = PermissionRegistry(self._root)
         self._enable_file_read_permission()
+        self._enable_shell_run_permission()
         self.execution_auth: ExecutionAuthorization = ExecutionAuthorization(
             self._root, self.capabilities, self.permissions
         )
@@ -96,12 +98,14 @@ class ExecutiveKernel:
         )
         self.scheduler: Scheduler = Scheduler(self._root, self.state)
         self.file_executor: FileExecutor = FileExecutor(self._root)
+        self.shell_executor: ShellExecutor = ShellExecutor(self._root)
         self.tool_dispatcher: ToolDispatcher = ToolDispatcher(
             tool_registry=self.tool_registry,
             execution_boundary=self.execution_boundary,
             execution_authorization=self.execution_auth,
             approval_gate=self.approvals,
             executor=self.file_executor.execute,
+            shell_executor=self.shell_executor.execute,
         )
         self.task_decomposer: TaskDecomposer = TaskDecomposer(str(self._root))
 
@@ -122,6 +126,24 @@ class ExecutiveKernel:
             file_cap["capability_id"],
             scope=expected_scope,
             granted_by="system:file.read_activation",
+        )
+
+    def _enable_shell_run_permission(self) -> None:
+        shell_cap = self.capabilities.get_by_name("shell_execution")
+        if shell_cap is None:
+            return
+        existing = self.permissions.get_for_capability(shell_cap["capability_id"])
+        expected_scope = shell_run_permission_scope()
+        if (
+            existing
+            and existing.get("permission_status") == "granted"
+            and existing.get("enabled", False)
+        ):
+            return
+        self.permissions.grant(
+            shell_cap["capability_id"],
+            scope=expected_scope,
+            granted_by="system:shell.run_activation",
         )
 
     # ── Startup helpers ───────────────────────────────────────────────────────
@@ -415,8 +437,13 @@ class ExecutiveKernel:
     # ── Task Execution (P1.3 gated pipeline) ──────────────────────────────────
 
     @staticmethod
-    def _tool_name_for_action(action: str) -> Optional[str]:
+    def _tool_name_for_action(action: str, executor_name: str = "file") -> Optional[str]:
         normalized = str(action or "").strip().lower()
+        if executor_name == "shell":
+            if normalized in {"run", "execute"}:
+                return "shell.run"
+            return None
+        # file executor (default)
         if normalized == "read":
             return "file.read"
         if normalized in {"write", "create"}:
@@ -442,7 +469,8 @@ class ExecutiveKernel:
             }
 
         executor_name = str(task.get("executor", "")).strip().lower()
-        if executor_name != "file":
+        _SUPPORTED_EXECUTORS = {"file", "shell"}
+        if executor_name not in _SUPPORTED_EXECUTORS:
             return {
                 "decision": "DENY",
                 "allowed": False,
@@ -456,7 +484,7 @@ class ExecutiveKernel:
                 },
             }
 
-        tool_name = self._tool_name_for_action(task.get("action", ""))
+        tool_name = self._tool_name_for_action(task.get("action", ""), executor_name)
         if not tool_name:
             return {
                 "decision": "DENY",
@@ -471,16 +499,31 @@ class ExecutiveKernel:
                 },
             }
 
-        return self.tool_dispatcher.dispatch(
-            tool_name=tool_name,
-            context={
+        # Build context appropriate for the executor type.
+        if executor_name == "shell":
+            dispatch_context = {
+                "task_id": task.get("id"),
+                "command": task.get("command"),
+                "cwd": task.get("cwd"),
+                "env": task.get("env"),
+                "timeout": task.get("timeout"),
+                "executor": executor_name,
+                "action": task.get("action"),
+                "executor_payload": dict(task),
+            }
+        else:
+            dispatch_context = {
                 "task_id": task.get("id"),
                 "target": task.get("target"),
                 "content": task.get("content"),
                 "executor": executor_name,
                 "action": task.get("action"),
                 "executor_payload": dict(task),
-            },
+            }
+
+        return self.tool_dispatcher.dispatch(
+            tool_name=tool_name,
+            context=dispatch_context,
             guardian=guardian,
             request_type=request_type,
             intent=intent,

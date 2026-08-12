@@ -99,6 +99,24 @@ class ToolRegistry:
             },
             output_policy={"content": "metadata_only", "metadata": "relative_path_only"},
         ),
+        "shell.run": ToolDefinition(
+            tool_name="shell.run",
+            capability="shell_execution",
+            action="run",
+            risk_level="medium",
+            input_policy={
+                "required": ("command",),
+                "additional": True,
+                "scope_kind": "workspace_only",
+                "caller_scope_override": False,
+                "shell": False,
+                "approval_required_for_external_effects": True,
+            },
+            output_policy={
+                "content": "stdout_stderr_returncode",
+                "metadata": "execution_metadata_only",
+            },
+        ),
     })
 
     def __init__(self) -> None:

@@ -49,6 +49,11 @@ _FILE_CREATE_SCOPE_ROOT = "09_Assets/runtime_workspace"
 _FILE_CREATE_TOOL_NAME = "file.create"
 _FILE_CREATE_ACTION = "write"
 
+# shell.run scope constants
+_SHELL_RUN_TOOL_NAME = "shell.run"
+_SHELL_RUN_ACTION = "run"
+_SHELL_RUN_SCOPE_KIND = "workspace_only"
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -74,6 +79,19 @@ def file_create_permission_scope() -> str:
             "action": _FILE_CREATE_ACTION,
             "scope_kind": _FILE_CREATE_SCOPE_KIND,
             "scope_root": _FILE_CREATE_SCOPE_ROOT,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
+def shell_run_permission_scope() -> str:
+    return json.dumps(
+        {
+            "tool_name": _SHELL_RUN_TOOL_NAME,
+            "action": _SHELL_RUN_ACTION,
+            "scope_kind": _SHELL_RUN_SCOPE_KIND,
+            "approval_required_for_external_effects": True,
         },
         ensure_ascii=False,
         sort_keys=True,

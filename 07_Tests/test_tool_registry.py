@@ -97,7 +97,9 @@ class ToolRegistryTests(unittest.TestCase):
         with self.assertRaises(FrozenInstanceError):
             tool.action = "read"
         self.assertFalse(hasattr(self.registry, "execute"))
-        self.assertEqual(self.registry.list_tools(), ("file.read", "file.create"))
+        self.assertIn("file.read", self.registry.list_tools())
+        self.assertIn("file.create", self.registry.list_tools())
+        self.assertIn("shell.run", self.registry.list_tools())
 
 
 if __name__ == "__main__":

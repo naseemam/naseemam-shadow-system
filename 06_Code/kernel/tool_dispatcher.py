@@ -20,6 +20,12 @@ _FILE_READ_SCOPE_OVERRIDE_FIELDS = frozenset(
     }
 )
 
+# Mapping from tool-name prefix to executor key used in _executors dict.
+_TOOL_PREFIX_TO_EXECUTOR: dict[str, str] = {
+    "file.": "file",
+    "shell.": "shell",
+}
+
 
 class ToolDispatcher:
     """Fail-closed tool dispatch contract: resolve metadata, evaluate boundary, return result."""
@@ -32,14 +38,23 @@ class ToolDispatcher:
         execution_authorization=None,
         approval_gate=None,
         executor=None,
+        shell_executor=None,
         workspace_root: str | Path | None = None,
     ) -> None:
         self._tool_registry = tool_registry
         self._execution_boundary = execution_boundary
         self._execution_authorization = execution_authorization
         self._approval_gate = approval_gate
+        # Backward-compatible single executor (used for file.*); also stored in the map.
         self._executor = executor
         self._workspace_root = Path(workspace_root).resolve() if workspace_root is not None else None
+
+        # Named executor map — allows per-tool-prefix routing without bypassing authorization.
+        self._executors: dict[str, Any] = {}
+        if executor is not None:
+            self._executors["file"] = executor
+        if shell_executor is not None:
+            self._executors["shell"] = shell_executor
 
     def dispatch(
         self,
@@ -154,7 +169,7 @@ class ToolDispatcher:
         if decision != "ALLOW":
             return result
 
-        execute_fn = self._executor
+        execute_fn = self._resolve_executor(tool_name)
         if not callable(execute_fn):
             return self._deny("executor_unavailable", execution_request)
         payload = validated_context.get("executor_payload", validated_context)
@@ -186,6 +201,16 @@ class ToolDispatcher:
             return "PENDING"
         return "DENY"
 
+    def _resolve_executor(self, tool_name: str) -> Any:
+        """Return the executor callable for *tool_name*, checking prefix map first."""
+        for prefix, key in _TOOL_PREFIX_TO_EXECUTOR.items():
+            if tool_name.startswith(prefix):
+                executor = self._executors.get(key)
+                if callable(executor):
+                    return executor
+        # Fallback to legacy single-executor for backward compatibility.
+        return self._executor
+
     def _enforce_tool_policy(
         self,
         tool_name: str,
@@ -197,7 +222,49 @@ class ToolDispatcher:
             return self._enforce_file_read_policy(tool_def, context, execution_request)
         if tool_name == "file.create":
             return self._enforce_file_create_policy(tool_def, context, execution_request)
+        if tool_name == "shell.run":
+            return self._enforce_shell_run_policy(tool_def, context, execution_request)
         return None
+
+    def _enforce_shell_run_policy(
+        self,
+        tool_def: Any,
+        context: Mapping[str, Any],
+        execution_request: dict[str, Any],
+    ) -> Mapping[str, Any] | dict[str, Any]:
+        """Validate shell.run context; ensure command is present and workspace-bound."""
+        command = context.get("command")
+        if not command or (isinstance(command, str) and not command.strip()):
+            return self._deny(
+                "shell_run_policy_denied",
+                execution_request,
+                detail={"error": "missing_command"},
+            )
+
+        workspace_root = self._resolve_workspace_root()
+        raw_cwd = context.get("cwd")
+        if raw_cwd and workspace_root:
+            from pathlib import Path as _Path
+            candidate = _Path(str(raw_cwd).strip())
+            resolved = (
+                candidate.resolve()
+                if candidate.is_absolute()
+                else (workspace_root / candidate).resolve()
+            )
+            if not resolved.is_relative_to(workspace_root):
+                return self._deny(
+                    "shell_run_cwd_outside_workspace",
+                    execution_request,
+                    detail={"cwd": raw_cwd},
+                )
+
+        trusted_context = dict(context)
+        trusted_payload: dict = dict(context.get("executor_payload") or {})
+        trusted_payload["command"] = command
+        trusted_payload["action"] = str(getattr(tool_def, "action", "run"))
+        trusted_context["executor_payload"] = trusted_payload
+        execution_request["context"] = trusted_context
+        return trusted_context
 
     def _enforce_file_create_policy(
         self,
