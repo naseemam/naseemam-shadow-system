@@ -58,7 +58,7 @@ _CONVERSATIONAL_TYPES: Set[str] = {
 
 # Intents that the kernel is allowed to act on even when request_type is conversational.
 # This mirrors KERNEL_ACTIONABLE_INTENTS in ameer_server.py.
-KERNEL_ACTIONABLE_INTENTS: Set[str] = {"build_homepage", "build_generic", "file_read"}
+KERNEL_ACTIONABLE_INTENTS: Set[str] = {"build_homepage", "build_generic", "file_read", "run_test"}
 
 
 class BoundaryVerdict(str, Enum):

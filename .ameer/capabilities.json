@@ -111,6 +111,22 @@
       "updated_at": "2026-08-10T17:27:23Z",
       "history": [],
       "notes": ""
+    },
+    {
+      "capability_id": "d949de78-c820-4f0b-8937-21c500962d86",
+      "name": "shell_execution",
+      "description": "Controlled shell command execution within workspace boundaries; subject to ApprovalGate for external effects",
+      "scope": "tooling",
+      "dependencies": [],
+      "risk_level": "medium",
+      "approved_by": "founder",
+      "approval_date": "2026-08-12T19:57:14Z",
+      "version": "1.0.0",
+      "status": "core",
+      "created_at": "2026-08-12T19:57:14Z",
+      "updated_at": "2026-08-12T19:57:14Z",
+      "history": [],
+      "notes": "Shell execution capability for running tests, builds, and controlled commands within workspace"
     }
   ],
   "changelog": []

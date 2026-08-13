@@ -137,7 +137,7 @@ MD_GLOB = os.path.join(REPO_ROOT, "**", "*.md")
 WEB_INDEX = os.path.join(REPO_ROOT, "09_Assets", "web", "index.html")
 DEBUG_MODE = os.getenv("AMEER_DEBUG", "0").lower() in {"1", "true", "yes", "on"}
 RUNTIME_METADATA = runtime_metadata(workspace_root=REPO_ROOT)
-KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic", "file_read"}
+KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic", "file_read", "run_test"}
 
 # ─── Executive Operating Kernel ───────────────────────────────────────────────
 
