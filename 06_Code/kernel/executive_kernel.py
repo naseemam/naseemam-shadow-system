@@ -44,6 +44,7 @@ from kernel.scheduler import Scheduler
 from kernel.executor_file import FileExecutor
 from kernel.executor_shell import ShellExecutor
 from kernel.task_decomposer import TaskDecomposer
+from kernel.autonomous_agent import AutonomousAgentLoop
 from context.workspace_awareness import WorkspaceAwareness
 from context.session_context import SessionContext
 from context.founder_profile import FounderProfile
@@ -115,6 +116,22 @@ class ExecutiveKernel:
             workspace_root=self._root,
         )
         self.task_decomposer: TaskDecomposer = TaskDecomposer(str(self._root))
+        # Autonomous agent loop — initialized lazily (needs providers from ExecutiveBrain)
+        self.autonomous_agent: Optional[AutonomousAgentLoop] = None
+
+    def init_autonomous_agent(self, providers: list) -> None:
+        """
+        تهيئة AutonomousAgentLoop بعد توفر inference providers من ExecutiveBrain.
+        يُستدعى من ameer_server.py بعد تحميل ExecutiveBrain.
+        """
+        try:
+            self.autonomous_agent = AutonomousAgentLoop(
+                kernel=self,
+                providers=providers,
+                workspace_root=self._root,
+            )
+        except Exception:
+            self.autonomous_agent = None
 
     def _enable_file_read_permission(self) -> None:
         file_cap = self.capabilities.get_by_name("file_operations")
