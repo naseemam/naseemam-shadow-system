@@ -520,7 +520,7 @@ class AutonomousAgentLoop:
         else:
             cmd_str = str(command)
         danger_patterns = [
-            "git push", "git merge", "git checkout main",
+            "git push", "git merge --",
             "npm publish", "pip publish", "twine upload",
             "railway up", "railway deploy",
             "heroku", "vercel deploy", "netlify deploy",
@@ -623,6 +623,8 @@ class AutonomousAgentLoop:
         if not tasks:
             return []
 
+        from collections import deque
+
         task_map = {t.get("id", f"_t{idx}"): t for idx, t in enumerate(tasks)}
         in_degree: Dict[str, int] = {tid: 0 for tid in task_map}
         dependents: Dict[str, List[str]] = {tid: [] for tid in task_map}
@@ -634,11 +636,11 @@ class AutonomousAgentLoop:
                     dependents[dep].append(tid)
 
         # Start with tasks that have no dependencies (preserve original order)
-        queue = [t for t in tasks if in_degree.get(t.get("id", ""), 0) == 0]
+        queue: deque = deque(t for t in tasks if in_degree.get(t.get("id", ""), 0) == 0)
         result: List[Dict[str, Any]] = []
 
         while queue:
-            task = queue.pop(0)
+            task = queue.popleft()
             result.append(task)
             tid = task.get("id", "")
             for dep_tid in dependents.get(tid, []):

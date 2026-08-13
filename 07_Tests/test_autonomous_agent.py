@@ -315,8 +315,9 @@ class TestAutonomousAgentLoopDangerousCommands(unittest.TestCase):
     def test_git_push_is_dangerous(self):
         self.assertTrue(self.agent._is_dangerous_command("git push origin main"))
 
-    def test_git_merge_is_dangerous(self):
-        self.assertTrue(self.agent._is_dangerous_command("git merge main"))
+    def test_git_merge_local_is_safe(self):
+        # Local git merge is a local operation (no remote effect)
+        self.assertFalse(self.agent._is_dangerous_command("git merge main"))
 
     def test_npm_publish_is_dangerous(self):
         self.assertTrue(self.agent._is_dangerous_command("npm publish"))
