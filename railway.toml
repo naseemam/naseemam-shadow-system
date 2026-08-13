@@ -2,5 +2,4 @@
 builder = "NIXPACKS"
 
 [deploy]
-preDeployCommand = "python scripts/restore_file_create_permission.py"
 startCommand = "python start_ameer.py"
