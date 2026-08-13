@@ -30,7 +30,12 @@ from kernel.learning_engine import LearningEngine
 from kernel.memory_governance import MemoryGovernanceEngine
 from kernel.capability_registry import CapabilityRegistry
 from kernel.permission_registry import PermissionRegistry
-from kernel.execution_authorization import ExecutionAuthorization, file_read_permission_scope, shell_run_permission_scope
+from kernel.execution_authorization import (
+    ExecutionAuthorization,
+    file_create_permission_scope,
+    file_read_permission_scope,
+    shell_run_permission_scope,
+)
 from kernel.execution_boundary import ExecutionBoundary
 from kernel.tool_registry import ToolRegistry
 from kernel.tool_dispatcher import ToolDispatcher
@@ -82,6 +87,7 @@ class ExecutiveKernel:
         self.permissions: PermissionRegistry = PermissionRegistry(self._root)
         self._enable_file_read_permission()
         self._enable_shell_run_permission()
+        self._enable_file_create_permission()
         self.execution_auth: ExecutionAuthorization = ExecutionAuthorization(
             self._root, self.capabilities, self.permissions
         )
@@ -145,6 +151,31 @@ class ExecutiveKernel:
             shell_cap["capability_id"],
             scope=expected_scope,
             granted_by="system:shell.run_activation",
+        )
+
+    def _enable_file_create_permission(self) -> None:
+        """
+        Bootstrap check: ensure the file.create permission card always exists
+        in a granted state at startup, independent of preDeployCommand or any
+        other external setup step.
+
+        This card is keyed by the tool_name "file.create" (not the
+        file_operations capability UUID) so it stays independent from the
+        file_operations capability card used elsewhere.
+        """
+        expected_scope = file_create_permission_scope()
+        existing = self.permissions.get_for_capability("file.create")
+        if (
+            existing
+            and existing.get("permission_status") == "granted"
+            and existing.get("enabled", False)
+            and existing.get("scope") == expected_scope
+        ):
+            return
+        self.permissions.grant(
+            "file.create",
+            scope=expected_scope,
+            granted_by="system:file.create_activation",
         )
 
     # ── Startup helpers ───────────────────────────────────────────────────────
