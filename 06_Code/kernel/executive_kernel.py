@@ -106,6 +106,7 @@ class ExecutiveKernel:
             approval_gate=self.approvals,
             executor=self.file_executor.execute,
             shell_executor=self.shell_executor.execute,
+            workspace_root=self._root,
         )
         self.task_decomposer: TaskDecomposer = TaskDecomposer(str(self._root))
 

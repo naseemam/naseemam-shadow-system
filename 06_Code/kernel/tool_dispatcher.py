@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -586,8 +587,6 @@ class ToolDispatcher:
         workspace root is unknown the record is emitted to stderr only — it is
         *never* silently dropped.
         """
-        import sys
-
         command = context.get("command", "")
         classification = ShellExternalEffectClassifier.classify(command) if command else {
             "is_external_effect": False,
