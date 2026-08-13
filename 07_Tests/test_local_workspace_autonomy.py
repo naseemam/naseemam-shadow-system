@@ -548,6 +548,12 @@ class TestG_ClassifyLocalIntents(unittest.TestCase):
     def test_local_format_is_local(self):
         self.assertEqual(self._scope("local_format"), EffectScope.LOCAL_WORKSPACE)
 
+    def test_local_retry_is_local(self):
+        self.assertEqual(self._scope("local_retry"), EffectScope.LOCAL_WORKSPACE)
+
+    def test_local_fix_is_local(self):
+        self.assertEqual(self._scope("local_fix"), EffectScope.LOCAL_WORKSPACE)
+
 
 # ── Test H: classify_effect_scope — external intents ─────────────────────────
 
@@ -842,6 +848,97 @@ class TestN_KernelActionableIntents(unittest.TestCase):
 
     def test_local_lint_is_actionable(self):
         self.assertIn("local_lint", KERNEL_ACTIONABLE_INTENTS)
+
+    def test_local_retry_is_actionable(self):
+        self.assertIn("local_retry", KERNEL_ACTIONABLE_INTENTS)
+
+    def test_local_fix_is_actionable(self):
+        self.assertIn("local_fix", KERNEL_ACTIONABLE_INTENTS)
+
+
+# ── Test O: local retry/fix loop — auto-allowed without approval ──────────────
+
+class TestO_LocalRetryFixLoop(unittest.TestCase):
+    """
+    A local retry/fix loop (re-running tests, patching code, re-testing) must
+    execute completely inside the workspace without requesting Founder approval.
+    """
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.workspace = _make_workspace(self.tmp)
+        self.gate = ApprovalGate(self.workspace)
+        self.shell_spy = _make_shell_spy()
+        self.file_spy = _make_file_spy()
+        self.dispatcher = _make_dispatcher(
+            workspace=self.workspace,
+            approval_gate=self.gate,
+            shell_executor=self.shell_spy,
+            file_executor=self.file_spy,
+        )
+
+    def test_local_retry_file_update_auto_allowed(self):
+        """Patching a file during a retry loop must be auto-allowed."""
+        result = self.dispatcher.dispatch(
+            tool_name="file.create",
+            context={
+                "target": "09_Assets/runtime_workspace/home/app.js",
+                "content": "// fixed code",
+            },
+            guardian=GUARDIAN_PASS,
+            intent="local_retry",
+        )
+        self.assertTrue(result.get("executed"), f"local_retry file update must auto-execute: {result}")
+        self.assertEqual(result.get("decision"), "ALLOW")
+
+    def test_local_fix_shell_test_auto_allowed(self):
+        """Re-running tests during a fix loop must be auto-allowed."""
+        result = self.dispatcher.dispatch(
+            tool_name="shell.run",
+            context={"command": "pytest tests/"},
+            guardian=GUARDIAN_PASS,
+            intent="local_fix",
+        )
+        self.assertTrue(result.get("executed"), f"local_fix pytest must auto-execute: {result}")
+        self.assertEqual(len(self.gate.pending()), 0)
+
+    def test_full_retry_fix_loop_no_approvals(self):
+        """A complete retry/fix loop (test → patch → test) must not create any approvals."""
+        steps = [
+            ("shell.run", {"command": "pytest tests/"}),
+            ("file.create", {
+                "target": "09_Assets/runtime_workspace/home/fix.py",
+                "content": "# fix applied",
+            }),
+            ("shell.run", {"command": "pytest tests/"}),
+        ]
+        intents = ["local_fix", "local_retry", "local_fix"]
+        for (tool, ctx), intent in zip(steps, intents):
+            result = self.dispatcher.dispatch(
+                tool_name=tool,
+                context=ctx,
+                guardian=GUARDIAN_PASS,
+                intent=intent,
+            )
+            self.assertTrue(
+                result.get("executed"),
+                f"Retry/fix step ({tool}, {intent}) must auto-execute: {result}",
+            )
+        self.assertEqual(len(self.gate.pending()), 0, "No approvals created during retry/fix loop")
+
+    def test_local_retry_not_sensitive_intent(self):
+        """local_retry is classified as LOCAL_WORKSPACE, not external."""
+        scope = ExecutionBoundary.classify_effect_scope(
+            intent="local_retry", action="write", context={}
+        )
+        self.assertEqual(scope, EffectScope.LOCAL_WORKSPACE)
+
+    def test_local_fix_not_sensitive_intent(self):
+        """local_fix is classified as LOCAL_WORKSPACE, not external."""
+        scope = ExecutionBoundary.classify_effect_scope(
+            intent="local_fix", action="write", context={}
+        )
+        self.assertEqual(scope, EffectScope.LOCAL_WORKSPACE)
 
 
 if __name__ == "__main__":

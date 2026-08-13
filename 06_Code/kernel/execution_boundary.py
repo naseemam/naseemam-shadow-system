@@ -81,6 +81,8 @@ KERNEL_ACTIONABLE_INTENTS: Set[str] = {
     "local_lint",
     "local_format",
     "local_codegen",
+    "local_retry",
+    "local_fix",
     "file_create",
     "file_update",
     "file_write",
@@ -104,6 +106,8 @@ _LOCAL_WORKSPACE_INTENTS: Set[str] = {
     "local_lint",
     "local_format",
     "local_codegen",
+    "local_retry",
+    "local_fix",
 }
 
 # Intents that unconditionally require external-effect approval.
