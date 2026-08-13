@@ -407,9 +407,15 @@ class ExecutionBoundary:
                 classification = ShellExternalEffectClassifier.classify(command)
                 if classification["is_external_effect"]:
                     return EffectScope.EXTERNAL_EFFECT
+                # Only accept local if the classification reason is definitive.
+                # An empty command or unknown reason → fail conservative.
+                reason = classification.get("reason", "")
+                if not reason or reason == "empty_command":
+                    return EffectScope.EXTERNAL_EFFECT
+                return EffectScope.LOCAL_WORKSPACE
             except Exception:
-                pass
-            return EffectScope.LOCAL_WORKSPACE
+                # Classifier unavailable or raised — fail conservative
+                return EffectScope.EXTERNAL_EFFECT
 
         # 2. Tool-name-based (file.read/create/update are always local)
         if tool_name in _LOCAL_WORKSPACE_TOOLS:
@@ -425,8 +431,11 @@ class ExecutionBoundary:
         if action in _HIGH_RISK_ACTIONS_REQUIRING_APPROVAL:
             return EffectScope.EXTERNAL_EFFECT
 
-        # 5. Default: local workspace
-        return EffectScope.LOCAL_WORKSPACE
+        # 5. Default: unknown context without a proven local tool → fail conservative.
+        # Only auto-allow LOCAL_WORKSPACE if the tool is explicitly known-local OR
+        # the intent is in _LOCAL_WORKSPACE_INTENTS (already handled above).
+        # Anything else is treated as external-effect to avoid silent data exfiltration.
+        return EffectScope.EXTERNAL_EFFECT
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 

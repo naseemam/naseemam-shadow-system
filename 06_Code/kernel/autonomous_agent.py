@@ -75,12 +75,14 @@ class AutonomousAgentLoop:
 
         # Lazy import to avoid circular imports
         from kernel.dynamic_planner import DynamicPlanner
+        from kernel.goal_state_store import GoalStateStore
         self._planner = DynamicPlanner(
             providers=providers,
             workspace_root=workspace_root,
             tool_registry=getattr(kernel, "tool_registry", None),
             capability_registry=getattr(kernel, "capabilities", None),
         )
+        self._goal_store = GoalStateStore(workspace_root)
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -153,6 +155,15 @@ class AutonomousAgentLoop:
             report["goal_id"] = goal_id
             report["plan"] = plan
 
+            # Persist goal state (create or update from provided context)
+            existing_state = self._goal_store.get(goal_id)
+            if existing_state is None:
+                self._goal_store.create(goal=goal, plan=plan, goal_id=goal_id)
+            else:
+                self._goal_store.update(goal_id, plan=plan)
+            from kernel.goal_state_store import GoalStatus
+            self._goal_store.update(goal_id, status=GoalStatus.PLANNING)
+
             # Ensure project directory exists in workspace
             project_dir = str(self._workspace_root / "09_Assets" / "runtime_workspace" / "projects" / goal_id)
 
@@ -163,6 +174,8 @@ class AutonomousAgentLoop:
             pending_approvals: List[Dict[str, Any]] = []
             iterations = 0
             task_retries: Dict[str, int] = {}
+
+            self._goal_store.update(goal_id, status=GoalStatus.EXECUTING)
 
             # Build execution queue with dependency ordering
             task_queue = self._topological_sort(tasks)
@@ -214,8 +227,9 @@ class AutonomousAgentLoop:
                     })
                     continue
 
-                # Check effect scope — stop at external effects
-                if planner_task.get("effect_scope") == "external_effect":
+                # Check effect scope — stop at external effects.
+                # planner.effect_scope is a HINT only; the kernel classifier is authoritative.
+                if self._classify_task_effect_scope(planner_task) == "external_effect":
                     approval = {
                         "task_id": task_id,
                         "description": planner_task.get("description", task_id),
@@ -226,7 +240,19 @@ class AutonomousAgentLoop:
                     }
                     pending_approvals.append(approval)
                     # Register in kernel approval gate if available
-                    self._register_approval(approval)
+                    approval_id = self._register_approval(approval)
+                    # Persist WAITING_FOR_APPROVAL state
+                    self._goal_store.mark_waiting_for_approval(
+                        goal_id,
+                        pending_action=approval,
+                        approval_id=approval_id,
+                    )
+                    self._goal_store.update(
+                        goal_id,
+                        current_task=task_id,
+                        completed_tasks=completed_tasks,
+                        failed_tasks=failed_tasks,
+                    )
                     continue
 
                 # Translate to kernel task format
@@ -343,12 +369,39 @@ class AutonomousAgentLoop:
                 "elapsed_seconds": round(time.monotonic() - start_time, 1),
             }
 
+            # Persist final goal state
+            from kernel.goal_state_store import GoalStatus as _GS
+            _status_map = {
+                "goal_complete": _GS.COMPLETED,
+                "external_effect_pending": _GS.WAITING_FOR_APPROVAL,
+                "needs_founder_attention": _GS.NEEDS_FOUNDER_ATTENTION,
+                "failed": _GS.FAILED,
+                "capability_gap": _GS.FAILED,
+            }
+            _final_gs = _status_map.get(report.get("status", ""), _GS.NEEDS_FOUNDER_ATTENTION)
+            self._goal_store.update(
+                goal_id,
+                status=_final_gs,
+                completed_tasks=completed_tasks,
+                failed_tasks=failed_tasks,
+                observations=[report.get("message", "")],
+            )
+
         except Exception as exc:
             report["status"] = "failed"
             report["message"] = f"خطأ غير متوقع في حلقة الوكيل: {str(exc)}"
 
         report["completed_at"] = _now_iso()
         return report
+
+    def resume_goal(self, goal_id: str, approval_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        استئناف هدف من حيث توقف بعد موافقة المؤسس.
+
+        لا يُعيد التخطيط من البداية — يكمل من نفس pending task.
+        يُعيد حالة الهدف بعد التحديث.
+        """
+        return self._goal_store.resume_goal(goal_id, approval_id=approval_id)
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
@@ -451,8 +504,9 @@ class AutonomousAgentLoop:
             if not command:
                 return None, "missing_command_in_inputs"
 
-            # Validate command is not an external effect
-            if self._is_dangerous_command(command):
+            # Use ShellExternalEffectClassifier as the authoritative gate.
+            # _is_dangerous_command is no longer the policy decision-maker.
+            if self._classify_shell_command_is_external(command):
                 return None, f"command_classified_as_external_effect: {command}"
 
             cwd = inputs.get("cwd") or project_dir
@@ -513,22 +567,66 @@ class AutonomousAgentLoop:
             return None
 
     @staticmethod
-    def _is_dangerous_command(command: Any) -> bool:
-        """يكتشف الأوامر ذات التأثير الخارجي."""
-        if isinstance(command, list):
-            cmd_str = " ".join(str(c) for c in command)
-        else:
-            cmd_str = str(command)
-        danger_patterns = [
-            "git push", "git merge --",
-            "npm publish", "pip publish", "twine upload",
-            "railway up", "railway deploy",
-            "heroku", "vercel deploy", "netlify deploy",
-            "docker push", "kubectl apply",
-            "rm -rf /", "sudo rm",
-        ]
-        cmd_lower = cmd_str.lower()
-        return any(p in cmd_lower for p in danger_patterns)
+    def _classify_shell_command_is_external(command: Any) -> bool:
+        """
+        Uses ShellExternalEffectClassifier as the authoritative gate for shell commands.
+        If the classifier raises or is unavailable, fails conservative (treats as external).
+        """
+        try:
+            from kernel.shell_external_effect_classifier import ShellExternalEffectClassifier
+            return ShellExternalEffectClassifier.is_external_effect(command)
+        except Exception:
+            # Classifier unavailable — fail conservative: treat as external
+            return True
+
+    @staticmethod
+    def _classify_task_effect_scope(task: Dict[str, Any]) -> str:
+        """
+        Kernel-authoritative effect scope classification.
+
+        planner.effect_scope is treated as a hint only.
+        For shell.run tasks, ShellExternalEffectClassifier is the source of truth.
+        If classification fails or result is unknown → fail conservative (external_effect).
+
+        Returns "external_effect" or "local_workspace".
+        """
+        tool = (task.get("tool") or "").strip().lower()
+        inputs = task.get("inputs") or {}
+
+        if tool == "shell.run":
+            command = inputs.get("command", "")
+            if not command:
+                # No command → unknown, fail conservative
+                return "external_effect"
+            try:
+                from kernel.shell_external_effect_classifier import ShellExternalEffectClassifier
+                result = ShellExternalEffectClassifier.classify(command)
+                if result.get("is_external_effect"):
+                    return "external_effect"
+                # Only accept local if classification was definitive
+                reason = result.get("reason", "")
+                if reason in ("empty_command",) or not reason:
+                    # Unknown reason → fail conservative
+                    return "external_effect"
+                return "local_workspace"
+            except Exception:
+                # Classifier unavailable — fail conservative
+                return "external_effect"
+
+        # For non-shell tools: planner hint is accepted (file ops are local)
+        planner_hint = (task.get("effect_scope") or "").strip().lower()
+        if planner_hint == "external_effect":
+            return "external_effect"
+        if planner_hint == "local_workspace":
+            return "local_workspace"
+
+        # Unknown planner hint → use tool name heuristic
+        local_tools = {"file.read", "file.create", "file.update", "file.write"}
+        if tool in local_tools:
+            return "local_workspace"
+
+        # Anything else with unknown hint → fail conservative
+        return "external_effect"
 
     def _execute_kernel_task(self, kernel_tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
         """يُنفّذ مهام عبر ExecutiveKernel.execute_task()."""
@@ -600,19 +698,21 @@ class AutonomousAgentLoop:
 
         return {"task_id": task_id, "status": "completed"}
 
-    def _register_approval(self, approval: Dict[str, Any]) -> None:
-        """يُسجّل طلب موافقة في ApprovalGate."""
+    def _register_approval(self, approval: Dict[str, Any]) -> Optional[str]:
+        """يُسجّل طلب موافقة في ApprovalGate ويُعيد approval_id."""
         try:
             approvals = getattr(self._kernel, "approvals", None)
             if approvals is not None:
-                approvals.request(
+                approval_id = approvals.request(
                     action="external_effect",
                     description=approval.get("description", "external_effect"),
                     requested_by="autonomous_agent_loop",
                     context=approval,
                 )
+                return approval_id
         except Exception:
             pass
+        return None
 
     @staticmethod
     def _topological_sort(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -674,48 +774,8 @@ class AutonomousAgentLoop:
 
 # ── Router helper (used by ameer_server.py) ───────────────────────────────────
 
-_AUTONOMOUS_GOAL_PATTERNS = [
-    # Arabic multi-step goal indicators
-    "نظام متكامل",
-    "نظام كامل",
-    "صمم وابنِ",
-    "صمم وابن",
-    "اصنع نظام",
-    "ابنِ نظام",
-    "ابن نظام",
-    "أنشئ نظام",
-    "انشئ نظام",
-    "واجهة احترافية",
-    "لوحة إدارة",
-    "لوحة تحكم",
-    "قاعدة بيانات",
-    "اختبره وأصلح",
-    "جهزه للنشر",
-    "backend",
-    "frontend",
-    "api server",
-    "rest api",
-    "full stack",
-    "fullstack",
-    # English multi-step goal indicators
-    "design and build",
-    "build a complete",
-    "build a full",
-    "create a complete",
-    "create a full",
-    "build and test",
-    "integrated system",
-    "management system",
-    "with database",
-    "admin panel",
-    "admin dashboard",
-    "employee management",
-    "inventory management",
-    "prepare for deployment",
-    "ready for production",
-]
-
-# Patterns that indicate a simple command (not autonomous)
+# Explicit simple commands that should stay in TaskDecomposer (backward-compat).
+# These are precise, well-known single-action requests — not open-ended goals.
 _SIMPLE_COMMAND_PATTERNS = [
     "الصفحة الرئيسية",
     "صفحة رئيسية",
@@ -736,30 +796,39 @@ _SIMPLE_COMMAND_PATTERNS = [
 ]
 
 
-def is_autonomous_goal(query: str) -> bool:
+def is_autonomous_goal(query: str, request_type: str = "execution") -> bool:
     """
-    يكتشف هل الطلب هدف ذاتي متعدد الخطوات أم أمر بسيط.
+    Routing decision: does this request belong to AutonomousAgentLoop?
 
-    يُعيد True للأهداف المعقدة التي تستفيد من AutonomousAgentLoop.
+    Rules (no hard-coded goal-content keywords):
+    1. Only execution requests enter AutonomousAgentLoop.
+       Conversational / question / greeting → False.
+    2. Any execution request that is not a known simple command AND has a
+       non-trivial goal (> 30 chars) is routed to AutonomousAgentLoop by default.
+    3. TaskDecomposer is preserved only as backward-compat for the known simple
+       commands in _SIMPLE_COMMAND_PATTERNS.
+
+    This means: routing is determined by request_type + goal complexity,
+    NOT by recognising words like "نظام متكامل" or "admin dashboard".
     """
-    if not query or len(query) < 20:
+    if not query or not query.strip():
+        return False
+
+    # Conversational / non-execution types never go to autonomous
+    rt = (request_type or "").strip().lower()
+    if rt in ("question", "greeting", "analysis", "memory", "creative"):
         return False
 
     q_lower = query.lower()
 
-    # Exclude simple known commands first
+    # Explicit simple commands stay in TaskDecomposer
     for pattern in _SIMPLE_COMMAND_PATTERNS:
         if pattern.lower() in q_lower:
             return False
 
-    # Check for autonomous goal patterns
-    matches = sum(1 for p in _AUTONOMOUS_GOAL_PATTERNS if p.lower() in q_lower)
-
-    # Require at least one explicit pattern match
-    # OR a long goal (> 100 chars) that contains execution verbs
-    if matches >= 1:
+    # Any execution request with a non-trivial goal → AutonomousAgentLoop
+    if rt == "execution" and len(query.strip()) > 30:
         return True
 
-    execution_verbs = ["ابن", "أنشئ", "صمم", "build", "create", "design", "develop", "implement"]
-    has_exec_verb = any(v.lower() in q_lower for v in execution_verbs)
-    return has_exec_verb and len(query) > 100
+    # Short execution requests or unknown types → TaskDecomposer
+    return False

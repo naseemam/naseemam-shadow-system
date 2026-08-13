@@ -518,7 +518,8 @@ async def ask(request: Request):
     if KERNEL:
         try:
             from kernel.autonomous_agent import is_autonomous_goal as _is_auto_goal
-            _route_to_autonomous = _is_auto_goal(q)
+            _plan_request_type = str(getattr(plan, "request_type", "execution") or "execution")
+            _route_to_autonomous = _is_auto_goal(q, request_type=_plan_request_type)
         except Exception:
             _route_to_autonomous = False
 
