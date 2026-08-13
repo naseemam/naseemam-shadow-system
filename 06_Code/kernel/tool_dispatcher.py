@@ -560,6 +560,114 @@ class ToolDispatcher:
             raise ValueError("target_outside_file_read_scope")
         return str(resolved.relative_to(workspace_root)).replace("\\", "/")
 
+    # ── Audit / Trace ────────────────────────────────────────────────────────
+
+    def _emit_shell_audit(
+        self,
+        tool_name: str,
+        context: Mapping[str, Any],
+        result: dict[str, Any],
+    ) -> None:
+        """
+        Write a structured audit record for every shell.run dispatch attempt.
+
+        Every record contains:
+        - request_id / execution_id
+        - tool_name
+        - command or command_classification
+        - authorization_result (ALLOW / DENY / PENDING)
+        - approval_required
+        - approval_status
+        - execution_result summary
+        - timestamp
+
+        Records are appended to .ameer/shell_audit.jsonl (one JSON object per
+        line) inside the workspace root so they survive restarts.  If the
+        workspace root is unknown the record is emitted to stderr only — it is
+        *never* silently dropped.
+        """
+        import sys
+
+        command = context.get("command", "")
+        classification = ShellExternalEffectClassifier.classify(command) if command else {
+            "is_external_effect": False,
+            "command_root": "",
+            "subcommand": "",
+            "reason": "empty_command",
+        }
+
+        # Derive approval fields from policy_result embedded in result.
+        approval_required: bool = bool(result.get("approval_required", False))
+        approval_status: str = "n/a"
+        approval_id = result.get("approval_id")
+
+        policy_detail = result.get("detail") or {}
+        if result.get("status") == "approval_required" or approval_required:
+            approval_status = "pending"
+        elif result.get("decision") == "ALLOW" and result.get("executed"):
+            approval_status = "approved" if approval_required else "not_required"
+        elif result.get("decision") == "DENY":
+            if approval_required:
+                approval_status = "denied_no_approval"
+            else:
+                approval_status = "denied"
+
+        # If the approval_gate has an approval_id, look up its status.
+        if approval_id and self._approval_gate is not None:
+            is_approved_fn = getattr(self._approval_gate, "is_approved", None)
+            if callable(is_approved_fn):
+                try:
+                    if is_approved_fn(approval_id):
+                        approval_status = "approved"
+                except Exception:
+                    pass
+
+        execution_id = str(uuid.uuid4())
+
+        record: dict[str, Any] = {
+            "execution_id": execution_id,
+            "request_id": (
+                (result.get("execution_request") or {}).get("request_id")
+                or approval_id
+                or execution_id
+            ),
+            "tool_name": tool_name,
+            "command": command if isinstance(command, str) else json.dumps(command),
+            "command_classification": {
+                "is_external_effect": classification.get("is_external_effect"),
+                "command_root": classification.get("command_root"),
+                "subcommand": classification.get("subcommand"),
+                "reason": classification.get("reason"),
+            },
+            "authorization_result": result.get("decision", "DENY"),
+            "approval_required": approval_required,
+            "approval_id": approval_id,
+            "approval_status": approval_status,
+            "execution_result": (
+                result.get("result") if result.get("executed") else None
+            ),
+            "executed": bool(result.get("executed")),
+            "reason": result.get("reason", ""),
+            "timestamp": _now_iso(),
+        }
+
+        line = json.dumps(record, default=str, ensure_ascii=False)
+
+        # Persist to audit log file.
+        workspace_root = self._workspace_root
+        if workspace_root is not None:
+            audit_dir = workspace_root / ".ameer"
+            try:
+                audit_dir.mkdir(parents=True, exist_ok=True)
+                audit_path = audit_dir / "shell_audit.jsonl"
+                with open(audit_path, "a", encoding="utf-8") as fh:
+                    fh.write(line + "\n")
+            except Exception as exc:
+                print(f"[ToolDispatcher] shell audit write error: {exc}", file=sys.stderr)
+
+        # Always emit to stderr as secondary trace.
+        print(f"[shell_audit] {line}", file=sys.stderr)
+
     @staticmethod
     def _deny(
         reason: str,
