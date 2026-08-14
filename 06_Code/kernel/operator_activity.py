@@ -29,11 +29,14 @@ class OperatorActivityStore:
 
     def _load(self) -> None:
         if not self.path.exists():
+            self.data = {"events": []}
             return
         try:
             parsed = json.loads(self.path.read_text(encoding="utf-8"))
             if isinstance(parsed, dict) and isinstance(parsed.get("events"), list):
                 self.data = parsed
+            else:
+                self.data = {"events": []}
         except (OSError, ValueError, json.JSONDecodeError):
             self.data = {"events": []}
 
@@ -43,6 +46,7 @@ class OperatorActivityStore:
     def record(self, evidence: Dict[str, Any], *, status: str = "completed") -> Dict[str, Any] | None:
         if not evidence.get("verified"):
             return None
+        self._load()
         event = {
             "at": _now(),
             "status": status,
@@ -58,5 +62,6 @@ class OperatorActivityStore:
         return event
 
     def recent(self, limit: int = 20) -> list[Dict[str, Any]]:
+        self._load()
         safe_limit = max(1, min(int(limit), 100))
         return list(reversed(self.data.get("events", [])[-safe_limit:]))
