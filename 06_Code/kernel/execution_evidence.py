@@ -31,6 +31,11 @@ _CAPABILITY_CLAIMS = (
     "i have permission", "i have full access", "i can deploy to railway",
 )
 
+_EXTERNAL_CLAIM_MARKERS = (
+    "ريلواي", "railway", "نشر", "deploy", "deployment", "دمج", "merge", "جيت هوب", "github",
+    "السجلات", "logs", "حالة التطبيق", "production",
+)
+
 _REAL_ACTION_STAGES = {"agent_action", "delivery_action", "final_approval_execute"}
 
 
@@ -148,22 +153,56 @@ def claims_capability(text: str) -> bool:
     return _contains(text, _CAPABILITY_CLAIMS)
 
 
+def claims_external_effect(text: str) -> bool:
+    return _contains(text, _EXTERNAL_CLAIM_MARKERS)
+
+
+def _proof_line(evidence: Dict[str, Any]) -> str:
+    file_count = int(evidence.get("file_count") or 0)
+    completed = int(evidence.get("completed_units") or evidence.get("final_completed") or 0)
+    proof = f"✅ تنفيذ موثق: {completed} خطوة فعلية"
+    if file_count:
+        proof += f"، {file_count} ملف متغيّر"
+    operation_ids = list(evidence.get("operation_ids") or [])
+    statuses = list(evidence.get("operation_statuses") or [])
+    if operation_ids:
+        proof += "، مرجع عملية: " + ", ".join(operation_ids[:3])
+    if statuses:
+        proof += "، الحالة: " + ", ".join(statuses[:3])
+    return proof
+
+
 def enforce_evidence_on_reply(reply: str, evidence: Dict[str, Any]) -> str:
     text = (reply or "").strip()
+    kind = str(evidence.get("kind") or "none")
     verified = bool(evidence.get("verified"))
 
+    # Broad capability claims are never accepted merely because the model says so.
+    # A successful external operation only proves that specific operation worked,
+    # not "full access" to an entire provider/account.
+    if claims_capability(text):
+        if kind == "external_operation" and verified:
+            return (
+                "✅ ثبت أن الإجراء الخارجي المحدد نجح وفق دليل التنفيذ، "
+                "لكن هذا لا يثبت صلاحية كاملة على المزود أو الحساب كله.\n\n"
+                + _proof_line(evidence)
+            )
+        return (
+            "⚠️ لا أستطيع تأكيد هذه الصلاحية من الرد المحادثي وحده. "
+            "يجب إثبات أن الـcapability مفعلة وأن بيانات الاعتماد/الاتصال متاحة في الـruntime قبل ادعاء الوصول أو النشر."
+        )
+
+    # Claims about Railway/GitHub/deployment/log verification need external-operation
+    # evidence. A local file write is real work, but it is not proof of deployment.
+    if (claims_execution(text) or claims_verification(text)) and claims_external_effect(text):
+        if not (verified and kind == "external_operation"):
+            return (
+                "⚠️ لم يثبت هذا الادعاء الخارجي. قد توجد تغييرات داخلية أو ملفات معدلة، "
+                "لكن لا يوجد Deployment/Job/عملية خارجية موثقة تدعم القول إن النشر أو التحقق الخارجي تم."
+            )
+
     if verified:
-        file_count = int(evidence.get("file_count") or 0)
-        completed = int(evidence.get("completed_units") or evidence.get("final_completed") or 0)
-        proof = f"✅ تنفيذ موثق: {completed} خطوة فعلية"
-        if file_count:
-            proof += f"، {file_count} ملف متغيّر"
-        operation_ids = list(evidence.get("operation_ids") or [])
-        statuses = list(evidence.get("operation_statuses") or [])
-        if operation_ids:
-            proof += "، مرجع عملية: " + ", ".join(operation_ids[:3])
-        if statuses:
-            proof += "، الحالة: " + ", ".join(statuses[:3])
+        proof = _proof_line(evidence)
         if proof not in text:
             text = (text + "\n\n" + proof).strip()
         return text
@@ -179,12 +218,6 @@ def enforce_evidence_on_reply(reply: str, evidence: Dict[str, Any]) -> str:
         return (
             "⚠️ لم تبدأ عملية تنفيذ فعلية لهذا الإجراء بعد. "
             "لن أقول «سأقوم الآن» إلا بعد إنشاء Job/Tool call حقيقي يمكن تتبعه."
-        )
-
-    if claims_capability(text):
-        return (
-            "⚠️ لا أستطيع تأكيد هذه الصلاحية من الرد المحادثي وحده. "
-            "يجب إثبات أن الـcapability مفعلة وأن بيانات الاعتماد/الاتصال متاحة في الـruntime قبل ادعاء الوصول أو النشر."
         )
 
     return text
