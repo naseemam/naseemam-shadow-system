@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
+import sys
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,6 +12,33 @@ from typing import Any, Dict, List, Optional
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# ─── DIAGNOSTIC-ONLY logger ────────────────────────────────────────────────
+# Instrumentation added to trace the has_executive_signals decision point in
+# ExecutiveConversationEngine.execute(). This does NOT affect behavior — it
+# only emits structured JSON log lines to stdout for runtime diagnosis.
+_diag_handler = logging.StreamHandler(sys.stdout)
+_diag_handler.setFormatter(logging.Formatter("%(message)s"))
+_diag_logger = logging.getLogger("ameer.executive_conversation.diagnostic")
+_diag_logger.setLevel(logging.INFO)
+_diag_logger.propagate = False
+if not _diag_logger.handlers:
+    _diag_logger.addHandler(_diag_handler)
+
+
+def _diag_log(event: str, **kwargs) -> None:
+    """DIAGNOSTIC-ONLY: emit a structured JSON log line. Never raises."""
+    try:
+        record = {
+            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "event": event,
+        }
+        record.update(kwargs)
+        _diag_logger.info(json.dumps(record, ensure_ascii=False))
+    except Exception:
+        # Diagnostic logging must never break execution.
+        pass
 
 
 @dataclass
@@ -278,6 +307,11 @@ class ExecutiveConversationEngine:
         executive context to add (no risks, no pending approvals, no initiative signals).
         When the ECE has real context to surface, it builds from scratch.
         """
+        # DIAGNOSTIC-ONLY: unique trace id used to correlate the diagnostic
+        # log lines emitted below. Does not affect behavior in any way.
+        trace_id = f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{hash(query) % 10000:04d}"
+
+
         # Identity questions must always receive the constitutional identity reply
         # and must not be overridden by project-continuity or initiative text.
         _identity_tokens = {"من أنت", "من انت", "عرف بنفسك", "who are you", "what are you"}
@@ -323,6 +357,44 @@ class ExecutiveConversationEngine:
         )
         _is_conversational = _request_type in _conversational_types or not _request_type
 
+        # DIAGNOSTIC-ONLY: snapshot of decision inputs right before the
+        # has_executive_signals boolean is computed. No behavior is affected.
+        _diag_log(
+            "ece_pre_decision",
+            trace_id=trace_id,
+            query_preview=(query or "")[:80],
+            request_type=_request_type,
+            is_first_turn=is_first_turn,
+            is_conversational=_is_conversational,
+            active_projects_count=len(active_projects or []),
+            pending_approvals_count=len(pending_approvals or []),
+            stalled_count=len(_stalled),
+            planner_risks_count=len((planner_state.risks or [])),
+        )
+
+        # DIAGNOSTIC-ONLY: evaluate and log each sub-condition individually so
+        # we can see exactly which OR clause triggers has_executive_signals.
+        _cond_pending_approvals = bool(not _is_conversational and pending_approvals)
+        _cond_stalled = bool(not _is_conversational and _stalled)
+        _cond_planner_risks = bool(
+            not _is_conversational and (planner_state.risks or planner_state.detected_risks)
+        )
+        _cond_first_turn_active_projects = bool(
+            not _is_conversational and is_first_turn and active_projects
+        )
+        _cond_guardian_not_pass = bool(
+            reasoning_output and reasoning_output.get("reasoning", {}).get("guardian_status") != "pass"
+        )
+        _diag_log(
+            "ece_sub_conditions",
+            trace_id=trace_id,
+            cond_pending_approvals=_cond_pending_approvals,
+            cond_stalled=_cond_stalled,
+            cond_planner_risks=_cond_planner_risks,
+            cond_first_turn_active_projects=_cond_first_turn_active_projects,
+            cond_guardian_not_pass=_cond_guardian_not_pass,
+        )
+
         has_executive_signals = bool(
             # Pending approvals surface only for non-conversational requests.
             # Stale/persistent approvals must not hijack a purely conversational turn.
@@ -331,6 +403,16 @@ class ExecutiveConversationEngine:
             or (not _is_conversational and (planner_state.risks or planner_state.detected_risks))
             or (not _is_conversational and is_first_turn and active_projects)
             or (reasoning_output and reasoning_output.get("reasoning", {}).get("guardian_status") != "pass")
+        )
+
+        # DIAGNOSTIC-ONLY: log the computed decision and which path will be
+        # taken, before the branch is executed. No behavior is affected.
+        _diag_log(
+            "ece_decision",
+            trace_id=trace_id,
+            has_executive_signals=has_executive_signals,
+            path=("_build_from_buffer" if has_executive_signals else "draft_reply"),
+            draft_reply_preview=(draft_reply or "")[:120],
         )
 
         if has_executive_signals:
@@ -361,6 +443,15 @@ class ExecutiveConversationEngine:
                     reasoning_output=reasoning_output,
                     dry_run=dry_run,
                 )
+
+        # DIAGNOSTIC-ONLY: log the finalized reply and the path actually taken,
+        # right before returning. No behavior is affected.
+        _diag_log(
+            "ece_final_reply",
+            trace_id=trace_id,
+            path_taken=("_build_from_buffer" if has_executive_signals else "draft_reply"),
+            final_reply_preview=(reply or "")[:120],
+        )
 
         if not dry_run:
             self.memory.update_after_reply(query, reply, planner_state)
