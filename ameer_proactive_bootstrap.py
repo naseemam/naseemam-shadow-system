@@ -2,14 +2,21 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import sys
+
+# ─── 06_Code on sys.path — must be first so kernel imports resolve everywhere ─
+_CODE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "06_Code")
+if _CODE_ROOT not in sys.path:
+    sys.path.insert(0, _CODE_ROOT)
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse, JSONResponse
 
-from ameer_identity_bootstrap import app
-import ameer_server
-from kernel.proactive_events import ProactiveEventStore
+from ameer_identity_bootstrap import app  # noqa: E402
+import ameer_server  # noqa: E402
+from kernel.proactive_events import ProactiveEventStore  # noqa: E402
 
 
 PROACTIVE = ProactiveEventStore(ameer_server.REPO_ROOT)
