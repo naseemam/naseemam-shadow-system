@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 import ameer_server
 from kernel.expanded_agent import ExpandedAgentExecutiveKernel
 from kernel.execution_boundary import ExecutionBoundary
+from kernel.multi_client_continuity import MultiClientContinuity
 from kernel.repository_execution import (
     RepositoryExecutionAuthorization,
     RepositoryFileExecutor,
@@ -65,18 +66,96 @@ ameer_server.KERNEL_ACTIONABLE_INTENTS.update({
     "final_approval_execute",
 })
 app = ameer_server.app
+CONTINUITY = MultiClientContinuity(ameer_server.REPO_ROOT)
+
+
+def _is_local_request(request: Request) -> bool:
+    host = str(getattr(getattr(request, "client", None), "host", "") or "")
+    return host in {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+def _require_agent_access(request: Request) -> None:
+    if CONTINUITY.authorized(
+        request.headers.get("authorization", ""),
+        local_request=_is_local_request(request),
+    ):
+        return
+    if not CONTINUITY.authentication_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Remote agent access requires AMEER_AGENT_API_TOKEN in Railway variables.",
+        )
+    raise HTTPException(status_code=401, detail="Invalid or missing agent API token")
 
 
 @app.get("/agent/capabilities")
-async def agent_capabilities():
+async def agent_capabilities(request: Request):
+    _require_agent_access(request)
+    capabilities = ameer_server.KERNEL.expanded_capabilities()
+    capabilities["mobility"] = CONTINUITY.snapshot()
     return ameer_server.utf8_json_response(
-        ameer_server.KERNEL.expanded_capabilities(),
+        capabilities,
         headers=ameer_server.runtime_headers(workspace_root=ameer_server.REPO_ROOT),
     )
 
 
+@app.get("/agent/continuity")
+async def agent_continuity(request: Request):
+    _require_agent_access(request)
+    return ameer_server.utf8_json_response(
+        CONTINUITY.snapshot(),
+        headers=ameer_server.runtime_headers(workspace_root=ameer_server.REPO_ROOT),
+    )
+
+
+@app.post("/agent/client/register")
+async def agent_client_register(request: Request):
+    _require_agent_access(request)
+    payload = await request.json()
+    try:
+        result = CONTINUITY.register_client(
+            client_id=str(payload.get("client_id") or ""),
+            client_type=str(payload.get("client_type") or ""),
+            channel=str(payload.get("channel") or "text"),
+            device_name=str(payload.get("device_name") or ""),
+            app_version=str(payload.get("app_version") or ""),
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ameer_server.utf8_json_response(result)
+
+
+@app.post("/agent/session/open")
+async def agent_session_open(request: Request):
+    _require_agent_access(request)
+    payload = await request.json()
+    try:
+        result = CONTINUITY.open_session(
+            client_id=str(payload.get("client_id") or ""),
+            channel=str(payload.get("channel") or "") or None,
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ameer_server.utf8_json_response(result)
+
+
+@app.post("/agent/session/handoff")
+async def agent_session_handoff(request: Request):
+    _require_agent_access(request)
+    payload = await request.json()
+    try:
+        result = CONTINUITY.handoff(
+            client_id=str(payload.get("client_id") or ""),
+            channel=str(payload.get("channel") or "") or None,
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ameer_server.utf8_json_response(result)
+
+
 @app.get("/agent/approvals")
-async def agent_approvals():
+async def agent_approvals(request: Request):
+    _require_agent_access(request)
     return ameer_server.utf8_json_response(
         {
             "approval_model": "final_gate_only",
@@ -88,6 +167,7 @@ async def agent_approvals():
 
 @app.post("/agent/action")
 async def agent_action(request: Request):
+    _require_agent_access(request)
     try:
         payload = await request.json()
     except Exception as exc:
