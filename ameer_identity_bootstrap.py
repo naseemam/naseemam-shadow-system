@@ -5,18 +5,31 @@ import json
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-from kernel.execution_evidence import extract_execution_evidence, enforce_evidence_on_reply
-from kernel.operator_activity import OperatorActivityStore
-from kernel.provider_identity_patch import install_provider_identity_patch
+# NOTE: kernel imports are deferred to request/setup time (see below) so that
+# this module can be imported before sys.path includes 06_Code. ameer_server
+# is responsible for adding 06_Code to sys.path, and it must run first.
 
-# Install identity ownership before the executive kernel is constructed.
-install_provider_identity_patch()
+
+def _install_provider_identity_patch() -> None:
+    # Install identity ownership before the executive kernel is constructed.
+    from kernel.provider_identity_patch import install_provider_identity_patch
+
+    install_provider_identity_patch()
+
+
+_install_provider_identity_patch()
 
 from ameer_delivery_bootstrap import app  # noqa: E402,F401
 import ameer_server  # noqa: E402
 
 
-ACTIVITY = OperatorActivityStore(ameer_server.REPO_ROOT)
+def _build_activity_store():
+    from kernel.operator_activity import OperatorActivityStore
+
+    return OperatorActivityStore(ameer_server.REPO_ROOT)
+
+
+ACTIVITY = _build_activity_store()
 
 
 class TruthfulExecutionMiddleware(BaseHTTPMiddleware):
@@ -28,6 +41,8 @@ class TruthfulExecutionMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request, call_next):
+        from kernel.execution_evidence import extract_execution_evidence, enforce_evidence_on_reply
+
         response = await call_next(request)
         if request.url.path != "/ask" or response.status_code >= 400:
             return response
