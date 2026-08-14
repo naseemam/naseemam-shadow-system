@@ -7,14 +7,17 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
 import ameer_server
+from kernel.execution_bridge_patch import install_execution_bridge_patch
 from kernel.expanded_agent import ExpandedAgentExecutiveKernel
 from kernel.execution_boundary import ExecutionBoundary
 from kernel.multi_client_continuity import MultiClientContinuity
+from kernel.operator_activity import OperatorActivityStore
 from kernel.repository_execution import (
     RepositoryExecutionAuthorization,
     RepositoryFileExecutor,
     RepositoryPlanValidator,
     repository_file_create_permission_scope,
+    repository_file_read_permission_scope,
 )
 from kernel.stage_autonomy_patch import install_stage_autonomy_patch
 from kernel.tool_dispatcher import ToolDispatcher
@@ -23,11 +26,22 @@ from kernel.tool_dispatcher import ToolDispatcher
 # approval for generic execution words and interrupt continuation when stale
 # tasks existed. The new governance model owns approval at final stage gates.
 install_stage_autonomy_patch()
+# Natural Arabic continuation/correction commands must reach the executable lane,
+# not stop at a fluent provider response.
+install_execution_bridge_patch()
 
 
 def _build_kernel() -> ExpandedAgentExecutiveKernel:
     repo_root = Path(ameer_server.REPO_ROOT).resolve()
     kernel = ExpandedAgentExecutiveKernel(repo_root)
+    # Runtime state may still contain the old runtime_workspace-only cards.
+    # Re-assert the controlled repository grants on every boot so the live agent
+    # can inspect and modify its approved code surface before it plans a change.
+    kernel.permissions.grant(
+        "file.read",
+        scope=repository_file_read_permission_scope(),
+        granted_by="system:controlled_repository_activation",
+    )
     kernel.permissions.grant(
         "file.create",
         scope=repository_file_create_permission_scope(),
@@ -73,6 +87,7 @@ ameer_server.KERNEL_ACTIONABLE_INTENTS.update({
 })
 app = ameer_server.app
 CONTINUITY = MultiClientContinuity(ameer_server.REPO_ROOT)
+ACTIVITY = OperatorActivityStore(ameer_server.REPO_ROOT)
 
 
 def _is_local_request(request: Request) -> bool:
@@ -166,6 +181,34 @@ async def agent_approvals(request: Request):
         {
             "approval_model": "final_gate_only",
             "pending": ameer_server.KERNEL.final_gate.pending(),
+        },
+        headers=ameer_server.runtime_headers(workspace_root=ameer_server.REPO_ROOT),
+    )
+
+
+@app.get("/ui/runtime")
+async def ui_runtime_status():
+    """Safe, read-only status for the public operator shell.
+
+    Approval identifiers, commands, chat text, credentials, and payloads are never
+    exposed here. The page can still show that a final decision is waiting and
+    can show durable proof of real executions across reloads.
+    """
+    pending = ameer_server.KERNEL.final_gate.pending()
+    approvals = [
+        {
+            "action": str(item.get("action") or "final_action"),
+            "summary": str(item.get("summary") or "موافقة نهائية مطلوبة"),
+            "created_at": item.get("created_at"),
+        }
+        for item in pending
+    ]
+    return ameer_server.utf8_json_response(
+        {
+            "approval_model": "final_gate_only",
+            "pending_approval_count": len(approvals),
+            "pending_approvals": approvals,
+            "activity": ACTIVITY.recent(30),
         },
         headers=ameer_server.runtime_headers(workspace_root=ameer_server.REPO_ROOT),
     )
