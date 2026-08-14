@@ -137,7 +137,7 @@ MD_GLOB = os.path.join(REPO_ROOT, "**", "*.md")
 WEB_INDEX = os.path.join(REPO_ROOT, "09_Assets", "web", "index.html")
 DEBUG_MODE = os.getenv("AMEER_DEBUG", "0").lower() in {"1", "true", "yes", "on"}
 RUNTIME_METADATA = runtime_metadata(workspace_root=REPO_ROOT)
-KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic", "file_read", "run_test"}
+KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic", "file_read", "run_test", "autonomous_goal"}
 
 # ─── Executive Operating Kernel ───────────────────────────────────────────────
 
@@ -348,6 +348,31 @@ ORCHESTRATOR = AmeerOrchestrator(
 EXECUTIVE_BRAIN = ExecutiveBrainClass(normalize_fn=normalize_arabic) if ExecutiveBrainClass else None
 RESPONSE_FORMATTER = ResponseFormatterClass() if ResponseFormatterClass else None
 
+# ─── Autonomous Agent Loop — initialize after ExecutiveBrain (needs providers) ──
+def _init_autonomous_agent():
+    if KERNEL is None or EXECUTIVE_BRAIN is None:
+        return
+    try:
+        providers = getattr(EXECUTIVE_BRAIN, "_providers", [])
+        KERNEL.init_autonomous_agent(providers)
+    except Exception:
+        pass
+
+_init_autonomous_agent()
+
+
+def _run_autonomous_goal(query: str, context: dict) -> dict:
+    """Route an open-ended goal through AutonomousAgentLoop."""
+    if KERNEL is None:
+        return {"status": "capability_gap", "message": "Kernel unavailable."}
+    agent = getattr(KERNEL, "autonomous_agent", None)
+    if agent is None:
+        return {"status": "capability_gap", "message": "AutonomousAgentLoop not initialized."}
+    try:
+        return agent.accept_goal(goal=query, context=context)
+    except Exception as exc:
+        return {"status": "failed", "message": str(exc)}
+
 @app.post('/ask')
 async def ask(request: Request):
     request_id = str(uuid.uuid4())
@@ -483,51 +508,111 @@ async def ask(request: Request):
     kernel_execution_trace: dict | None = None
     kernel_execution_reply: str | None = None
     kernel_detected_intent: str = "unknown"
+    autonomous_execution_report: dict | None = None
+
+    # ── Routing: autonomous goal vs simple command ────────────────────────────
+    # Open-ended / multi-step goals → AutonomousAgentLoop
+    # Simple known commands → existing TaskDecomposer
+    _guardian_ok_for_exec = str((guardian or {}).get("status", "")).strip().lower() == "pass"
+
     if KERNEL:
         try:
-            decomp = KERNEL.task_decomposer.decompose(q)
-            kernel_detected_intent = str(decomp.get("intent", "unknown") or "unknown").strip().lower()
-            if kernel_detected_intent != "unknown":
-                _request_type_for_boundary = str(
-                    getattr(plan, "request_type", "")
-                ).strip().lower()
-                kernel_execution_trace = KERNEL.execute_command(
-                    q,
-                    guardian=guardian,
-                    request_type=_request_type_for_boundary or "execution",
-                    requested_by="ask_endpoint",
-                )
-                final_exec = kernel_execution_trace.get("final", {})
-                exec_results = final_exec.get("results") or []
-                if final_exec.get("accepted"):
-                    if kernel_detected_intent == "file_read":
-                        read_result = next(
-                            (
-                                item for item in exec_results
-                                if item.get("status") == "completed" and item.get("content") is not None
-                            ),
-                            None,
-                        )
-                        if read_result is not None:
-                            kernel_execution_reply = str(read_result.get("content") or "")
-                    else:
-                        completed = final_exec.get("completed", 0)
-                        files = final_exec.get("files_created") or []
-                        file_list = "، ".join(f for f in files if f) if files else ""
-                        kernel_execution_reply = (
-                            f"✅ تم بناء الصفحة الرئيسية بنجاح! "
-                            f"أُنشئت {completed} ملفات"
-                            + (f": {file_list}" if file_list else "")
-                            + ".\n\n"
-                            "يمكنك معاينتها الآن عبر رابط Preview أدناه."
-                        )
-                elif not final_exec.get("accepted") and kernel_execution_trace.get("pipeline"):
-                    kernel_execution_reply = (
-                        "⚠️ لم يتمكن أمير من إتمام التنفيذ. "
-                        "راجع خطوات Pipeline أدناه لمعرفة سبب التوقف."
-                    )
+            from kernel.autonomous_agent import is_autonomous_goal as _is_auto_goal
+            _plan_request_type = str(getattr(plan, "request_type", "execution") or "execution")
+            _route_to_autonomous = _is_auto_goal(q, request_type=_plan_request_type)
         except Exception:
-            pass
+            _route_to_autonomous = False
+
+        if _route_to_autonomous and _guardian_ok_for_exec:
+            # Route to AutonomousAgentLoop
+            try:
+                _auto_context = {
+                    "founder_context": founder_context,
+                    "active_projects": active_projects,
+                    "workspace_summary": workspace_summary,
+                }
+                autonomous_execution_report = _run_autonomous_goal(q, _auto_context)
+                kernel_detected_intent = "autonomous_goal"
+                _auto_status = autonomous_execution_report.get("status", "")
+                _auto_msg = autonomous_execution_report.get("message", "")
+                _exec_summary = autonomous_execution_report.get("execution_summary", {})
+                _completed = _exec_summary.get("completed", 0)
+                _total = _exec_summary.get("total_tasks", 0)
+                _failed = _exec_summary.get("failed", 0)
+                _pending_approval = _exec_summary.get("pending_approval", 0)
+
+                if _auto_status == "goal_complete":
+                    kernel_execution_reply = (
+                        f"✅ اكتمل الهدف بنجاح.\n\n"
+                        f"أُنجزت {_completed} من {_total} مهمة.\n\n"
+                        f"{_auto_msg}"
+                    )
+                elif _auto_status == "external_effect_pending":
+                    kernel_execution_reply = (
+                        f"⏸️ اكتمل العمل المحلي. {_pending_approval} مهمة تنتظر موافقتك للتأثيرات الخارجية.\n\n"
+                        f"{_auto_msg}"
+                    )
+                elif _auto_status == "needs_founder_attention":
+                    kernel_execution_reply = (
+                        f"⚠️ يحتاج إلى مراجعتك.\n\n"
+                        f"أُنجزت {_completed} مهمة، فشلت {_failed} مهمة.\n\n"
+                        f"{_auto_msg}"
+                    )
+                elif _auto_status == "capability_gap":
+                    kernel_execution_reply = (
+                        f"ℹ️ التخطيط الديناميكي غير متاح حاليًا (inference provider مطلوب).\n\n"
+                        f"{_auto_msg}"
+                    )
+                else:
+                    kernel_execution_reply = _auto_msg or "اكتمل التنفيذ."
+            except Exception:
+                pass
+        elif KERNEL:
+            # Simple command path — existing TaskDecomposer
+            try:
+                decomp = KERNEL.task_decomposer.decompose(q)
+                kernel_detected_intent = str(decomp.get("intent", "unknown") or "unknown").strip().lower()
+                if kernel_detected_intent != "unknown":
+                    _request_type_for_boundary = str(
+                        getattr(plan, "request_type", "")
+                    ).strip().lower()
+                    kernel_execution_trace = KERNEL.execute_command(
+                        q,
+                        guardian=guardian,
+                        request_type=_request_type_for_boundary or "execution",
+                        requested_by="ask_endpoint",
+                    )
+                    final_exec = kernel_execution_trace.get("final", {})
+                    exec_results = final_exec.get("results") or []
+                    if final_exec.get("accepted"):
+                        if kernel_detected_intent == "file_read":
+                            read_result = next(
+                                (
+                                    item for item in exec_results
+                                    if item.get("status") == "completed" and item.get("content") is not None
+                                ),
+                                None,
+                            )
+                            if read_result is not None:
+                                kernel_execution_reply = str(read_result.get("content") or "")
+                        else:
+                            completed = final_exec.get("completed", 0)
+                            files = final_exec.get("files_created") or []
+                            file_list = "، ".join(f for f in files if f) if files else ""
+                            kernel_execution_reply = (
+                                f"✅ تم بناء الصفحة الرئيسية بنجاح! "
+                                f"أُنشئت {completed} ملفات"
+                                + (f": {file_list}" if file_list else "")
+                                + ".\n\n"
+                                "يمكنك معاينتها الآن عبر رابط Preview أدناه."
+                            )
+                    elif not final_exec.get("accepted") and kernel_execution_trace.get("pipeline"):
+                        kernel_execution_reply = (
+                            "⚠️ لم يتمكن أمير من إتمام التنفيذ. "
+                            "راجع خطوات Pipeline أدناه لمعرفة سبب التوقف."
+                        )
+            except Exception:
+                pass
     # ── 4. Compose fallback reply (used only if ECE is unavailable) ─────────────
     fallback_reply, reply_source = EXECUTIVE_BRAIN.compose_final_reply(
         q,
@@ -671,6 +756,11 @@ async def ask(request: Request):
                 user_payload["preview_url"] = f"/preview/projects/{_slug}"
         elif _preview_path.startswith("09_Assets/runtime_workspace/home/"):
             user_payload["preview_url"] = "/preview"
+    if autonomous_execution_report is not None:
+        user_payload["autonomous_execution"] = autonomous_execution_report
+        _auto_goal_id = autonomous_execution_report.get("goal_id", "")
+        if _auto_goal_id:
+            user_payload["preview_url"] = f"/preview/projects/{_auto_goal_id}"
     _log("ask_completed", request_id=request_id)
     return utf8_json_response(user_payload, headers=runtime_headers(workspace_root=REPO_ROOT))
 

@@ -244,6 +244,58 @@ This also enforces the Founder Authority Contract at the implementation level: n
 
 ---
 
+## ADR-009 — LOCAL WORKSPACE AUTONOMY / EXTERNAL EFFECT APPROVAL
+
+- **Status:** Accepted
+- **Date:** 2026-08-13
+
+### Decision
+
+Ameer operates with full autonomy inside `09_Assets/runtime_workspace` for local operations, and only requests Founder approval when an action has an **external effect**.
+
+**LOCAL_WORKSPACE (auto-allow, no ApprovalGate):**
+- `file.read`, `file.create`, `file.update` inside `runtime_workspace`
+- Local build, test, lint, format, codegen, retry/fix-loop operations
+- Intents: `build_homepage`, `build_generic`, `create_website`, `add_chat_box`, `run_test`, `local_build`, `local_test`, `local_lint`, `local_format`, `local_codegen`, `local_retry`, `local_fix`, `file_create`, `file_update`, `file_write`
+- Shell commands: `pytest`, `python` (local scripts), `npm test`, `git status`
+
+**EXTERNAL_EFFECT (ApprovalGate required — one approval per action):**
+- `git push`, `merge PR`, `production deploy`, Railway config change
+- External API writes, email, financial operations, deleting external data
+- Intents: `publish_site`, `deploy`, `git_push`, `merge_pr`, `send_email`, `financial_operation`
+- Shell commands: `git push`, `curl POST`, `railway`, `gh merge`, `npm publish`
+
+ApprovalGate is consulted **only** for `external_effect` operations. It is **not** invoked for local workspace operations. Audit logging is written for all operations; Audit ≠ Approval.
+
+### Rationale
+
+Requiring Founder approval for every local build step (file.create, pytest, codegen) creates friction with no security benefit — all these operations stay within the workspace boundary. Approval is only meaningful when Ameer's actions reach external systems (git remote, deployment, APIs, email).
+
+The `ExecutionBoundary.classify_effect_scope()` method determines effect scope using:
+1. Shell command classification (authoritative for `shell.run`)
+2. Tool-name-based (file.read/create/update → always local)
+3. Intent-based (explicit local/external intent sets)
+4. Action-based (delete/publish/external/financial → external if no local tool_name)
+5. Default: `LOCAL_WORKSPACE` (fail-open for workspace operations)
+
+### Consequences
+
+- `ExecutionBoundary` now has two distinct paths: `local_workspace_effect` (skip ApprovalGate) and `external_effect` (require ApprovalGate).
+- `_LOCAL_WORKSPACE_INTENTS` and `KERNEL_ACTIONABLE_INTENTS` include all common local build/test/codegen/retry intents.
+- `ShellExternalEffectClassifier` classifies shell commands as safe-local or external-effect.
+- Authorization and Audit logging remain active for ALL operations.
+- 76+ tests in `test_local_workspace_autonomy.py` prove this behavior.
+
+### Related Documents
+
+- `06_Code/kernel/execution_boundary.py`
+- `06_Code/kernel/approval_gate.py`
+- `06_Code/kernel/shell_external_effect_classifier.py`
+- `07_Tests/test_local_workspace_autonomy.py`
+- `07_Tests/test_regression_external_effect_approval.py`
+
+---
+
 ## Relationship to Other Documents
 
 - `01_Docs/Executive_Constitution_v1.0.md` is the supreme governing document above this ADR. Constitutional Contracts defined there are non-negotiable and take precedence over any architectural decision.
