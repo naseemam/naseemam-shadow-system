@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import sys
+import os
+_CODE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "06_Code")
+if _CODE_ROOT not in sys.path:
+    sys.path.insert(0, _CODE_ROOT)
+
 import asyncio
 import json
 
