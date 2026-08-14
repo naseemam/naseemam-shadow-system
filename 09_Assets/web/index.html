@@ -3,797 +3,140 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>أمير</title>
+  <title>أمير — مركز التنفيذ</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --bg: #f5f7fa;
-      --surface: #ffffff;
-      --border: #e2e8f0;
-      --ink: #0f172a;
-      --muted: #64748b;
-      --accent: #2563eb;
-      --accent-dark: #1d4ed8;
-      --user-bg: #eff6ff;
-      --user-border: #bfdbfe;
-      --ameer-bg: #f8fafc;
-      --success: #16a34a;
-      --error: #dc2626;
-      --radius: 18px;
-      --radius-sm: 12px;
-    }
-
-    html, body {
-      height: 100%;
-      font-family: "Segoe UI", Tahoma, "Arabic UI Text", Arial, sans-serif;
-      background: var(--bg);
-      color: var(--ink);
-      font-size: 15px;
-      line-height: 1.6;
-    }
-
-    /* ─── Layout ─────────────────────────────────────────────────── */
-    #app {
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      max-width: 760px;
-      margin: 0 auto;
-      padding: 0 0 env(safe-area-inset-bottom, 0);
-    }
-
-    /* ─── Header ─────────────────────────────────────────────────── */
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 14px 20px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-weight: 800;
-      font-size: 20px;
-    }
-
-    .brand-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--accent);
-      flex-shrink: 0;
-    }
-
-    #statusBadge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 12px;
-      border-radius: 999px;
-      font-size: 13px;
-      font-weight: 700;
-      background: rgba(22,163,74,0.10);
-      color: var(--success);
-      transition: background 0.3s, color 0.3s;
-    }
-
-    #statusBadge.offline {
-      background: rgba(220,38,38,0.10);
-      color: var(--error);
-    }
-
-    #statusBadge.checking {
-      background: rgba(100,116,139,0.10);
-      color: var(--muted);
-    }
-
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: currentColor;
-      flex-shrink: 0;
-    }
-
-    /* ─── Messages ───────────────────────────────────────────────── */
-    #messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      scroll-behavior: smooth;
-    }
-
-    #messages:empty::before {
-      content: "راجعت الحالة العامة، وحددي الآن القرار أو المهمة التي يجب حسمها أولًا.";
-      color: var(--muted);
-      font-size: 16px;
-      text-align: center;
-      margin: auto;
-      padding: 40px 0;
-    }
-
-    .msg {
-      max-width: 82%;
-      padding: 11px 15px;
-      border-radius: var(--radius-sm);
-      line-height: 1.65;
-      font-size: 15px;
-      word-break: break-word;
-      white-space: pre-wrap;
-      animation: fadeIn 0.18s ease;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(6px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-
-    .msg.user {
-      align-self: flex-start;
-      background: var(--user-bg);
-      border: 1px solid var(--user-border);
-      color: var(--ink);
-    }
-
-    .msg.ameer {
-      align-self: flex-end;
-      background: var(--ameer-bg);
-      border: 1px solid var(--border);
-      color: var(--ink);
-    }
-
-    .msg.error {
-      align-self: flex-end;
-      background: rgba(220,38,38,0.06);
-      border: 1px solid rgba(220,38,38,0.18);
-      color: var(--error);
-    }
-
-    .msg.typing {
-      align-self: flex-end;
-      background: var(--ameer-bg);
-      border: 1px solid var(--border);
-      color: var(--muted);
-      font-style: italic;
-    }
-
-    /* ─── Composer ───────────────────────────────────────────────── */
-    #composer {
-      display: flex;
-      align-items: flex-end;
-      gap: 10px;
-      padding: 14px 16px;
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-
-    #input {
-      flex: 1;
-      min-height: 46px;
-      max-height: 160px;
-      resize: none;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 11px 14px;
-      font-family: inherit;
-      font-size: 15px;
-      color: var(--ink);
-      background: var(--bg);
-      outline: none;
-      transition: border-color 0.15s, box-shadow 0.15s;
-      line-height: 1.5;
-      overflow-y: auto;
-    }
-
-    #input:focus {
-      border-color: rgba(37,99,235,0.4);
-      box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
-    }
-
-    #input::placeholder { color: var(--muted); }
-
-    #sendBtn {
-      width: 46px;
-      height: 46px;
-      border: none;
-      border-radius: var(--radius-sm);
-      background: var(--accent);
-      color: white;
-      cursor: pointer;
-      font-size: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      transition: background 0.15s, transform 0.1s;
-    }
-
-    #sendBtn:hover:not(:disabled)  { background: var(--accent-dark); }
-    #sendBtn:active:not(:disabled) { transform: scale(0.93); }
-    #sendBtn:disabled { opacity: 0.45; cursor: not-allowed; }
-
-    /* ─── Mobile ─────────────────────────────────────────────────── */
-    @media (max-width: 600px) {
-      #messages { padding: 14px; }
-      #composer  { padding: 10px 12px; }
-      .msg { max-width: 92%; font-size: 14px; }
-    }
-
-    /* ─── Pipeline Panel ─────────────────────────────────────────── */
-    #pipelineToggle {
-      background: none;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      padding: 4px 14px;
-      font-size: 13px;
-      cursor: pointer;
-      color: var(--muted);
-      transition: background .15s, color .15s;
-    }
-    #pipelineToggle.active {
-      background: var(--accent);
-      color: white;
-      border-color: var(--accent);
-    }
-
-    #pipelinePanel {
-      display: none;
-      flex-direction: column;
-      gap: 12px;
-      padding: 16px 20px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-    #pipelinePanel.open { display: flex; }
-
-    .pipeline-row {
-      display: flex;
-      gap: 8px;
-      align-items: stretch;
-    }
-    #pipelineInput {
-      flex: 1;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 9px 14px;
-      font-size: 14px;
-      font-family: inherit;
-      outline: none;
-      direction: rtl;
-    }
-    #pipelineInput:focus {
-      border-color: rgba(37,99,235,.4);
-      box-shadow: 0 0 0 3px rgba(37,99,235,.1);
-    }
-    #pipelineRunBtn {
-      border: none;
-      border-radius: var(--radius-sm);
-      background: var(--accent);
-      color: white;
-      padding: 0 18px;
-      font-size: 14px;
-      font-weight: 700;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: background .15s;
-    }
-    #pipelineRunBtn:hover:not(:disabled) { background: var(--accent-dark); }
-    #pipelineRunBtn:disabled { opacity: .45; cursor: not-allowed; }
-
-    #pipelineTrace {
-      display: none;
-      flex-direction: column;
-      gap: 8px;
-    }
-    #pipelineTrace.visible { display: flex; }
-
-    .pipe-step {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 10px 14px;
-      font-size: 13px;
-      position: relative;
-    }
-    .pipe-step.ok  { border-color: #bbf7d0; background: #f0fdf4; }
-    .pipe-step.err { border-color: #fecaca; background: #fff5f5; }
-    .pipe-step.run { border-color: #bfdbfe; background: #eff6ff; }
-
-    .pipe-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
-    .pipe-body { flex: 1; }
-    .pipe-name  { font-weight: 700; color: var(--ink); margin-bottom: 2px; }
-    .pipe-detail { color: var(--muted); line-height: 1.5; }
-
-    .pipe-files {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 6px;
-    }
-    .pipe-file {
-      background: white;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 2px 9px;
-      font-size: 12px;
-      font-family: monospace;
-      color: var(--accent);
-    }
-
-    .pipe-preview-btn {
-      margin-top: 10px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      border: none;
-      background: var(--success);
-      color: white;
-      padding: 7px 16px;
-      border-radius: 999px;
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-      text-decoration: none;
-      transition: opacity .15s;
-    }
-    .pipe-preview-btn:hover { opacity: .85; }
-
-    .inline-trace {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin: 6px 0 4px;
-      padding: 10px 12px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      font-size: 13px;
-      max-width: 480px;
-    }
+    *{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;background:#f4f7fb;color:#101828}
+    :root{--blue:#2f66e8;--blue2:#eaf1ff;--line:#dce4f0;--muted:#667085;--card:#fff;--green:#18864b;--greenbg:#eaf8f0;--orange:#b86400;--orangebg:#fff6e8;--red:#c12e3a;--redbg:#fff0f1;--shadow:0 10px 30px rgba(26,45,79,.07)}
+    button,textarea{font:inherit}.app{max-width:920px;margin:auto;min-height:100vh;padding:16px 14px 120px}.top{position:sticky;top:0;z-index:20;background:rgba(244,247,251,.94);backdrop-filter:blur(16px);padding:8px 0 14px}
+    .head{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:13px 16px;box-shadow:var(--shadow)}
+    .brand{display:flex;align-items:center;gap:9px;font-size:22px;font-weight:850}.dot{width:10px;height:10px;border-radius:50%;background:var(--blue)}
+    .head-actions{display:flex;align-items:center;gap:8px}.pill{border:1px solid var(--line);background:white;border-radius:999px;padding:7px 12px;color:var(--muted);font-size:13px}.online{background:var(--greenbg);color:var(--green);border-color:#caead6}.offline{background:var(--redbg);color:var(--red);border-color:#ffd4d8}
+    .approval{display:none;margin-top:12px;background:var(--orangebg);border:1px solid #ffd9a6;border-radius:16px;padding:14px 16px;box-shadow:var(--shadow)}.approval.show{display:block}.approval b{display:block;margin-bottom:5px}.approval small{color:#7b541f}.approval-id{font-family:monospace;background:#fff;border:1px solid #f4d3a4;border-radius:8px;padding:2px 7px}
+    .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}.stat{background:#fff;border:1px solid var(--line);border-radius:16px;padding:13px 14px}.stat b{font-size:19px;display:block}.stat span{font-size:12px;color:var(--muted)}
+    .messages{display:flex;flex-direction:column;gap:12px}.empty{background:#fff;border:1px dashed #cfd8e7;border-radius:18px;padding:34px 20px;text-align:center;color:var(--muted)}
+    .msg{max-width:86%;border-radius:17px;padding:12px 14px;white-space:pre-wrap;line-height:1.7;box-shadow:0 3px 10px rgba(15,23,42,.03)}.msg.user{align-self:flex-start;background:var(--blue2);border:1px solid #c8d9ff}.msg.ameer{align-self:flex-end;background:#fff;border:1px solid var(--line)}.msg.error{align-self:flex-end;background:var(--redbg);border:1px solid #ffd0d4;color:var(--red)}
+    .receipt{align-self:stretch;background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px 14px}.receipt-title{display:flex;align-items:center;justify-content:space-between;font-weight:800;margin-bottom:9px}.stage{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px solid #eef2f7}.stage:first-of-type{border-top:0}.stage-icon{width:22px}.stage-body{min-width:0}.stage-name{font-weight:700;font-size:13px}.stage-detail{font-size:12px;color:var(--muted);word-break:break-word}.files{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.file{font:11px monospace;background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:4px 7px;color:#315aa9}
+    .composer-wrap{position:fixed;z-index:30;left:0;right:0;bottom:0;background:linear-gradient(transparent,#f4f7fb 24%);padding:28px 12px 14px}.composer{max-width:920px;margin:auto;display:flex;align-items:flex-end;gap:9px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:9px;box-shadow:0 15px 45px rgba(17,33,60,.15)}textarea{flex:1;resize:none;min-height:48px;max-height:150px;border:0;outline:0;background:#f7f9fc;border-radius:13px;padding:12px 13px;line-height:1.5}.send{width:48px;height:48px;border:0;border-radius:13px;background:var(--blue);color:#fff;font-size:20px;cursor:pointer}.send:disabled{opacity:.45;cursor:not-allowed}
+    .clear{border:1px solid var(--line);background:#fff;border-radius:10px;padding:7px 10px;color:var(--muted);cursor:pointer}.hint{max-width:920px;margin:7px auto 0;color:#7d8899;font-size:11px;padding:0 7px}
+    @media(max-width:640px){.app{padding:8px 8px 115px}.head{border-radius:0;border-left:0;border-right:0}.summary{grid-template-columns:1fr 1fr 1fr}.stat{padding:10px}.stat b{font-size:16px}.msg{max-width:94%;font-size:14px}.pill{padding:6px 9px}.brand{font-size:20px}}
   </style>
 </head>
 <body>
-  <div id="app">
-
-    <header>
-      <div class="brand">
-        <span class="brand-dot"></span>
-        أمير
-      </div>
-      <div style="display:flex;align-items:center;gap:10px;">
-        <button id="pipelineToggle">⚙ Pipeline</button>
-        <div id="statusBadge" class="checking">
-          <span class="status-dot"></span>
-          <span id="statusText">جارٍ الاتصال...</span>
+  <main class="app">
+    <div class="top">
+      <div class="head">
+        <div class="brand"><span class="dot"></span>أمير</div>
+        <div class="head-actions">
+          <span id="status" class="pill">جارٍ الاتصال…</span>
+          <button id="clearBtn" class="clear" type="button">مسح العرض</button>
         </div>
       </div>
-    </header>
-
-    <!-- ─── Pipeline Panel ──────────────────────────────────────── -->
-    <div id="pipelinePanel">
-      <div class="pipeline-row">
-        <input
-          id="pipelineInput"
-          type="text"
-          placeholder="مثال: ابنِ الصفحة الرئيسية"
-          value="ابنِ الصفحة الرئيسية"
-        />
-        <button id="pipelineRunBtn">▶ نفّذ</button>
+      <div id="approvalBox" class="approval">
+        <b>⚠️ بوابة موافقة نهائية</b>
+        <div id="approvalText"></div>
+        <small>رقم الطلب: <span id="approvalId" class="approval-id">—</span>. هذا الطلب يبقى ظاهرًا حتى بعد تحديث الصفحة.</small>
       </div>
-      <div id="pipelineTrace"></div>
+      <div class="summary">
+        <div class="stat"><b id="execCount">0</b><span>عمليات تنفيذ مؤكدة</span></div>
+        <div class="stat"><b id="fileCount">0</b><span>ملفات ظهرت في التنفيذ</span></div>
+        <div class="stat"><b id="approvalCount">0</b><span>موافقات نهائية معلقة</span></div>
+      </div>
     </div>
 
-    <div id="messages" role="log" aria-live="polite" aria-label="المحادثة"></div>
+    <section id="messages" class="messages" aria-live="polite">
+      <div id="emptyState" class="empty">اكتبي لأمير بشكل طبيعي: «صمم وابن الموقع»، «كمل»، «م ضبط صلحها». إذا حصل تنفيذ فعلي سيظهر تحت الرد <b>إيصال تنفيذ</b> بالمراحل والملفات. الكلام وحده لن يُحسب إنجازًا.</div>
+    </section>
+  </main>
 
-    <div id="composer">
-      <textarea
-        id="input"
-        placeholder="اكتب رسالة..."
-        rows="1"
-        autocomplete="off"
-        aria-label="رسالتك"
-      ></textarea>
-      <button id="sendBtn" aria-label="إرسال" disabled>
-        &#x27A4;
-      </button>
+  <div class="composer-wrap">
+    <div class="composer">
+      <textarea id="input" rows="1" placeholder="اكتب رسالة…"></textarea>
+      <button id="send" class="send" type="button" disabled>➤</button>
     </div>
-
+    <div class="hint">المحادثة وإيصالات التنفيذ والموافقة النهائية محفوظة في هذا المتصفح ولا تختفي عند التحديث.</div>
   </div>
 
-  <script>
-  (function () {
-    "use strict";
+<script>
+(function(){
+  'use strict';
+  var STORE='ameer.operator.ui.v2';
+  var state={items:[],execCount:0,fileCount:0,approval:null};
+  var busy=false,online=false;
+  var messages=document.getElementById('messages');
+  var empty=document.getElementById('emptyState');
+  var input=document.getElementById('input');
+  var send=document.getElementById('send');
+  var status=document.getElementById('status');
+  var approvalBox=document.getElementById('approvalBox');
+  var approvalText=document.getElementById('approvalText');
+  var approvalId=document.getElementById('approvalId');
+  var execCount=document.getElementById('execCount');
+  var fileCount=document.getElementById('fileCount');
+  var approvalCount=document.getElementById('approvalCount');
 
-    // ── State ──────────────────────────────────────────────────────
-    var busy   = false;
-    var online = false;
+  function load(){try{var x=JSON.parse(localStorage.getItem(STORE)||'{}');if(x&&typeof x==='object')state=Object.assign(state,x);}catch(e){} renderAll();}
+  function save(){try{localStorage.setItem(STORE,JSON.stringify(state));}catch(e){}}
+  function escText(x){return String(x==null?'':x);}
+  function addMessage(text,role,persist){var el=document.createElement('div');el.className='msg '+role;el.textContent=escText(text);messages.appendChild(el);if(persist!==false){state.items.push({kind:'msg',text:escText(text),role:role});trim();save();}scrollEnd();return el;}
+  function trim(){if(state.items.length>180)state.items=state.items.slice(-180);}
+  function scrollEnd(){setTimeout(function(){window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});},30);}
 
-    // ── DOM refs ───────────────────────────────────────────────────
-    var msgBox     = document.getElementById("messages");
-    var inputEl    = document.getElementById("input");
-    var sendBtn    = document.getElementById("sendBtn");
-    var statusBadge = document.getElementById("statusBadge");
-    var statusText  = document.getElementById("statusText");
-
-    // ── Health check ───────────────────────────────────────────────
-    function checkHealth() {
-      fetch("/health")
-        .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
-        .then(function (d) {
-          if (d && d.status === "ok") {
-            online = true;
-            statusBadge.className = "";
-            statusText.textContent = "🟢 أمير متصل";
-            sendBtn.disabled = busy;
-          } else {
-            setOffline();
-          }
-        })
-        .catch(setOffline);
-    }
-
-    function setOffline() {
-      online = false;
-      statusBadge.className = "offline";
-      statusText.textContent = "🔴 غير متصل";
-      sendBtn.disabled = true;
-    }
-
-    checkHealth();
-    setInterval(checkHealth, 15000);
-
-    // ── Auto-grow textarea ─────────────────────────────────────────
-    inputEl.addEventListener("input", function () {
-      inputEl.style.height = "auto";
-      inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + "px";
+  function stageStatus(s){s=String(s||'').toLowerCase();if(['completed','passed','accepted','approved','allow'].indexOf(s)>=0)return ['✅','ok'];if(['blocked','rejected','failed','denied'].indexOf(s)>=0)return ['❌','bad'];return ['⏳','run'];}
+  function receiptData(trace){
+    var rows=[],files=[];var pipeline=(trace&&trace.pipeline)||[];
+    pipeline.forEach(function(step){var out=step.output||{};var info='';
+      if(out.intent)info+='النية: '+out.intent+' ';
+      if(typeof out.completed!=='undefined')info+='• مكتملة: '+out.completed+' ';
+      if(typeof out.failed!=='undefined')info+='• فاشلة: '+out.failed+' ';
+      if(out.reason)info+='• '+out.reason;
+      if(Array.isArray(out.files))files=files.concat(out.files);
+      if(Array.isArray(out.tasks))out.tasks.forEach(function(t){if(t&&t.target)files.push(t.target);});
+      rows.push({name:step.name||step.stage||'مرحلة تنفيذ',status:step.status||'',detail:info.trim()});
     });
+    var final=(trace&&trace.final)||{};
+    if(Array.isArray(final.files_created))files=files.concat(final.files_created);
+    files=files.filter(Boolean).filter(function(v,i,a){return a.indexOf(v)===i;});
+    var confirmed=!!(final.accepted||final.completed>0||files.length);
+    return {rows:rows,files:files,confirmed:confirmed};
+  }
+  function renderReceipt(data,persist){
+    var wrap=document.createElement('div');wrap.className='receipt';
+    var title=document.createElement('div');title.className='receipt-title';title.innerHTML='<span>🧾 إيصال التنفيذ الفعلي</span><small style="color:#667085">'+(data.confirmed?'مؤكد':'غير مكتمل')+'</small>';wrap.appendChild(title);
+    (data.rows||[]).forEach(function(r){var st=stageStatus(r.status);var row=document.createElement('div');row.className='stage';var i=document.createElement('div');i.className='stage-icon';i.textContent=st[0];var b=document.createElement('div');b.className='stage-body';var n=document.createElement('div');n.className='stage-name';n.textContent=r.name+' — '+(r.status||'');var d=document.createElement('div');d.className='stage-detail';d.textContent=r.detail||'';b.appendChild(n);b.appendChild(d);row.appendChild(i);row.appendChild(b);wrap.appendChild(row);});
+    if(data.files&&data.files.length){var f=document.createElement('div');f.className='files';data.files.forEach(function(p){var c=document.createElement('span');c.className='file';c.textContent=p;f.appendChild(c);});wrap.appendChild(f);}
+    messages.appendChild(wrap);
+    if(persist!==false){state.items.push({kind:'receipt',data:data});if(data.confirmed)state.execCount++;state.fileCount+=data.files.length;trim();save();updateStats();}
+    scrollEnd();
+  }
+  function setApproval(a,message){
+    if(!a||!a.approval_id)return;state.approval={id:a.approval_id,action:a.action||'',message:message||a.summary||'موافقة نهائية مطلوبة'};save();renderApproval();
+  }
+  function renderApproval(){var a=state.approval;if(a&&a.id){approvalBox.classList.add('show');approvalText.textContent=a.message;approvalId.textContent=a.id;approvalCount.textContent='1';}else{approvalBox.classList.remove('show');approvalCount.textContent='0';}}
+  function updateStats(){execCount.textContent=state.execCount||0;fileCount.textContent=state.fileCount||0;renderApproval();}
+  function renderAll(){messages.querySelectorAll('.msg,.receipt').forEach(function(n){n.remove();});(state.items||[]).forEach(function(item){if(item.kind==='msg')addMessage(item.text,item.role,false);else if(item.kind==='receipt')renderReceipt(item.data,false);});empty.style.display=state.items&&state.items.length?'none':'block';updateStats();}
 
-    // ── Pipeline Panel ─────────────────────────────────────────────
-    var pipelineToggle = document.getElementById("pipelineToggle");
-    var pipelinePanel  = document.getElementById("pipelinePanel");
-    var pipelineInput  = document.getElementById("pipelineInput");
-    var pipelineRunBtn = document.getElementById("pipelineRunBtn");
-    var pipelineTrace  = document.getElementById("pipelineTrace");
+  function inspectResponse(data,reply){
+    var trace=data&&data.execution_trace;
+    if(trace){var receipt=receiptData(trace);renderReceipt(receipt,true);}
+    var action=data&&data.agent_action;
+    if(action&&action.approval)setApproval(action.approval,reply);
+    var m=String(reply||'');var match=m.match(/(?:رقم\s*الموافقة|رقم\s*الطلب)\s*[:：]?\s*([a-f0-9]{6,20})/i);if(match&&!state.approval)setApproval({approval_id:match[1]},m);
+  }
 
-    pipelineToggle.addEventListener("click", function () {
-      var open = pipelinePanel.classList.toggle("open");
-      pipelineToggle.classList.toggle("active", open);
-    });
+  function ask(){var q=input.value.trim();if(!q||busy)return;busy=true;send.disabled=true;empty.style.display='none';addMessage(q,'user',true);input.value='';input.style.height='auto';var typing=addMessage('أمير يعمل…','ameer',false);
+    fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})})
+      .then(function(r){if(!r.ok)throw new Error('http_'+r.status);return r.json();})
+      .then(function(data){typing.remove();var reply=(data&&(data.reply||data.message))||'لم يصل رد واضح.';addMessage(reply,'ameer',true);inspectResponse(data,reply);})
+      .catch(function(){typing.remove();addMessage('تعذّر الوصول إلى أمير أو فشل الطلب قبل إرجاع نتيجة.','error',true);})
+      .finally(function(){busy=false;send.disabled=!online;});
+  }
 
-    pipelineRunBtn.addEventListener("click", runPipeline);
-    pipelineInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") runPipeline();
-    });
-
-    function stepIcon(status) {
-      if (status === "completed" || status === "passed" || status === "accepted") return "✅";
-      if (status === "no_match" || status === "blocked" || status === "rejected") return "❌";
-      return "⏳";
-    }
-    function stepClass(status) {
-      if (status === "completed" || status === "passed" || status === "accepted") return "ok";
-      if (status === "no_match" || status === "blocked" || status === "rejected") return "err";
-      return "run";
-    }
-
-    function renderTrace(trace) {
-      pipelineTrace.innerHTML = "";
-      pipelineTrace.classList.add("visible");
-
-      var steps = trace.pipeline || [];
-      steps.forEach(function (step) {
-        var div = document.createElement("div");
-        div.className = "pipe-step " + stepClass(step.status);
-
-        var iconEl = document.createElement("span");
-        iconEl.className = "pipe-icon";
-        iconEl.textContent = stepIcon(step.status);
-
-        var body = document.createElement("div");
-        body.className = "pipe-body";
-
-        var name = document.createElement("div");
-        name.className = "pipe-name";
-        name.textContent = step.name;
-
-        var detail = document.createElement("div");
-        detail.className = "pipe-detail";
-
-        var out = step.output || {};
-
-        if (step.name.indexOf("TaskDecomposer") !== -1) {
-          detail.textContent = "النية: " + (out.intent || "—") + " • المهام: " + (out.task_count || 0);
-          if (out.tasks && out.tasks.length) {
-            var filesDiv = document.createElement("div");
-            filesDiv.className = "pipe-files";
-            out.tasks.forEach(function (t) {
-              var chip = document.createElement("span");
-              chip.className = "pipe-file";
-              chip.textContent = t.description || t.id;
-              filesDiv.appendChild(chip);
-            });
-            body.appendChild(name);
-            body.appendChild(detail);
-            body.appendChild(filesDiv);
-            div.appendChild(iconEl);
-            div.appendChild(body);
-            pipelineTrace.appendChild(div);
-            return;
-          }
-        } else if (step.name.indexOf("PlanValidator") !== -1) {
-          detail.textContent = step.status === "passed"
-            ? "✔ جميع المهام صالحة للتنفيذ"
-            : "✘ " + (out.blocked || []).join(", ");
-        } else if (step.name.indexOf("Scheduler") !== -1) {
-          detail.textContent = "مجدولة: " + (out.scheduled || 0) + " • محظورة: " + (out.blocked || 0);
-        } else if (step.name.indexOf("FileExecutor") !== -1) {
-          detail.textContent = "مكتملة: " + (out.completed || 0) + " • فاشلة: " + (out.failed || 0);
-          if (out.files && out.files.length) {
-            var filesDiv2 = document.createElement("div");
-            filesDiv2.className = "pipe-files";
-            out.files.forEach(function (f) {
-              var chip = document.createElement("span");
-              chip.className = "pipe-file";
-              chip.textContent = f;
-              filesDiv2.appendChild(chip);
-            });
-            body.appendChild(name);
-            body.appendChild(detail);
-            body.appendChild(filesDiv2);
-            div.appendChild(iconEl);
-            div.appendChild(body);
-            pipelineTrace.appendChild(div);
-            return;
-          }
-        } else {
-          detail.textContent = JSON.stringify(out).slice(0, 120);
-        }
-
-        body.appendChild(name);
-        body.appendChild(detail);
-        div.appendChild(iconEl);
-        div.appendChild(body);
-        pipelineTrace.appendChild(div);
-      });
-
-      // Final — Preview button
-      var final = trace.final || {};
-      if (final.accepted && final.preview_path) {
-        var previewBtn = document.createElement("a");
-        previewBtn.href = "/preview";
-        previewBtn.target = "_blank";
-        previewBtn.className = "pipe-preview-btn";
-        previewBtn.textContent = "🔍 فتح Preview";
-        pipelineTrace.appendChild(previewBtn);
-      }
-    }
-
-    function runPipeline() {
-      var cmd = pipelineInput.value.trim();
-      if (!cmd) return;
-
-      pipelineRunBtn.disabled = true;
-      pipelineTrace.innerHTML = "";
-      pipelineTrace.classList.add("visible");
-
-      // Show running steps
-      var runDiv = document.createElement("div");
-      runDiv.className = "pipe-step run";
-      var runIcon = document.createElement("span");
-      runIcon.className = "pipe-icon";
-      runIcon.textContent = "⏳";
-      var runBody = document.createElement("div");
-      runBody.className = "pipe-body";
-      var runName = document.createElement("div");
-      runName.className = "pipe-name";
-      runName.textContent = "جارٍ التنفيذ...";
-      var runDetail = document.createElement("div");
-      runDetail.className = "pipe-detail";
-      runDetail.textContent = cmd;
-      runBody.appendChild(runName);
-      runBody.appendChild(runDetail);
-      runDiv.appendChild(runIcon);
-      runDiv.appendChild(runBody);
-      pipelineTrace.appendChild(runDiv);
-
-      fetch("/execute/command", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: cmd })
-      })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          renderTrace(data);
-        })
-        .catch(function (err) {
-          pipelineTrace.innerHTML = "";
-          var errDiv = document.createElement("div");
-          errDiv.className = "pipe-step err";
-          errDiv.innerHTML = "<span class='pipe-icon'>❌</span><div class='pipe-body'><div class='pipe-name'>خطأ</div><div class='pipe-detail'>تعذّر الاتصال بالخادم.</div></div>";
-          pipelineTrace.appendChild(errDiv);
-          pipelineTrace.classList.add("visible");
-        })
-        .finally(function () {
-          pipelineRunBtn.disabled = false;
-        });
-    }
-
-
-    // ── Send on Enter (Shift+Enter = newline) ──────────────────────
-    inputEl.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        if (!sendBtn.disabled) send();
-      }
-    });
-
-    sendBtn.addEventListener("click", send);
-
-    // ── Render a message bubble ────────────────────────────────────
-    function addMsg(text, role) {
-      var el = document.createElement("div");
-      el.className = "msg " + role;
-      el.textContent = text;
-      msgBox.appendChild(el);
-      msgBox.scrollTop = msgBox.scrollHeight;
-      return el;
-    }
-
-    // ── Render execution trace inline in the chat ─────────────────
-    function addInlineTrace(trace) {
-      var container = document.createElement("div");
-      container.className = "inline-trace";
-
-      var steps = trace.pipeline || [];
-      steps.forEach(function (step) {
-        var div = document.createElement("div");
-        div.className = "pipe-step " + stepClass(step.status);
-
-        var iconEl = document.createElement("span");
-        iconEl.className = "pipe-icon";
-        iconEl.textContent = stepIcon(step.status);
-
-        var body = document.createElement("div");
-        body.className = "pipe-body";
-
-        var name = document.createElement("div");
-        name.className = "pipe-name";
-        name.textContent = step.name;
-
-        var detail = document.createElement("div");
-        detail.className = "pipe-detail";
-
-        var out = step.output || {};
-
-        if (step.name.indexOf("TaskDecomposer") !== -1) {
-          detail.textContent = "النية: " + (out.intent || "—") + " • المهام: " + (out.task_count || 0);
-          if (out.tasks && out.tasks.length) {
-            var filesDiv = document.createElement("div");
-            filesDiv.className = "pipe-files";
-            out.tasks.forEach(function (t) {
-              var chip = document.createElement("span");
-              chip.className = "pipe-file";
-              chip.textContent = t.description || t.id;
-              filesDiv.appendChild(chip);
-            });
-            body.appendChild(name);
-            body.appendChild(detail);
-            body.appendChild(filesDiv);
-            div.appendChild(iconEl);
-            div.appendChild(body);
-            container.appendChild(div);
-            return;
-          }
-        } else if (step.name.indexOf("PlanValidator") !== -1) {
-          detail.textContent = step.status === "passed"
-            ? "✔ جميع المهام صالحة للتنفيذ"
-            : "✘ " + (out.blocked || []).join(", ");
-        } else if (step.name.indexOf("Scheduler") !== -1) {
-          detail.textContent = "مجدولة: " + (out.scheduled || 0) + " • محظورة: " + (out.blocked || 0);
-        } else if (step.name.indexOf("FileExecutor") !== -1) {
-          detail.textContent = "مكتملة: " + (out.completed || 0) + " • فاشلة: " + (out.failed || 0);
-          if (out.files && out.files.length) {
-            var filesDiv2 = document.createElement("div");
-            filesDiv2.className = "pipe-files";
-            out.files.forEach(function (f) {
-              var chip = document.createElement("span");
-              chip.className = "pipe-file";
-              chip.textContent = f;
-              filesDiv2.appendChild(chip);
-            });
-            body.appendChild(name);
-            body.appendChild(detail);
-            body.appendChild(filesDiv2);
-            div.appendChild(iconEl);
-            div.appendChild(body);
-            container.appendChild(div);
-            return;
-          }
-        } else {
-          detail.textContent = JSON.stringify(out).slice(0, 120);
-        }
-
-        body.appendChild(name);
-        body.appendChild(detail);
-        div.appendChild(iconEl);
-        div.appendChild(body);
-        container.appendChild(div);
-      });
-
-      var final = trace.final || {};
-      if (final.accepted && final.preview_path) {
-        var previewBtn = document.createElement("a");
-        previewBtn.href = "/preview";
-        previewBtn.target = "_blank";
-        previewBtn.className = "pipe-preview-btn";
-        previewBtn.textContent = "🔍 فتح Preview";
-        container.appendChild(previewBtn);
-      }
-
-      msgBox.appendChild(container);
-      msgBox.scrollTop = msgBox.scrollHeight;
-    }
-
-    // ── Send ───────────────────────────────────────────────────────
-    function send() {
-      var q = inputEl.value.trim();
-      if (!q || busy) return;
-
-      busy = true;
-      sendBtn.disabled = true;
-
-      // Show user message
-      addMsg(q, "user");
-      inputEl.value = "";
-      inputEl.style.height = "auto";
-
-      // Typing indicator
-      var typingEl = addMsg("أمير يفكر...", "typing");
-
-      fetch("/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: q })
-      })
-        .then(function (r) {
-          if (!r.ok) return Promise.reject(new Error("server_error"));
-          return r.json();
-        })
-        .then(function (data) {
-          typingEl.remove();
-          var reply = (data && (data.reply || data.message)) || "";
-          if (!reply) reply = "حاضر، لم أتلقَّ ردًا واضحًا. هل تريد إعادة المحاولة؟";
-          addMsg(reply, "ameer");
-          if (data && data.execution_trace) {
-            addInlineTrace(data.execution_trace);
-          }
-        })
-        .catch(function () {
-          typingEl.remove();
-          addMsg("تعذّر الوصول إلى أمير حاليًا. يرجى المحاولة مرة أخرى.", "error");
-        })
-        .finally(function () {
-          busy = false;
-          sendBtn.disabled = !online;
-          inputEl.focus();
-        });
-    }
-
-  })();
-  </script>
+  function health(){fetch('/health').then(function(r){if(!r.ok)throw 0;return r.json();}).then(function(){online=true;status.className='pill online';status.textContent='● أمير متصل';send.disabled=busy;}).catch(function(){online=false;status.className='pill offline';status.textContent='● غير متصل';send.disabled=true;});}
+  input.addEventListener('input',function(){input.style.height='auto';input.style.height=Math.min(input.scrollHeight,150)+'px';});
+  input.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask();}});send.addEventListener('click',ask);
+  document.getElementById('clearBtn').addEventListener('click',function(){state.items=[];state.execCount=0;state.fileCount=0;save();renderAll();});
+  load();health();setInterval(health,15000);
+})();
+</script>
 </body>
 </html>
