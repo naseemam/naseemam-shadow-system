@@ -23,6 +23,11 @@ REPOSITORY_WRITE_FILES = {
     "railway.toml",
     "requirements.txt",
 }
+# Reading uses the same controlled surface as writing so Ameer can inspect an
+# existing implementation before changing it. Sensitive/control-plane paths are
+# still denied below.
+REPOSITORY_READ_PREFIXES = REPOSITORY_WRITE_PREFIXES
+REPOSITORY_READ_FILES = REPOSITORY_WRITE_FILES
 DENIED_PREFIXES = (
     ".git",
     ".github",
@@ -39,13 +44,15 @@ DENIED_NAMES = {
 _REPOSITORY_SCOPE_KIND = "controlled_repository"
 _FILE_CREATE_TOOL_NAME = "file.create"
 _FILE_CREATE_ACTION = "write"
+_FILE_READ_TOOL_NAME = "file.read"
+_FILE_READ_ACTION = "read"
 
 
-def repository_file_create_permission_scope() -> str:
+def _repository_permission_scope(*, tool_name: str, action: str) -> str:
     return json.dumps(
         {
-            "tool_name": _FILE_CREATE_TOOL_NAME,
-            "action": _FILE_CREATE_ACTION,
+            "tool_name": tool_name,
+            "action": action,
             "scope_kind": _REPOSITORY_SCOPE_KIND,
             "allowed_prefixes": list(REPOSITORY_WRITE_PREFIXES),
             "allowed_files": sorted(REPOSITORY_WRITE_FILES),
@@ -55,6 +62,14 @@ def repository_file_create_permission_scope() -> str:
         ensure_ascii=False,
         sort_keys=True,
     )
+
+
+def repository_file_create_permission_scope() -> str:
+    return _repository_permission_scope(tool_name=_FILE_CREATE_TOOL_NAME, action=_FILE_CREATE_ACTION)
+
+
+def repository_file_read_permission_scope() -> str:
+    return _repository_permission_scope(tool_name=_FILE_READ_TOOL_NAME, action=_FILE_READ_ACTION)
 
 
 class ControlledRepositoryPolicy:
@@ -116,6 +131,34 @@ class RepositoryPlanValidator(PlanValidator):
 
 
 class RepositoryExecutionAuthorization(ExecutionAuthorization):
+    def _file_read_scope_denial_reason(
+        self,
+        *,
+        action: str,
+        context: Dict[str, Any] | None,
+        perm_card: Dict[str, Any],
+    ) -> str:
+        policy = self._parse_scope_policy(perm_card.get("scope"))
+        required = self._parse_scope_policy(repository_file_read_permission_scope())
+        if policy != required:
+            return "Permission scope does not authorize controlled repository file.read"
+        if action != _FILE_READ_ACTION:
+            return "Permission scope is limited to file.read/read only"
+
+        safe_context = context or {}
+        tool_name = str(safe_context.get("tool_name") or "").strip().lower()
+        if tool_name != _FILE_READ_TOOL_NAME:
+            return "Permission scope requires registry-owned tool file.read"
+
+        target = safe_context.get("target")
+        if not isinstance(target, str) or not target.strip():
+            return "Permission scope requires a controlled repository target"
+
+        repo_policy = ControlledRepositoryPolicy(self._root)
+        if not repo_policy.is_allowed(target):
+            return "Permission scope denies target outside controlled repository paths"
+        return ""
+
     def _file_create_scope_denial_reason(
         self,
         *,
