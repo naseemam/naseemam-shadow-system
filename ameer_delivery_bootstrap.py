@@ -15,6 +15,7 @@ from kernel.repository_execution import (
     RepositoryFileExecutor,
     RepositoryPlanValidator,
     repository_file_create_permission_scope,
+    repository_file_read_permission_scope,
 )
 from kernel.stage_autonomy_patch import install_stage_autonomy_patch
 from kernel.tool_dispatcher import ToolDispatcher
@@ -28,6 +29,14 @@ install_stage_autonomy_patch()
 def _build_kernel() -> ExpandedAgentExecutiveKernel:
     repo_root = Path(ameer_server.REPO_ROOT).resolve()
     kernel = ExpandedAgentExecutiveKernel(repo_root)
+    # Runtime state may still contain the old runtime_workspace-only cards.
+    # Re-assert the controlled repository grants on every boot so the live agent
+    # can inspect and modify its approved code surface before it plans a change.
+    kernel.permissions.grant(
+        "file.read",
+        scope=repository_file_read_permission_scope(),
+        granted_by="system:controlled_repository_activation",
+    )
     kernel.permissions.grant(
         "file.create",
         scope=repository_file_create_permission_scope(),
