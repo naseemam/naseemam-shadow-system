@@ -5,7 +5,7 @@ import json
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse
 
 from ameer_identity_bootstrap import app
 import ameer_server
@@ -28,6 +28,26 @@ class ProactiveExecutionMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request, call_next):
         response = await call_next(request)
+
+        # Inject the proactive UI as a separate module. This keeps the operator
+        # console independent from chat history and allows visible initiative.
+        if request.method == "GET" and request.url.path in {"/", "/index.html"} and response.status_code < 400:
+            try:
+                raw = b""
+                async for chunk in response.body_iterator:
+                    raw += chunk
+                html = raw.decode("utf-8")
+                tag = '<script src="/modules/proactive.js" defer></script>'
+                if tag not in html:
+                    html = html.replace("</body>", tag + "\n</body>")
+                headers = {
+                    k: v for k, v in dict(response.headers).items()
+                    if k.lower() not in {"content-length", "content-type"}
+                }
+                return HTMLResponse(html, status_code=response.status_code, headers=headers)
+            except Exception:
+                return response
+
         if request.url.path != "/ask":
             return response
 
@@ -104,11 +124,7 @@ async def ui_proactive_seen(request: Request):
 
 
 async def _state_monitor() -> None:
-    """Watch meaningful runtime state without spamming the Founder.
-
-    The monitor emits only when approval state changes. Execution outcomes are
-    emitted by middleware immediately after a real request completes.
-    """
+    """Watch meaningful runtime state without spamming the Founder."""
     previous_pending: int | None = None
     while True:
         try:
@@ -137,7 +153,6 @@ async def _state_monitor() -> None:
                     )
                 previous_pending = count
         except Exception:
-            # Monitoring must never take Ameer down.
             pass
         await asyncio.sleep(20)
 
