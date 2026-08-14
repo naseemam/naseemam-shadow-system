@@ -1,6 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
+
+# ─── 06_Code on sys.path — must be first so kernel imports resolve everywhere ─
+_CODE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "06_Code")
+if _CODE_ROOT not in sys.path:
+    sys.path.insert(0, _CODE_ROOT)
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
