@@ -36,9 +36,10 @@ def _diag_log(event: str, **kwargs) -> None:
         }
         record.update(kwargs)
         _diag_logger.info(json.dumps(record, ensure_ascii=False))
-    except Exception:
+    except Exception as exc:
         # Diagnostic logging must never break execution.
-        pass
+        import sys
+        print(f"[_diag_log EXCEPTION] {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
 
 
 @dataclass
