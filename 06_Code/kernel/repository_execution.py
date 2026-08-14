@@ -63,7 +63,10 @@ class ControlledRepositoryPolicy:
 
     @staticmethod
     def _normalize(target: str) -> str:
-        return str(target or "").strip().replace("\\", "/").lstrip("./")
+        normalized = str(target or "").strip().replace("\\", "/")
+        while normalized.startswith("./"):
+            normalized = normalized[2:]
+        return normalized
 
     def is_allowed(self, target: str) -> bool:
         normalized = self._normalize(target)
@@ -93,8 +96,6 @@ class ControlledRepositoryPolicy:
 
 
 class RepositoryFileExecutor(FileExecutor):
-    """File executor that keeps the sandbox but also permits controlled repo writes."""
-
     def __init__(self, workspace_root: str | Path) -> None:
         super().__init__(workspace_root)
         self._repo_policy = ControlledRepositoryPolicy(workspace_root)
@@ -104,8 +105,6 @@ class RepositoryFileExecutor(FileExecutor):
 
 
 class RepositoryPlanValidator(PlanValidator):
-    """Plan validator whose file targets may land in the controlled repository."""
-
     def __init__(self, workspace_root: str | Path, **kwargs: Any) -> None:
         super().__init__(workspace_root, **kwargs)
         self._repo_policy = ControlledRepositoryPolicy(workspace_root)
@@ -117,8 +116,6 @@ class RepositoryPlanValidator(PlanValidator):
 
 
 class RepositoryExecutionAuthorization(ExecutionAuthorization):
-    """Execution auth that recognizes the controlled repository file.create scope."""
-
     def _file_create_scope_denial_reason(
         self,
         *,
@@ -149,14 +146,6 @@ class RepositoryExecutionAuthorization(ExecutionAuthorization):
 
 
 class RepositoryTaskDecomposer:
-    """
-    Wrap the existing decomposer.
-
-    Default build commands still use runtime_workspace. A command must explicitly
-    ask for the live/repository code before generated file tasks are redirected.
-    This prevents an ordinary prototype request from overwriting the production UI.
-    """
-
     LIVE_MARKERS = (
         "الموقع الحقيقي",
         "الواجهة الحقيقية",

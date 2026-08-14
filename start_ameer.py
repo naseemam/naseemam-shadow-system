@@ -23,7 +23,7 @@ cmd = [
     sys.executable,
     "-m",
     "uvicorn",
-    "ameer_bootstrap_hardened:app",
+    "ameer_bootstrap:app",
     "--host",
     host,
     "--port",
