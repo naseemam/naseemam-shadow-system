@@ -16,7 +16,13 @@ from kernel.repository_execution import (
     RepositoryPlanValidator,
     repository_file_create_permission_scope,
 )
+from kernel.stage_autonomy_patch import install_stage_autonomy_patch
 from kernel.tool_dispatcher import ToolDispatcher
+
+# Compatibility alignment: legacy reasoning/conversation layers used to require
+# approval for generic execution words and interrupt continuation when stale
+# tasks existed. The new governance model owns approval at final stage gates.
+install_stage_autonomy_patch()
 
 
 def _build_kernel() -> ExpandedAgentExecutiveKernel:
