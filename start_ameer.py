@@ -23,7 +23,7 @@ cmd = [
     sys.executable,
     "-m",
     "uvicorn",
-    "ameer_identity_bootstrap:app",
+    "ameer_proactive_bootstrap:app",
     "--host",
     host,
     "--port",
@@ -38,7 +38,7 @@ if port_is_busy(host, port):
         f"Use the single shared runtime port {DEFAULT_PORT} or stop the old process first."
     )
 
-print("Starting Ameer launcher...")
+print("Starting Ameer proactive launcher...")
 print("Working directory:", ROOT)
 print("Command:", " ".join(cmd))
 print(f"Open: http://{host}:{port}/")
