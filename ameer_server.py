@@ -137,7 +137,11 @@ MD_GLOB = os.path.join(REPO_ROOT, "**", "*.md")
 WEB_INDEX = os.path.join(REPO_ROOT, "09_Assets", "web", "index.html")
 DEBUG_MODE = os.getenv("AMEER_DEBUG", "0").lower() in {"1", "true", "yes", "on"}
 RUNTIME_METADATA = runtime_metadata(workspace_root=REPO_ROOT)
-KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic", "file_read", "run_test"}
+KERNEL_ACTIONABLE_INTENTS = {
+    "build_homepage", "build_generic", "file_read", "run_test",
+    "repository_review", "code_edit", "build_website", "build_store",
+    "open_branch", "open_pull_request", "deploy_railway",
+}
 
 # ─── Executive Operating Kernel ───────────────────────────────────────────────
 
@@ -521,13 +525,28 @@ async def ask(request: Request):
                             + ".\n\n"
                             "يمكنك معاينتها الآن عبر رابط Preview أدناه."
                         )
-                elif not final_exec.get("accepted") and kernel_execution_trace.get("pipeline"):
+                elif not final_exec.get("accepted"):
+                    technical_reason = final_exec.get("technical_reason") or final_exec.get("reason") or "execution_failed"
                     kernel_execution_reply = (
-                        "⚠️ لم يتمكن أمير من إتمام التنفيذ. "
-                        "راجع خطوات Pipeline أدناه لمعرفة سبب التوقف."
+                        "⚠️ لم يُنفّذ أمير الطلب التنفيذي. "
+                        f"السبب التقني: {technical_reason}."
                     )
-        except Exception:
-            pass
+        except Exception as exc:
+            if kernel_detected_intent != "unknown":
+                kernel_execution_trace = {
+                    "command": q,
+                    "pipeline": [],
+                    "final": {
+                        "accepted": False,
+                        "intent": kernel_detected_intent,
+                        "reason": "execution_pipeline_exception",
+                        "technical_reason": f"{type(exc).__name__}: {exc}",
+                    },
+                }
+                kernel_execution_reply = (
+                    "⚠️ تعذر تشغيل مسار التنفيذ. "
+                    f"السبب التقني: {type(exc).__name__}: {exc}."
+                )
     # ── 4. Compose fallback reply (used only if ECE is unavailable) ─────────────
     fallback_reply, reply_source = EXECUTIVE_BRAIN.compose_final_reply(
         q,
@@ -595,6 +614,12 @@ async def ask(request: Request):
     if _can_use_kernel_reply:
         final_reply = kernel_execution_reply
         reply_source = "executive_kernel"
+    elif kernel_detected_intent in KERNEL_ACTIONABLE_INTENTS and kernel_execution_trace is not None:
+        # AEX-1: a known execution intent must not degrade to a conversational
+        # answer when governance or infrastructure blocks execution.
+        _technical_reason = (kernel_execution_trace.get("final") or {}).get("technical_reason") or (kernel_execution_trace.get("final") or {}).get("reason") or "execution_not_completed"
+        final_reply = f"⚠️ الطلب تنفيذي معروف لكنه لم يكتمل. السبب التقني: {_technical_reason}."
+        reply_source = "executive_kernel_blocked"
 
     # ── 6. AOS Kernel: record assistant reply in session context ──────────────
     if KERNEL:
@@ -664,6 +689,7 @@ async def ask(request: Request):
     user_payload["request_id"] = request_id
     if kernel_execution_trace is not None:
         user_payload["execution_trace"] = kernel_execution_trace
+        user_payload["run_trace"] = kernel_execution_trace
         _preview_path = kernel_execution_trace.get("final", {}).get("preview_path") or ""
         if _preview_path.startswith("09_Assets/runtime_workspace/projects/"):
             _slug = _preview_path[len("09_Assets/runtime_workspace/projects/"):].split("/")[0]

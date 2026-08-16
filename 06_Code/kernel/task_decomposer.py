@@ -59,6 +59,89 @@ _RUN_TEST_MARKERS = [
     "اختبار", "اختبارات", "نفّذ الاختبارات", "نفذ الاختبارات",
 ]
 
+# AEX-1: executable intents are explicit, auditable, and permission-aware.
+# ``permission_mode`` is consumed by the execution boundary and is also exposed
+# in the decomposition result so callers can explain why an action is allowed,
+# tracked, pending, or denied.
+AEX1_INTENT_SPECS = {
+    "repository_review": {
+        "description": "مراجعة المستودع قراءةً وتحليلاً دون آثار جانبية",
+        "permission_mode": "read_only",
+        "capability": "analysis",
+        "requires_approval": False,
+    },
+    "code_edit": {
+        "description": "تعديل كود داخل مساحة العمل مع تتبع",
+        "permission_mode": "tracked_write",
+        "capability": "programming",
+        "requires_approval": False,
+    },
+    "build_website": {
+        "description": "بناء موقع جديد داخل مساحة العمل",
+        "permission_mode": "tracked_write",
+        "capability": "programming",
+        "requires_approval": False,
+    },
+    "build_store": {
+        "description": "بناء متجر جديد داخل مساحة العمل",
+        "permission_mode": "tracked_write",
+        "capability": "programming",
+        "requires_approval": False,
+    },
+    "run_test": {
+        "description": "تشغيل الاختبارات محلياً",
+        "permission_mode": "read_only",
+        "capability": "shell_execution",
+        "requires_approval": False,
+    },
+    "open_branch": {
+        "description": "فتح فرع Git جديد",
+        "permission_mode": "external_approval",
+        "capability": "engineering",
+        "requires_approval": True,
+    },
+    "open_pull_request": {
+        "description": "فتح طلب سحب على GitHub",
+        "permission_mode": "external_approval",
+        "capability": "engineering",
+        "requires_approval": True,
+    },
+    "deploy_railway": {
+        "description": "النشر على Railway",
+        "permission_mode": "external_approval",
+        "capability": "engineering",
+        "requires_approval": True,
+    },
+}
+
+_REPOSITORY_REVIEW_MARKERS = [
+    "راجع المستودع", "مراجعة المستودع", "راجع الكود", "حلل المستودع",
+    "repository review", "review repository", "review the repo", "audit repository",
+]
+_CODE_EDIT_MARKERS = [
+    "عدل الكود", "عدّل الكود", "تعديل الكود", "صلح الكود", "إصلاح الكود",
+    "edit code", "modify code", "fix code", "refactor",
+]
+_BUILD_STORE_MARKERS = [
+    "ابن متجر", "ابنِ متجر", "أنشئ متجر", "انشئ متجر", "بناء متجر",
+    "build store", "create store", "ecommerce", "e-commerce", "متجر إلكتروني", "متجر الكتروني",
+]
+_BUILD_WEBSITE_MARKERS = [
+    "ابن موقع", "ابنِ موقع", "أنشئ موقع", "انشئ موقع", "بناء موقع",
+    "build website", "create website", "new website", "موقع جديد",
+]
+_OPEN_BRANCH_MARKERS = [
+    "افتح فرع", "أنشئ فرع", "انشئ فرع", "فتح فرع", "open branch", "create branch",
+]
+_OPEN_PR_MARKERS = [
+    "افتح طلب سحب", "فتح طلب سحب", "أنشئ طلب سحب", "انشئ طلب سحب",
+    "افتح pr", "open pull request", "open pr", "create pull request",
+]
+_DEPLOY_RAILWAY_MARKERS = [
+    "انشر على railway", "انشر إلى railway", "النشر على railway", "railway",
+    "deploy to railway", "deploy railway", "publish on railway",
+]
+
 
 def _matches(text: str, patterns: list[str]) -> bool:
     lower = text.lower()
@@ -94,9 +177,26 @@ def _detect_intent(command: str) -> str:
     4. build_generic — أوامر البناء العامة.
     5. unknown — الاحتياطي.
     """
-    # Priority-1: explicit read intent overrides all HOME_PAGE_HINTS path tokens.
-    if _has_read_intent(command):
+    # AEX-1 execution verbs such as "افتح فرعاً" must win over the generic
+    # read marker "افتح". A file read still wins for explicit file/content reads.
+    if _has_read_intent(command) and not _matches(command, _OPEN_BRANCH_MARKERS + _OPEN_PR_MARKERS):
         return "file_read"
+
+    # AEX-1 execution intents take priority over generic build markers.
+    if _matches(command, _DEPLOY_RAILWAY_MARKERS):
+        return "deploy_railway"
+    if _matches(command, _OPEN_PR_MARKERS):
+        return "open_pull_request"
+    if _matches(command, _OPEN_BRANCH_MARKERS):
+        return "open_branch"
+    if _matches(command, _REPOSITORY_REVIEW_MARKERS):
+        return "repository_review"
+    if _matches(command, _CODE_EDIT_MARKERS):
+        return "code_edit"
+    if _matches(command, _BUILD_STORE_MARKERS):
+        return "build_store"
+    if _matches(command, _BUILD_WEBSITE_MARKERS):
+        return "build_website"
 
     # Priority-2: test execution
     if _matches(command, _RUN_TEST_MARKERS):
@@ -512,11 +612,20 @@ class TaskDecomposer:
         """يحلّل الأمر ويُعيد task batch جاهزًا للتنفيذ."""
         intent = _detect_intent(command)
         tasks = self._build_tasks(intent, command)
+        spec = AEX1_INTENT_SPECS.get(intent, {})
+        for task in tasks:
+            task.setdefault("permission_mode", spec.get("permission_mode", "conversation_only"))
+            if spec.get("capability") and not task.get("capability"):
+                task["capability"] = spec["capability"]
         return {
             "intent": intent,
             "command": command,
             "tasks": tasks,
             "task_count": len(tasks),
+            "permission_mode": spec.get("permission_mode", "conversation_only"),
+            "capability": spec.get("capability"),
+            "requires_approval": bool(spec.get("requires_approval", False)),
+            "execution_intent": intent in AEX1_INTENT_SPECS,
             "decomposed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
 
@@ -525,6 +634,16 @@ class TaskDecomposer:
     def _build_tasks(self, intent: str, command: str) -> List[Dict[str, Any]]:
         if intent == "file_read":
             return self._file_read_tasks(command)
+        if intent == "repository_review":
+            return self._repository_review_tasks()
+        if intent == "code_edit":
+            return self._code_edit_tasks(command)
+        if intent == "build_website":
+            return self._generic_page_tasks(command)
+        if intent == "build_store":
+            return self._store_tasks(command)
+        if intent in {"open_branch", "open_pull_request", "deploy_railway"}:
+            return self._external_approval_tasks(intent, command)
         if intent == "build_homepage":
             return self._homepage_tasks()
         if intent == "build_generic":
@@ -546,8 +665,68 @@ class TaskDecomposer:
                 "target": target,
                 "priority": "high",
                 "description": f"قراءة الملف {target}",
+                "capability": "file_operations",
+                "permission_mode": "read_only",
             }
         ]
+
+    def _repository_review_tasks(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "id": f"repo-review-{uuid.uuid4().hex[:6]}",
+                "action": "run",
+                "executor": "shell",
+                "target": ".",
+                "command": ["git", "status", "--short"],
+                "priority": "high",
+                "description": "قراءة حالة المستودع وتحليل التغييرات",
+                "capability": "shell_execution",
+                "permission_mode": "read_only",
+            },
+            {
+                "id": f"repo-review-diff-{uuid.uuid4().hex[:6]}",
+                "action": "run",
+                "executor": "shell",
+                "target": ".",
+                "command": ["git", "diff", "--stat"],
+                "priority": "normal",
+                "description": "قراءة ملخص فروق المستودع",
+                "capability": "shell_execution",
+                "permission_mode": "read_only",
+            },
+        ]
+
+    def _code_edit_tasks(self, command: str) -> List[Dict[str, Any]]:
+        return [{
+            "id": f"code-edit-request-{uuid.uuid4().hex[:6]}",
+            "action": "write",
+            "executor": "file",
+            "target": "09_Assets/runtime_workspace/agent_requests/code_edit_request.md",
+            "content": f"# AEX-1 Code Edit Request\\n\\n{command.strip()}\\n",
+            "priority": "high",
+            "description": "تسجيل طلب تعديل الكود داخل مساحة العمل مع تتبع",
+            "capability": "file_operations",
+            "permission_mode": "tracked_write",
+        }]
+
+    def _external_approval_tasks(self, intent: str, command: str) -> List[Dict[str, Any]]:
+        target = {
+            "open_branch": "github/branch",
+            "open_pull_request": "github/pull_request",
+            "deploy_railway": "railway/deploy",
+        }[intent]
+        return [{
+            "id": f"{intent}-{uuid.uuid4().hex[:6]}",
+            "action": "request",
+            "executor": "api",
+            "target": target,
+            "command": command,
+            "priority": "high",
+            "description": AEX1_INTENT_SPECS[intent]["description"],
+            "capability": "engineering",
+            "permission_mode": "external_approval",
+            "requires_approval": True,
+        }]
 
     def _run_test_tasks(self, command: str) -> List[Dict[str, Any]]:
         """Generate a shell task to run pytest inside the workspace."""
@@ -565,7 +744,35 @@ class TaskDecomposer:
                 "command": ["python3", "-m", "pytest", test_path, "-v", "--tb=short"],
                 "priority": "high",
                 "description": f"تشغيل الاختبارات: {test_path}",
+                "capability": "shell_execution",
+                "permission_mode": "read_only",
             }
+        ]
+
+    def _store_tasks(self, command: str) -> List[Dict[str, Any]]:
+        slug = _slug_from_command(command)
+        prefix = f"{self.RUNTIME_PREFIX}/stores/{slug}"
+        title = slug.replace("-", " ").strip() or "store"
+        return [
+            {
+                "id": f"store-html-{slug}", "action": "write", "executor": "file",
+                "target": f"{prefix}/index.html",
+                "content": _GENERIC_HTML_TPL.format(title=f"متجر {title}", description=f"متجر إلكتروني: {title}"),
+                "priority": "high", "description": f"بناء واجهة متجر {title}",
+                "capability": "file_operations", "permission_mode": "tracked_write",
+            },
+            {
+                "id": f"store-css-{slug}", "action": "write", "executor": "file",
+                "target": f"{prefix}/style.css", "content": _GENERIC_CSS,
+                "priority": "high", "description": "تنسيق واجهة المتجر",
+                "capability": "file_operations", "permission_mode": "tracked_write",
+            },
+            {
+                "id": f"store-js-{slug}", "action": "write", "executor": "file",
+                "target": f"{prefix}/script.js", "content": _GENERIC_JS,
+                "priority": "normal", "description": "سلوك واجهة المتجر",
+                "capability": "file_operations", "permission_mode": "tracked_write",
+            },
         ]
 
     def _homepage_tasks(self) -> List[Dict[str, Any]]:

@@ -45,6 +45,8 @@ _HIGH_RISK_ACTIONS_REQUIRING_APPROVAL: Set[str] = {
     "publish",
     "external",
     "financial",
+    "merge",
+    "deploy",
 }
 
 # Request types that are purely conversational — they must never trigger side effects.
@@ -58,7 +60,19 @@ _CONVERSATIONAL_TYPES: Set[str] = {
 
 # Intents that the kernel is allowed to act on even when request_type is conversational.
 # This mirrors KERNEL_ACTIONABLE_INTENTS in ameer_server.py.
-KERNEL_ACTIONABLE_INTENTS: Set[str] = {"build_homepage", "build_generic", "file_read", "run_test"}
+KERNEL_ACTIONABLE_INTENTS: Set[str] = {
+    "build_homepage", "build_generic", "file_read", "run_test",
+    "repository_review", "code_edit", "build_website", "build_store",
+    "open_branch", "open_pull_request", "deploy_railway",
+}
+
+# AEX-1 permission matrix. Read/analyze and workspace writes are eligible for
+# the normal audited path; merge/publish/deploy require explicit approval.
+AEX1_PERMISSION_MATRIX: Dict[str, Dict[str, Any]] = {
+    "read_only": {"allow": True, "tracked": True, "approval": False},
+    "tracked_write": {"allow": True, "tracked": True, "approval": False},
+    "external_approval": {"allow": False, "tracked": True, "approval": True},
+}
 
 
 class BoundaryVerdict(str, Enum):

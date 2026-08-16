@@ -10,6 +10,8 @@ Executive Operating Kernel — قلب نظام أمير التشغيلي.
 
 from __future__ import annotations
 
+import uuid
+
 import json
 import os
 import sys
@@ -748,6 +750,7 @@ class ExecutiveKernel:
         tasks = decomposition.get("tasks", [])
 
         pipeline_trace = {
+            "trace_id": str(uuid.uuid4()),
             "command": command,
             "pipeline": [],
             "final": {},
@@ -772,7 +775,48 @@ class ExecutiveKernel:
             pipeline_trace["final"] = {
                 "accepted": False,
                 "reason": "no_tasks_generated",
+                "technical_reason": "TaskDecomposer لم يولّد مهاماً قابلة للتنفيذ لهذه النية.",
                 "intent": decomposition["intent"],
+            }
+            return pipeline_trace
+
+        # AEX-1 external effects never execute from a plain command. They create
+        # an explicit approval request and return a complete trace instead.
+        external_intents = {"open_branch", "open_pull_request", "deploy_railway"}
+        if decomposition["intent"] in external_intents:
+            approval_id = None
+            if self.approvals is not None:
+                approval_id = self.approvals.request(
+                    action="publish" if decomposition["intent"] == "deploy_railway" else "external",
+                    description=f"AEX-1 approval required: {command[:240]}",
+                    requested_by=requested_by,
+                    context={"intent": decomposition["intent"], "command": command},
+                )
+            pipeline_trace["pipeline"].append({
+                "step": 2,
+                "name": "ApprovalGate",
+                "status": "pending",
+                "output": {
+                    "approval_id": approval_id,
+                    "intent": decomposition["intent"],
+                    "reason": "explicit_approval_required",
+                },
+            })
+            pipeline_trace["final"] = {
+                "accepted": False,
+                "reason": "explicit_approval_required",
+                "technical_reason": "هذا الإجراء يغيّر حالة GitHub أو Railway، ولذلك لا يُنفّذ قبل موافقة صريحة.",
+                "intent": decomposition["intent"],
+                "approval_id": approval_id,
+                "completed": 0,
+                "failed": 0,
+                "blocked": 1,
+                "results": [{
+                    "task_id": tasks[0].get("id"),
+                    "status": "blocked",
+                    "reason": "explicit_approval_required",
+                    "approval_id": approval_id,
+                }],
             }
             return pipeline_trace
 
@@ -861,6 +905,8 @@ class ExecutiveKernel:
 
         pipeline_trace["final"] = {
             "accepted": result["accepted"],
+            "reason": None if result["accepted"] else "execution_blocked_or_failed",
+            "technical_reason": None if result["accepted"] else "راجع نتائج الحوكمة لكل مهمة لمعرفة سبب الحظر أو الفشل.",
             "tasks_queued": result["tasks_queued"],
             "completed": result["execution"]["completed"],
             "failed": result["execution"]["failed"],
