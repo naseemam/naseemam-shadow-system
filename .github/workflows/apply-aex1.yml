@@ -1,0 +1,47 @@
+name: Apply AEX-1 patch
+
+on:
+  push:
+    branches:
+      - feature/aex-1-agent-execution-expansion
+    paths:
+      - aex1-agent-execution-expansion.patch
+      - .github/workflows/apply-aex1.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/aex-1-agent-execution-expansion
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Validate and apply AEX-1 patch
+        run: |
+          git apply --check aex1-agent-execution-expansion.patch
+          git apply aex1-agent-execution-expansion.patch
+          git diff --check
+
+      - name: Run AEX-1 acceptance tests
+        run: |
+          python3 -m pip install -q pytest
+          python3 -m pytest 07_Tests/test_aex1_agent_execution_expansion.py -q
+          python3 -m pytest 07_Tests/test_aex1_agent_execution_expansion.py 07_Tests/test_task_decomposer_intent.py 07_Tests/test_execution_boundaries.py -q
+
+      - name: Commit applied implementation
+        run: |
+          rm -f aex1-agent-execution-expansion.patch .github/workflows/apply-aex1.yml
+          git add -A
+          git commit -m "feat: expand agent execution intents with approval traces"
+          git push origin HEAD:feature/aex-1-agent-execution-expansion
