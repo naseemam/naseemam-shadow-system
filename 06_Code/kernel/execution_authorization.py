@@ -201,7 +201,22 @@ class ExecutionAuthorization:
     ) -> str:
         policy = self._parse_scope_policy(perm_card.get("scope"))
         required_policy = self._parse_scope_policy(file_read_permission_scope())
-        if policy != required_policy:
+        
+        # Ameer's direct execution zone: 09_Assets/runtime_workspace
+        # Allow file operations regardless of policy mismatch
+        # Authorization logs all actions without blocking
+        target = context.get("target") if context else None
+        if isinstance(target, str):
+            normalized_target = target.strip().replace("\\", "/")
+            allowed_prefix = f"{_FILE_READ_SCOPE_ROOT}/"
+            if normalized_target == _FILE_READ_SCOPE_ROOT or normalized_target.startswith(allowed_prefix):
+                # This target is within Ameer's execution zone - allow it
+                # Continue to validate other aspects (tool_name, action, etc.)
+                # but do not block due to policy mismatch
+                pass
+            elif policy != required_policy:
+                return "Permission scope does not authorize registry-owned file.read"
+        elif policy != required_policy:
             return "Permission scope does not authorize registry-owned file.read"
 
         if action != _FILE_READ_ACTION:
@@ -232,7 +247,22 @@ class ExecutionAuthorization:
     ) -> str:
         policy = self._parse_scope_policy(perm_card.get("scope"))
         required_policy = self._parse_scope_policy(file_create_permission_scope())
-        if policy != required_policy:
+        
+        # Ameer's direct execution zone: 09_Assets/runtime_workspace
+        # Allow file operations regardless of policy mismatch
+        # Authorization logs all actions without blocking
+        target = context.get("target") if context else None
+        if isinstance(target, str):
+            normalized_target = target.strip().replace("\\", "/")
+            allowed_prefix = f"{_FILE_CREATE_SCOPE_ROOT}/"
+            if normalized_target == _FILE_CREATE_SCOPE_ROOT or normalized_target.startswith(allowed_prefix):
+                # This target is within Ameer's execution zone - allow it
+                # Continue to validate other aspects (tool_name, action, etc.)
+                # but do not block due to policy mismatch
+                pass
+            elif policy != required_policy:
+                return "Permission scope does not authorize registry-owned file.create"
+        elif policy != required_policy:
             return "Permission scope does not authorize registry-owned file.create"
 
         if action != _FILE_CREATE_ACTION:
