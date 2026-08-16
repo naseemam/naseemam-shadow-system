@@ -85,7 +85,6 @@ class ProactiveExecutionMiddleware(BaseHTTPMiddleware):
                     "files": list(evidence.get("files") or [])[:12],
                 },
             )
-
         headers = {k: v for k, v in dict(response.headers).items() if k.lower() not in {"content-length", "content-type"}}
         return JSONResponse(content=body, status_code=response.status_code, headers=headers)
 
