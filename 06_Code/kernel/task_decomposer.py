@@ -94,6 +94,11 @@ AEX1_INTENT_SPECS = {
         "capability": "shell_execution",
         "requires_approval": False,
     },
+    "execute_pending_tasks": {
+        "description": "تنفيذ المهام المعلّقة المسجلة في الحالة التنفيذية",
+        "permission_mode": "tracked_execution",
+        "requires_approval": False,
+    },
     "open_branch": {
         "description": "فتح فرع Git جديد",
         "permission_mode": "external_approval",
@@ -129,6 +134,11 @@ _BUILD_STORE_MARKERS = [
 _BUILD_WEBSITE_MARKERS = [
     "ابن موقع", "ابنِ موقع", "أنشئ موقع", "انشئ موقع", "بناء موقع",
     "build website", "create website", "new website", "موقع جديد",
+]
+_EXECUTE_PENDING_TASKS_MARKERS = [
+    "نفّذ المهام الآن", "نفذ المهام الآن", "نفّذ جميع المهام", "نفذ جميع المهام",
+    "ابدأ المهام المعلقة", "ابدأ تنفيذ المهام", "شغّل المهام المعلقة", "شغل المهام المعلقة",
+    "execute pending tasks", "execute all tasks", "run pending tasks",
 ]
 _OPEN_BRANCH_MARKERS = [
     "افتح فرع", "أنشئ فرع", "انشئ فرع", "فتح فرع", "open branch", "create branch",
@@ -183,6 +193,8 @@ def _detect_intent(command: str) -> str:
         return "file_read"
 
     # AEX-1 execution intents take priority over generic build markers.
+    if _matches(command, _EXECUTE_PENDING_TASKS_MARKERS):
+        return "execute_pending_tasks"
     if _matches(command, _DEPLOY_RAILWAY_MARKERS):
         return "deploy_railway"
     if _matches(command, _OPEN_PR_MARKERS):
@@ -634,6 +646,9 @@ class TaskDecomposer:
     def _build_tasks(self, intent: str, command: str) -> List[Dict[str, Any]]:
         if intent == "file_read":
             return self._file_read_tasks(command)
+        if intent == "execute_pending_tasks":
+            # Existing tasks are hydrated from ExecutiveStateManager by ExecutiveKernel.
+            return []
         if intent == "repository_review":
             return self._repository_review_tasks()
         if intent == "code_edit":
