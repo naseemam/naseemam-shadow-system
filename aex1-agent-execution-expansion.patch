@@ -1,0 +1,608 @@
+From 85e74bf06d3c7d0e61c9c633fc722adb7f00f889 Mon Sep 17 00:00:00 2001
+From: naseemam <1.95790818e+08+naseemam@users.noreply.github.com>
+Date: Sun, 16 Aug 2026 01:29:27 +0000
+Subject: [PATCH] feat: expand agent execution intents with approval traces
+
+---
+ 06_Code/kernel/execution_boundary.py          |  16 +-
+ 06_Code/kernel/executive_kernel.py            |  46 ++++
+ 06_Code/kernel/task_decomposer.py             | 211 +++++++++++++++++-
+ .../test_aex1_agent_execution_expansion.py    | 131 +++++++++++
+ ameer_server.py                               |  38 +++-
+ 5 files changed, 433 insertions(+), 9 deletions(-)
+ create mode 100644 07_Tests/test_aex1_agent_execution_expansion.py
+
+diff --git a/06_Code/kernel/execution_boundary.py b/06_Code/kernel/execution_boundary.py
+index 4ef9262..c6cf273 100644
+--- a/06_Code/kernel/execution_boundary.py
++++ b/06_Code/kernel/execution_boundary.py
+@@ -45,6 +45,8 @@ _HIGH_RISK_ACTIONS_REQUIRING_APPROVAL: Set[str] = {
+     "publish",
+     "external",
+     "financial",
++    "merge",
++    "deploy",
+ }
+ 
+ # Request types that are purely conversational — they must never trigger side effects.
+@@ -58,7 +60,19 @@ _CONVERSATIONAL_TYPES: Set[str] = {
+ 
+ # Intents that the kernel is allowed to act on even when request_type is conversational.
+ # This mirrors KERNEL_ACTIONABLE_INTENTS in ameer_server.py.
+-KERNEL_ACTIONABLE_INTENTS: Set[str] = {"build_homepage", "build_generic", "file_read", "run_test"}
++KERNEL_ACTIONABLE_INTENTS: Set[str] = {
++    "build_homepage", "build_generic", "file_read", "run_test",
++    "repository_review", "code_edit", "build_website", "build_store",
++    "open_branch", "open_pull_request", "deploy_railway",
++}
++
++# AEX-1 permission matrix. Read/analyze and workspace writes are eligible for
++# the normal audited path; merge/publish/deploy require explicit approval.
++AEX1_PERMISSION_MATRIX: Dict[str, Dict[str, Any]] = {
++    "read_only": {"allow": True, "tracked": True, "approval": False},
++    "tracked_write": {"allow": True, "tracked": True, "approval": False},
++    "external_approval": {"allow": False, "tracked": True, "approval": True},
++}
+ 
+ 
+ class BoundaryVerdict(str, Enum):
+diff --git a/06_Code/kernel/executive_kernel.py b/06_Code/kernel/executive_kernel.py
+index a6a5303..22db8f8 100644
+--- a/06_Code/kernel/executive_kernel.py
++++ b/06_Code/kernel/executive_kernel.py
+@@ -10,6 +10,8 @@ Executive Operating Kernel — قلب نظام أمير التشغيلي.
+ 
+ from __future__ import annotations
+ 
++import uuid
++
+ import json
+ import os
+ import sys
+@@ -748,6 +750,7 @@ class ExecutiveKernel:
+         tasks = decomposition.get("tasks", [])
+ 
+         pipeline_trace = {
++            "trace_id": str(uuid.uuid4()),
+             "command": command,
+             "pipeline": [],
+             "final": {},
+@@ -772,7 +775,48 @@ class ExecutiveKernel:
+             pipeline_trace["final"] = {
+                 "accepted": False,
+                 "reason": "no_tasks_generated",
++                "technical_reason": "TaskDecomposer لم يولّد مهاماً قابلة للتنفيذ لهذه النية.",
++                "intent": decomposition["intent"],
++            }
++            return pipeline_trace
++
++        # AEX-1 external effects never execute from a plain command. They create
++        # an explicit approval request and return a complete trace instead.
++        external_intents = {"open_branch", "open_pull_request", "deploy_railway"}
++        if decomposition["intent"] in external_intents:
++            approval_id = None
++            if self.approvals is not None:
++                approval_id = self.approvals.request(
++                    action="publish" if decomposition["intent"] == "deploy_railway" else "external",
++                    description=f"AEX-1 approval required: {command[:240]}",
++                    requested_by=requested_by,
++                    context={"intent": decomposition["intent"], "command": command},
++                )
++            pipeline_trace["pipeline"].append({
++                "step": 2,
++                "name": "ApprovalGate",
++                "status": "pending",
++                "output": {
++                    "approval_id": approval_id,
++                    "intent": decomposition["intent"],
++                    "reason": "explicit_approval_required",
++                },
++            })
++            pipeline_trace["final"] = {
++                "accepted": False,
++                "reason": "explicit_approval_required",
++                "technical_reason": "هذا الإجراء يغيّر حالة GitHub أو Railway، ولذلك لا يُنفّذ قبل موافقة صريحة.",
+                 "intent": decomposition["intent"],
++                "approval_id": approval_id,
++                "completed": 0,
++                "failed": 0,
++                "blocked": 1,
++                "results": [{
++                    "task_id": tasks[0].get("id"),
++                    "status": "blocked",
++                    "reason": "explicit_approval_required",
++                    "approval_id": approval_id,
++                }],
+             }
+             return pipeline_trace
+ 
+@@ -861,6 +905,8 @@ class ExecutiveKernel:
+ 
+         pipeline_trace["final"] = {
+             "accepted": result["accepted"],
++            "reason": None if result["accepted"] else "execution_blocked_or_failed",
++            "technical_reason": None if result["accepted"] else "راجع نتائج الحوكمة لكل مهمة لمعرفة سبب الحظر أو الفشل.",
+             "tasks_queued": result["tasks_queued"],
+             "completed": result["execution"]["completed"],
+             "failed": result["execution"]["failed"],
+diff --git a/06_Code/kernel/task_decomposer.py b/06_Code/kernel/task_decomposer.py
+index a796568..1daee54 100644
+--- a/06_Code/kernel/task_decomposer.py
++++ b/06_Code/kernel/task_decomposer.py
+@@ -59,6 +59,89 @@ _RUN_TEST_MARKERS = [
+     "اختبار", "اختبارات", "نفّذ الاختبارات", "نفذ الاختبارات",
+ ]
+ 
++# AEX-1: executable intents are explicit, auditable, and permission-aware.
++# ``permission_mode`` is consumed by the execution boundary and is also exposed
++# in the decomposition result so callers can explain why an action is allowed,
++# tracked, pending, or denied.
++AEX1_INTENT_SPECS = {
++    "repository_review": {
++        "description": "مراجعة المستودع قراءةً وتحليلاً دون آثار جانبية",
++        "permission_mode": "read_only",
++        "capability": "analysis",
++        "requires_approval": False,
++    },
++    "code_edit": {
++        "description": "تعديل كود داخل مساحة العمل مع تتبع",
++        "permission_mode": "tracked_write",
++        "capability": "programming",
++        "requires_approval": False,
++    },
++    "build_website": {
++        "description": "بناء موقع جديد داخل مساحة العمل",
++        "permission_mode": "tracked_write",
++        "capability": "programming",
++        "requires_approval": False,
++    },
++    "build_store": {
++        "description": "بناء متجر جديد داخل مساحة العمل",
++        "permission_mode": "tracked_write",
++        "capability": "programming",
++        "requires_approval": False,
++    },
++    "run_test": {
++        "description": "تشغيل الاختبارات محلياً",
++        "permission_mode": "read_only",
++        "capability": "shell_execution",
++        "requires_approval": False,
++    },
++    "open_branch": {
++        "description": "فتح فرع Git جديد",
++        "permission_mode": "external_approval",
++        "capability": "engineering",
++        "requires_approval": True,
++    },
++    "open_pull_request": {
++        "description": "فتح طلب سحب على GitHub",
++        "permission_mode": "external_approval",
++        "capability": "engineering",
++        "requires_approval": True,
++    },
++    "deploy_railway": {
++        "description": "النشر على Railway",
++        "permission_mode": "external_approval",
++        "capability": "engineering",
++        "requires_approval": True,
++    },
++}
++
++_REPOSITORY_REVIEW_MARKERS = [
++    "راجع المستودع", "مراجعة المستودع", "راجع الكود", "حلل المستودع",
++    "repository review", "review repository", "review the repo", "audit repository",
++]
++_CODE_EDIT_MARKERS = [
++    "عدل الكود", "عدّل الكود", "تعديل الكود", "صلح الكود", "إصلاح الكود",
++    "edit code", "modify code", "fix code", "refactor",
++]
++_BUILD_STORE_MARKERS = [
++    "ابن متجر", "ابنِ متجر", "أنشئ متجر", "انشئ متجر", "بناء متجر",
++    "build store", "create store", "ecommerce", "e-commerce", "متجر إلكتروني", "متجر الكتروني",
++]
++_BUILD_WEBSITE_MARKERS = [
++    "ابن موقع", "ابنِ موقع", "أنشئ موقع", "انشئ موقع", "بناء موقع",
++    "build website", "create website", "new website", "موقع جديد",
++]
++_OPEN_BRANCH_MARKERS = [
++    "افتح فرع", "أنشئ فرع", "انشئ فرع", "فتح فرع", "open branch", "create branch",
++]
++_OPEN_PR_MARKERS = [
++    "افتح طلب سحب", "فتح طلب سحب", "أنشئ طلب سحب", "انشئ طلب سحب",
++    "افتح pr", "open pull request", "open pr", "create pull request",
++]
++_DEPLOY_RAILWAY_MARKERS = [
++    "انشر على railway", "انشر إلى railway", "النشر على railway", "railway",
++    "deploy to railway", "deploy railway", "publish on railway",
++]
++
+ 
+ def _matches(text: str, patterns: list[str]) -> bool:
+     lower = text.lower()
+@@ -94,10 +177,27 @@ def _detect_intent(command: str) -> str:
+     4. build_generic — أوامر البناء العامة.
+     5. unknown — الاحتياطي.
+     """
+-    # Priority-1: explicit read intent overrides all HOME_PAGE_HINTS path tokens.
+-    if _has_read_intent(command):
++    # AEX-1 execution verbs such as "افتح فرعاً" must win over the generic
++    # read marker "افتح". A file read still wins for explicit file/content reads.
++    if _has_read_intent(command) and not _matches(command, _OPEN_BRANCH_MARKERS + _OPEN_PR_MARKERS):
+         return "file_read"
+ 
++    # AEX-1 execution intents take priority over generic build markers.
++    if _matches(command, _DEPLOY_RAILWAY_MARKERS):
++        return "deploy_railway"
++    if _matches(command, _OPEN_PR_MARKERS):
++        return "open_pull_request"
++    if _matches(command, _OPEN_BRANCH_MARKERS):
++        return "open_branch"
++    if _matches(command, _REPOSITORY_REVIEW_MARKERS):
++        return "repository_review"
++    if _matches(command, _CODE_EDIT_MARKERS):
++        return "code_edit"
++    if _matches(command, _BUILD_STORE_MARKERS):
++        return "build_store"
++    if _matches(command, _BUILD_WEBSITE_MARKERS):
++        return "build_website"
++
+     # Priority-2: test execution
+     if _matches(command, _RUN_TEST_MARKERS):
+         return "run_test"
+@@ -512,11 +612,20 @@ class TaskDecomposer:
+         """يحلّل الأمر ويُعيد task batch جاهزًا للتنفيذ."""
+         intent = _detect_intent(command)
+         tasks = self._build_tasks(intent, command)
++        spec = AEX1_INTENT_SPECS.get(intent, {})
++        for task in tasks:
++            task.setdefault("permission_mode", spec.get("permission_mode", "conversation_only"))
++            if spec.get("capability") and not task.get("capability"):
++                task["capability"] = spec["capability"]
+         return {
+             "intent": intent,
+             "command": command,
+             "tasks": tasks,
+             "task_count": len(tasks),
++            "permission_mode": spec.get("permission_mode", "conversation_only"),
++            "capability": spec.get("capability"),
++            "requires_approval": bool(spec.get("requires_approval", False)),
++            "execution_intent": intent in AEX1_INTENT_SPECS,
+             "decomposed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+         }
+ 
+@@ -525,6 +634,16 @@ class TaskDecomposer:
+     def _build_tasks(self, intent: str, command: str) -> List[Dict[str, Any]]:
+         if intent == "file_read":
+             return self._file_read_tasks(command)
++        if intent == "repository_review":
++            return self._repository_review_tasks()
++        if intent == "code_edit":
++            return self._code_edit_tasks(command)
++        if intent == "build_website":
++            return self._generic_page_tasks(command)
++        if intent == "build_store":
++            return self._store_tasks(command)
++        if intent in {"open_branch", "open_pull_request", "deploy_railway"}:
++            return self._external_approval_tasks(intent, command)
+         if intent == "build_homepage":
+             return self._homepage_tasks()
+         if intent == "build_generic":
+@@ -546,9 +665,69 @@ class TaskDecomposer:
+                 "target": target,
+                 "priority": "high",
+                 "description": f"قراءة الملف {target}",
++                "capability": "file_operations",
++                "permission_mode": "read_only",
+             }
+         ]
+ 
++    def _repository_review_tasks(self) -> List[Dict[str, Any]]:
++        return [
++            {
++                "id": f"repo-review-{uuid.uuid4().hex[:6]}",
++                "action": "run",
++                "executor": "shell",
++                "target": ".",
++                "command": ["git", "status", "--short"],
++                "priority": "high",
++                "description": "قراءة حالة المستودع وتحليل التغييرات",
++                "capability": "shell_execution",
++                "permission_mode": "read_only",
++            },
++            {
++                "id": f"repo-review-diff-{uuid.uuid4().hex[:6]}",
++                "action": "run",
++                "executor": "shell",
++                "target": ".",
++                "command": ["git", "diff", "--stat"],
++                "priority": "normal",
++                "description": "قراءة ملخص فروق المستودع",
++                "capability": "shell_execution",
++                "permission_mode": "read_only",
++            },
++        ]
++
++    def _code_edit_tasks(self, command: str) -> List[Dict[str, Any]]:
++        return [{
++            "id": f"code-edit-request-{uuid.uuid4().hex[:6]}",
++            "action": "write",
++            "executor": "file",
++            "target": "09_Assets/runtime_workspace/agent_requests/code_edit_request.md",
++            "content": f"# AEX-1 Code Edit Request\\n\\n{command.strip()}\\n",
++            "priority": "high",
++            "description": "تسجيل طلب تعديل الكود داخل مساحة العمل مع تتبع",
++            "capability": "file_operations",
++            "permission_mode": "tracked_write",
++        }]
++
++    def _external_approval_tasks(self, intent: str, command: str) -> List[Dict[str, Any]]:
++        target = {
++            "open_branch": "github/branch",
++            "open_pull_request": "github/pull_request",
++            "deploy_railway": "railway/deploy",
++        }[intent]
++        return [{
++            "id": f"{intent}-{uuid.uuid4().hex[:6]}",
++            "action": "request",
++            "executor": "api",
++            "target": target,
++            "command": command,
++            "priority": "high",
++            "description": AEX1_INTENT_SPECS[intent]["description"],
++            "capability": "engineering",
++            "permission_mode": "external_approval",
++            "requires_approval": True,
++        }]
++
+     def _run_test_tasks(self, command: str) -> List[Dict[str, Any]]:
+         """Generate a shell task to run pytest inside the workspace."""
+         # Extract optional path from command (e.g. "run tests in 07_Tests/test_foo.py")
+@@ -565,9 +744,37 @@ class TaskDecomposer:
+                 "command": ["python3", "-m", "pytest", test_path, "-v", "--tb=short"],
+                 "priority": "high",
+                 "description": f"تشغيل الاختبارات: {test_path}",
++                "capability": "shell_execution",
++                "permission_mode": "read_only",
+             }
+         ]
+ 
++    def _store_tasks(self, command: str) -> List[Dict[str, Any]]:
++        slug = _slug_from_command(command)
++        prefix = f"{self.RUNTIME_PREFIX}/stores/{slug}"
++        title = slug.replace("-", " ").strip() or "store"
++        return [
++            {
++                "id": f"store-html-{slug}", "action": "write", "executor": "file",
++                "target": f"{prefix}/index.html",
++                "content": _GENERIC_HTML_TPL.format(title=f"متجر {title}", description=f"متجر إلكتروني: {title}"),
++                "priority": "high", "description": f"بناء واجهة متجر {title}",
++                "capability": "file_operations", "permission_mode": "tracked_write",
++            },
++            {
++                "id": f"store-css-{slug}", "action": "write", "executor": "file",
++                "target": f"{prefix}/style.css", "content": _GENERIC_CSS,
++                "priority": "high", "description": "تنسيق واجهة المتجر",
++                "capability": "file_operations", "permission_mode": "tracked_write",
++            },
++            {
++                "id": f"store-js-{slug}", "action": "write", "executor": "file",
++                "target": f"{prefix}/script.js", "content": _GENERIC_JS,
++                "priority": "normal", "description": "سلوك واجهة المتجر",
++                "capability": "file_operations", "permission_mode": "tracked_write",
++            },
++        ]
++
+     def _homepage_tasks(self) -> List[Dict[str, Any]]:
+         prefix = f"{self.RUNTIME_PREFIX}/home"
+         return [
+diff --git a/07_Tests/test_aex1_agent_execution_expansion.py b/07_Tests/test_aex1_agent_execution_expansion.py
+new file mode 100644
+index 0000000..2f35a8b
+--- /dev/null
++++ b/07_Tests/test_aex1_agent_execution_expansion.py
+@@ -0,0 +1,131 @@
++"""AEX-1 Agent-first acceptance tests."""
++from __future__ import annotations
++
++import importlib.util
++import os
++import sys
++import tempfile
++import unittest
++from pathlib import Path
++
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def _load(name: str, path: Path):
++    spec = importlib.util.spec_from_file_location(name, path)
++    module = importlib.util.module_from_spec(spec)
++    sys.modules[name] = module
++    assert spec.loader is not None
++    spec.loader.exec_module(module)
++    return module
++
++
++_decomposer = _load("aex1_task_decomposer", ROOT / "06_Code/kernel/task_decomposer.py")
++_boundary = _load("aex1_execution_boundary", ROOT / "06_Code/kernel/execution_boundary.py")
++
++
++class TestAEX1IntentAcceptance(unittest.TestCase):
++    def setUp(self):
++        self.decomposer = _decomposer.TaskDecomposer(str(ROOT))
++
++    def assert_execution_intent(self, command: str, intent: str):
++        result = self.decomposer.decompose(command)
++        self.assertEqual(result["intent"], intent)
++        self.assertTrue(result["execution_intent"])
++        self.assertGreater(result["task_count"], 0)
++        for task in result["tasks"]:
++            self.assertIn("permission_mode", task)
++            self.assertIn("description", task)
++        return result
++
++    def test_ameer_review_repository(self):
++        result = self.assert_execution_intent("أمير راجع المستودع", "repository_review")
++        self.assertEqual(result["permission_mode"], "read_only")
++        self.assertFalse(result["requires_approval"])
++
++    def test_ameer_build_new_website(self):
++        result = self.assert_execution_intent("أمير ابن موقع جديد عن منصة أمير", "build_website")
++        self.assertEqual(result["permission_mode"], "tracked_write")
++        self.assertTrue(all(task["action"] == "write" for task in result["tasks"]))
++
++    def test_ameer_run_tests(self):
++        result = self.assert_execution_intent("أمير شغل الاختبارات", "run_test")
++        self.assertEqual(result["permission_mode"], "read_only")
++        self.assertEqual(result["tasks"][0]["command"][:3], ["python3", "-m", "pytest"])
++
++    def test_ameer_deploy_railway_requires_approval(self):
++        result = self.assert_execution_intent("أمير انشر على Railway", "deploy_railway")
++        self.assertEqual(result["permission_mode"], "external_approval")
++        self.assertTrue(result["requires_approval"])
++        self.assertEqual(result["tasks"][0]["target"], "railway/deploy")
++
++    def test_additional_aex1_intents_are_mapped(self):
++        expected = {
++            "أمير عدل الكود": "code_edit",
++            "أمير ابن متجر إلكتروني": "build_store",
++            "أمير افتح فرع جديد": "open_branch",
++            "أمير افتح طلب سحب": "open_pull_request",
++        }
++        for command, intent in expected.items():
++            with self.subTest(command=command):
++                self.assert_execution_intent(command, intent)
++
++
++class TestAEX1KernelTrace(unittest.TestCase):
++    def test_deploy_railway_returns_trace_and_pending_approval(self):
++        code_root = str(ROOT / "06_Code")
++        if code_root not in sys.path:
++            sys.path.insert(0, code_root)
++        from kernel.executive_kernel import ExecutiveKernel
++
++        with tempfile.TemporaryDirectory() as temp_root:
++            kernel = ExecutiveKernel(temp_root)
++            trace = kernel.execute_command(
++                "أمير انشر على Railway",
++                guardian={"status": "pass"},
++                request_type="execution",
++                requested_by="aex1_acceptance",
++            )
++            self.assertTrue(trace.get("trace_id"))
++            self.assertEqual(trace["final"]["intent"], "deploy_railway")
++            self.assertFalse(trace["final"]["accepted"])
++            self.assertEqual(trace["final"]["reason"], "explicit_approval_required")
++            self.assertTrue(trace["final"].get("approval_id"))
++            self.assertEqual(trace["pipeline"][-1]["name"], "ApprovalGate")
++
++
++class TestAEX1PermissionMatrix(unittest.TestCase):
++    def test_matrix_is_explicit_and_fail_closed_for_external_effects(self):
++        self.assertEqual(_boundary.KERNEL_ACTIONABLE_INTENTS.__class__, set)
++        self.assertIn("repository_review", _boundary.KERNEL_ACTIONABLE_INTENTS)
++        self.assertIn("build_website", _boundary.KERNEL_ACTIONABLE_INTENTS)
++        self.assertIn("deploy_railway", _boundary.KERNEL_ACTIONABLE_INTENTS)
++
++        class Auth:
++            def check(self, **kwargs):
++                return {"status": "approved", "request_id": "auth-1"}
++
++        class Approval:
++            VALID_ACTIONS = {"publish", "external"}
++            def recent(self, _limit):
++                return []
++            def pending(self):
++                return []
++            def request(self, **kwargs):
++                return "approval-1"
++
++        boundary = _boundary.ExecutionBoundary(approval_gate=Approval(), execution_auth=Auth())
++        result = boundary.evaluate(
++            guardian={"status": "pass"},
++            request_type="execution",
++            intent="deploy_railway",
++            capability_name="engineering",
++            action="publish",
++        )
++        self.assertEqual(result.verdict, _boundary.BoundaryVerdict.PENDING)
++        self.assertEqual(result.reason, "approval_gate_created")
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/ameer_server.py b/ameer_server.py
+index f40040b..9e29a9f 100644
+--- a/ameer_server.py
++++ b/ameer_server.py
+@@ -137,7 +137,11 @@ MD_GLOB = os.path.join(REPO_ROOT, "**", "*.md")
+ WEB_INDEX = os.path.join(REPO_ROOT, "09_Assets", "web", "index.html")
+ DEBUG_MODE = os.getenv("AMEER_DEBUG", "0").lower() in {"1", "true", "yes", "on"}
+ RUNTIME_METADATA = runtime_metadata(workspace_root=REPO_ROOT)
+-KERNEL_ACTIONABLE_INTENTS = {"build_homepage", "build_generic", "file_read", "run_test"}
++KERNEL_ACTIONABLE_INTENTS = {
++    "build_homepage", "build_generic", "file_read", "run_test",
++    "repository_review", "code_edit", "build_website", "build_store",
++    "open_branch", "open_pull_request", "deploy_railway",
++}
+ 
+ # ─── Executive Operating Kernel ───────────────────────────────────────────────
+ 
+@@ -521,13 +525,28 @@ async def ask(request: Request):
+                             + ".\n\n"
+                             "يمكنك معاينتها الآن عبر رابط Preview أدناه."
+                         )
+-                elif not final_exec.get("accepted") and kernel_execution_trace.get("pipeline"):
++                elif not final_exec.get("accepted"):
++                    technical_reason = final_exec.get("technical_reason") or final_exec.get("reason") or "execution_failed"
+                     kernel_execution_reply = (
+-                        "⚠️ لم يتمكن أمير من إتمام التنفيذ. "
+-                        "راجع خطوات Pipeline أدناه لمعرفة سبب التوقف."
++                        "⚠️ لم يُنفّذ أمير الطلب التنفيذي. "
++                        f"السبب التقني: {technical_reason}."
+                     )
+-        except Exception:
+-            pass
++        except Exception as exc:
++            if kernel_detected_intent != "unknown":
++                kernel_execution_trace = {
++                    "command": q,
++                    "pipeline": [],
++                    "final": {
++                        "accepted": False,
++                        "intent": kernel_detected_intent,
++                        "reason": "execution_pipeline_exception",
++                        "technical_reason": f"{type(exc).__name__}: {exc}",
++                    },
++                }
++                kernel_execution_reply = (
++                    "⚠️ تعذر تشغيل مسار التنفيذ. "
++                    f"السبب التقني: {type(exc).__name__}: {exc}."
++                )
+     # ── 4. Compose fallback reply (used only if ECE is unavailable) ─────────────
+     fallback_reply, reply_source = EXECUTIVE_BRAIN.compose_final_reply(
+         q,
+@@ -595,6 +614,12 @@ async def ask(request: Request):
+     if _can_use_kernel_reply:
+         final_reply = kernel_execution_reply
+         reply_source = "executive_kernel"
++    elif kernel_detected_intent in KERNEL_ACTIONABLE_INTENTS and kernel_execution_trace is not None:
++        # AEX-1: a known execution intent must not degrade to a conversational
++        # answer when governance or infrastructure blocks execution.
++        _technical_reason = (kernel_execution_trace.get("final") or {}).get("technical_reason") or (kernel_execution_trace.get("final") or {}).get("reason") or "execution_not_completed"
++        final_reply = f"⚠️ الطلب تنفيذي معروف لكنه لم يكتمل. السبب التقني: {_technical_reason}."
++        reply_source = "executive_kernel_blocked"
+ 
+     # ── 6. AOS Kernel: record assistant reply in session context ──────────────
+     if KERNEL:
+@@ -664,6 +689,7 @@ async def ask(request: Request):
+     user_payload["request_id"] = request_id
+     if kernel_execution_trace is not None:
+         user_payload["execution_trace"] = kernel_execution_trace
++        user_payload["run_trace"] = kernel_execution_trace
+         _preview_path = kernel_execution_trace.get("final", {}).get("preview_path") or ""
+         if _preview_path.startswith("09_Assets/runtime_workspace/projects/"):
+             _slug = _preview_path[len("09_Assets/runtime_workspace/projects/"):].split("/")[0]
+-- 
+2.43.0
