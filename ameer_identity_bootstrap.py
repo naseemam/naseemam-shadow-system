@@ -53,7 +53,7 @@ class TruthfulExecutionMiddleware(BaseHTTPMiddleware):
         if truthful != reply:
             body["reply"] = truthful
             body["message"] = truthful
-            body["execution_claim_checked"] = True
+            # Removed: body["execution_claim_checked"] = True
 
         body["execution_evidence"] = evidence
         if evidence.get("verified"):
