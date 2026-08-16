@@ -246,7 +246,7 @@ def utf8_json_response(payload, headers: dict[str, str] | None = None, status_co
 DOCUMENTS = load_documents()
 
 class AskRequest(BaseModel):
-    query: str
+    query: str | None = None  # Make query optional
     max_results: int = 5
 
     class Config:
