@@ -609,6 +609,7 @@ class ExecutiveKernel:
         request_type: str = "execution",
         intent: str = "execute_tasks",
         requested_by: str = "executive_kernel",
+        register_tasks: bool = True,
     ) -> dict:
         """
         نقطة الدخول الوحيدة لتنفيذ مهام.
@@ -655,13 +656,14 @@ class ExecutiveKernel:
 
         schedule = self.scheduler.schedule(tasks)
 
-        for task in tasks:
-            stored_task = dict(task)
-            if any(item.get("id") == task.get("id") for item in schedule.get("blocked", [])):
-                stored_task["status"] = "blocked"
-            else:
-                stored_task["status"] = "pending"
-            self.state.add_task(stored_task)
+        if register_tasks:
+            for task in tasks:
+                stored_task = dict(task)
+                if any(item.get("id") == task.get("id") for item in schedule.get("blocked", [])):
+                    stored_task["status"] = "blocked"
+                else:
+                    stored_task["status"] = "pending"
+                self.state.add_task(stored_task)
 
         execution_results = []
         completed = 0
@@ -748,6 +750,17 @@ class ExecutiveKernel:
         # 1. Executive Brain — intent detection (via TaskDecomposer)
         decomposition = self.task_decomposer.decompose(command)
         tasks = decomposition.get("tasks", [])
+        replay_existing_tasks = False
+
+        if decomposition.get("intent") == "execute_pending_tasks":
+            tasks = [
+                dict(task)
+                for task in self.state.running_tasks
+                if str(task.get("status", "pending")).strip().lower() in {"pending", "blocked"}
+            ]
+            decomposition["tasks"] = tasks
+            decomposition["task_count"] = len(tasks)
+            replay_existing_tasks = True
 
         pipeline_trace = {
             "trace_id": str(uuid.uuid4()),
@@ -765,7 +778,10 @@ class ExecutiveKernel:
                 "intent": decomposition["intent"],
                 "task_count": decomposition["task_count"],
                 "tasks": [
-                    {"id": t["id"], "description": t.get("description", t["target"])}
+                    {
+                        "id": t.get("id"),
+                        "description": t.get("description") or t.get("target") or t.get("id"),
+                    }
                     for t in tasks
                 ],
             },
@@ -774,8 +790,12 @@ class ExecutiveKernel:
         if not tasks:
             pipeline_trace["final"] = {
                 "accepted": False,
-                "reason": "no_tasks_generated",
-                "technical_reason": "TaskDecomposer لم يولّد مهاماً قابلة للتنفيذ لهذه النية.",
+                "reason": "no_pending_tasks" if decomposition["intent"] == "execute_pending_tasks" else "no_tasks_generated",
+                "technical_reason": (
+                    "لا توجد مهام معلّقة قابلة لإعادة التنفيذ في الحالة التنفيذية."
+                    if decomposition["intent"] == "execute_pending_tasks"
+                    else "TaskDecomposer لم يولّد مهاماً قابلة للتنفيذ لهذه النية."
+                ),
                 "intent": decomposition["intent"],
             }
             return pipeline_trace
@@ -827,6 +847,7 @@ class ExecutiveKernel:
             request_type=request_type,
             intent=decomposition["intent"],
             requested_by=requested_by,
+            register_tasks=not replay_existing_tasks,
         )
 
         # Step 2 — PlanValidator
