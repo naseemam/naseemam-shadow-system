@@ -647,8 +647,40 @@ class TaskDecomposer:
         if intent == "file_read":
             return self._file_read_tasks(command)
         if intent == "execute_pending_tasks":
-            # Existing tasks are hydrated from ExecutiveStateManager by ExecutiveKernel.
-            return []
+            # Load pending tasks from state
+            import json
+            from pathlib import Path
+
+            state_file = Path(self._root) / ".ameer" / "state.json"
+            if not state_file.exists():
+                return []
+
+            try:
+                with open(state_file, 'r', encoding='utf-8') as f:
+                    state_data = json.load(f)
+
+                running_tasks = state_data.get("running_tasks", [])
+                tasks_list = []
+
+                for task in running_tasks:
+                    if task and isinstance(task, dict):
+                        status = task.get("status", "pending").lower()
+                        if status in ("pending", "blocked", "running"):
+                            task_item = {
+                                "id": task.get("id", f"task-{uuid.uuid4()}"),
+                                "action": task.get("action", "execute"),
+                                "executor": task.get("executor", "shell"),
+                                "target": task.get("target", ""),
+                                "content": task.get("content", ""),
+                                "description": task.get("description", ""),
+                                "priority": task.get("priority", "normal"),
+                                "status": status,
+                            }
+                            tasks_list.append(task_item)
+
+                return tasks_list
+            except Exception:
+                return []
         if intent == "repository_review":
             return self._repository_review_tasks()
         if intent == "code_edit":
