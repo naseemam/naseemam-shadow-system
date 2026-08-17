@@ -29,6 +29,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
+try:
+    from kernel.arabic_intent_lexicon import classify_arabic_intent
+except ImportError:  # direct module loading in legacy tests
+    from arabic_intent_lexicon import classify_arabic_intent
+
 
 # ── Intent patterns ────────────────────────────────────────────────────────────
 
@@ -191,6 +196,11 @@ def _extract_read_target(command: str) -> str:
     return ""
 
 
+def normalize_arabic_for_match(text: str) -> str:
+    value = (text or "").lower()
+    return value.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ى", "ي")
+
+
 def _detect_intent(command: str) -> str:
     """تحديد النية من الأمر البشري. يُعيد معرّف النية.
 
@@ -218,6 +228,20 @@ def _detect_intent(command: str) -> str:
         return "open_branch"
     if _matches(command, _REPOSITORY_REVIEW_MARKERS):
         return "repository_review"
+
+    # The unified lexicon adds only the missing UI improvement/design forms here;
+    # it must not override explicit AEX-1 intents such as branch/PR/repository work.
+    arabic = classify_arabic_intent(command)
+    normalized_command = normalize_arabic_for_match(command)
+    if arabic.intent == "write" and arabic.execution_candidate and any(
+        token in normalized_command
+        for token in ("واجهه", "واجهه", "صفحه", "موقع", "frontend", "ui", "html", "css")
+    ) and any(
+        token in normalized_command
+        for token in ("تحسين", "حسن", "حسّن", "تطوير", "طور", "طوّر", "تصميم", "صمم", "صمّم")
+    ):
+        return "build_homepage"
+
     if _matches(command, _CODE_EDIT_MARKERS):
         return "code_edit"
     if _matches(command, _UI_IMPROVEMENT_MARKERS):
