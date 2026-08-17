@@ -162,6 +162,90 @@
       "created_at": "2026-08-17T09:52:41Z",
       "updated_at": "2026-08-17T09:52:41Z",
       "notes": "Only explicitly connected and approved API/MCP services may be used. Mutating or externally visible calls require final founder approval."
+    },
+    {
+      "permission_id": "policy-0d7524d0-8eef-4dfb-a0af-1668320b01e6",
+      "capability_id": "0d7524d0-8eef-4dfb-a0af-1668320b01e6",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"actions\": [\"plan\", \"prioritize\", \"sequence\"], \"branch\": \"main\", \"external_effects_require_approval\": true, \"repository\": \"naseemam/naseemam-shadow-system\", \"scope_kind\": \"approved_project_context\"}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-17T11:01:48Z",
+      "expires_at": null,
+      "created_at": "2026-08-17T11:01:48Z",
+      "updated_at": "2026-08-17T11:01:48Z",
+      "notes": "Low-risk planning and coordination are enabled within the approved project context."
+    },
+    {
+      "permission_id": "policy-1a3e69b2-504c-4c41-bdfb-36881f3ecbd9",
+      "capability_id": "1a3e69b2-504c-4c41-bdfb-36881f3ecbd9",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"actions\": [\"read_code\", \"write_code\", \"debug\", \"refactor\", \"test\"], \"branch\": \"main\", \"external_effects_require_approval\": true, \"repository\": \"naseemam/naseemam-shadow-system\", \"scope_kind\": \"approved_project_context\"}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-17T11:01:48Z",
+      "expires_at": null,
+      "created_at": "2026-08-17T11:01:48Z",
+      "updated_at": "2026-08-17T11:01:48Z",
+      "notes": "Programming work is enabled within the approved repository and workspace; external effects remain gated."
+    },
+    {
+      "permission_id": "policy-45a84b77-f095-44aa-8544-dcb2b110b34b",
+      "capability_id": "45a84b77-f095-44aa-8544-dcb2b110b34b",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"actions\": [\"design\", \"implement\", \"review\", \"test\"], \"branch\": \"main\", \"external_effects_require_approval\": true, \"repository\": \"naseemam/naseemam-shadow-system\", \"scope_kind\": \"approved_project_context\"}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-17T11:01:48Z",
+      "expires_at": null,
+      "created_at": "2026-08-17T11:01:48Z",
+      "updated_at": "2026-08-17T11:01:48Z",
+      "notes": "Engineering work is enabled within the approved repository and workspace; production changes remain gated."
+    },
+    {
+      "permission_id": "policy-ae4f6ecf-061c-4ac5-828c-f3775cb874b7",
+      "capability_id": "ae4f6ecf-061c-4ac5-828c-f3775cb874b7",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"actions\": [\"plan\", \"track\", \"coordinate\", \"report\"], \"branch\": \"main\", \"external_effects_require_approval\": true, \"repository\": \"naseemam/naseemam-shadow-system\", \"scope_kind\": \"approved_project_context\"}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-17T11:01:48Z",
+      "expires_at": null,
+      "created_at": "2026-08-17T11:01:48Z",
+      "updated_at": "2026-08-17T11:01:48Z",
+      "notes": "Project management is enabled for the approved project context."
+    },
+    {
+      "permission_id": "policy-d8a85d40-49ec-45a0-9676-c74196931ee5",
+      "capability_id": "d8a85d40-49ec-45a0-9676-c74196931ee5",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"actions\": [\"analyze\", \"compare\", \"summarize\", \"validate\"], \"branch\": \"main\", \"external_effects_require_approval\": true, \"repository\": \"naseemam/naseemam-shadow-system\", \"scope_kind\": \"approved_project_context\"}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-17T11:01:48Z",
+      "expires_at": null,
+      "created_at": "2026-08-17T11:01:48Z",
+      "updated_at": "2026-08-17T11:01:48Z",
+      "notes": "Analysis is enabled for approved project data and connected read scopes."
+    },
+    {
+      "permission_id": "policy-fa94fd0d-d796-46ad-9da0-4f57f98f064f",
+      "capability_id": "fa94fd0d-d796-46ad-9da0-4f57f98f064f",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"actions\": [\"architect\", \"model\", \"document\", \"review\"], \"branch\": \"main\", \"external_effects_require_approval\": true, \"repository\": \"naseemam/naseemam-shadow-system\", \"scope_kind\": \"approved_project_context\"}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-17T11:01:48Z",
+      "expires_at": null,
+      "created_at": "2026-08-17T11:01:48Z",
+      "updated_at": "2026-08-17T11:01:48Z",
+      "notes": "System design is enabled for the approved project; implementation and external changes remain subject to the delivery gate."
     }
   ],
   "audit_log": [
@@ -344,6 +428,42 @@
       "permission_id": "policy-api-integration-uuid",
       "action": "granted",
       "detail": "staged founder authorization policy added"
+    },
+    {
+      "timestamp": "2026-08-17T11:01:48Z",
+      "permission_id": "policy-0d7524d0-8eef-4dfb-a0af-1668320b01e6",
+      "action": "granted",
+      "detail": "core capability planning enabled in approved project context"
+    },
+    {
+      "timestamp": "2026-08-17T11:01:48Z",
+      "permission_id": "policy-1a3e69b2-504c-4c41-bdfb-36881f3ecbd9",
+      "action": "granted",
+      "detail": "core capability programming enabled in approved project context"
+    },
+    {
+      "timestamp": "2026-08-17T11:01:48Z",
+      "permission_id": "policy-45a84b77-f095-44aa-8544-dcb2b110b34b",
+      "action": "granted",
+      "detail": "core capability engineering enabled in approved project context"
+    },
+    {
+      "timestamp": "2026-08-17T11:01:48Z",
+      "permission_id": "policy-ae4f6ecf-061c-4ac5-828c-f3775cb874b7",
+      "action": "granted",
+      "detail": "core capability project_management enabled in approved project context"
+    },
+    {
+      "timestamp": "2026-08-17T11:01:48Z",
+      "permission_id": "policy-d8a85d40-49ec-45a0-9676-c74196931ee5",
+      "action": "granted",
+      "detail": "core capability analysis enabled in approved project context"
+    },
+    {
+      "timestamp": "2026-08-17T11:01:48Z",
+      "permission_id": "policy-fa94fd0d-d796-46ad-9da0-4f57f98f064f",
+      "action": "granted",
+      "detail": "core capability system_design enabled in approved project context"
     }
   ]
 }

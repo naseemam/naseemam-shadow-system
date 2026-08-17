@@ -55,9 +55,15 @@ def resolve_port() -> int:
 
 
 def _read_git_commit(workspace_root: Path) -> str:
+    # Railway exposes the source revision when the service is built from GitHub.
+    # Prefer that full SHA because a short local SHA cannot prove deployment identity.
+    for key in ("RAILWAY_GIT_COMMIT_SHA", "SOURCE_COMMIT", "GIT_COMMIT_SHA"):
+        value = os.getenv(key, "").strip()
+        if value:
+            return value
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
+            ["git", "rev-parse", "HEAD"],
             cwd=str(workspace_root),
             capture_output=True,
             text=True,
@@ -70,7 +76,9 @@ def _read_git_commit(workspace_root: Path) -> str:
 
 
 COMMIT = _read_git_commit(WORKSPACE_ROOT)
-BUILD_ID = os.getenv("AMEER_BUILD_ID") or datetime.now(timezone.utc).strftime("%Y.%m.%d-%H%M")
+COMMIT_SOURCE = next((key for key in ("RAILWAY_GIT_COMMIT_SHA", "SOURCE_COMMIT", "GIT_COMMIT_SHA") if os.getenv(key, "").strip()), "git")
+DEPLOYMENT_ID = os.getenv("RAILWAY_DEPLOYMENT_ID", "").strip()
+BUILD_ID = os.getenv("AMEER_BUILD_ID") or DEPLOYMENT_ID or datetime.now(timezone.utc).strftime("%Y.%m.%d-%H%M")
 
 
 def runtime_metadata(workspace_root: str | Path | None = None) -> dict:
@@ -80,6 +88,9 @@ def runtime_metadata(workspace_root: str | Path | None = None) -> dict:
         "build": BUILD_ID,
         "build_id": BUILD_ID,
         "commit": COMMIT,
+        "commit_source": COMMIT_SOURCE,
+        "deployment_id": DEPLOYMENT_ID,
+        "deployment_provider": "railway" if DEPLOYMENT_ID or COMMIT_SOURCE == "RAILWAY_GIT_COMMIT_SHA" else "unknown",
         "workspace": str(root),
         "host": resolve_host(),
         "port": resolve_port(),
@@ -95,16 +106,21 @@ def public_runtime_identity(workspace_root: str | Path | None = None) -> dict:
         "build": meta["build"],
         "build_id": meta["build_id"],
         "commit": meta["commit"],
+        "commit_source": meta["commit_source"],
+        "deployment_id": meta["deployment_id"],
         "started_at": meta["started_at"],
     }
 
 
 def runtime_headers(workspace_root: str | Path | None = None) -> dict[str, str]:
     meta = runtime_metadata(workspace_root=workspace_root)
-    return {
+    headers = {
         "X-Ameer-Build-ID": str(meta["build_id"]),
         "X-Ameer-Commit": str(meta["commit"]),
     }
+    if meta.get("deployment_id"):
+        headers["X-Ameer-Deployment-ID"] = str(meta["deployment_id"])
+    return headers
 
 
 def print_runtime_banner(workspace_root: str | Path | None = None) -> None:

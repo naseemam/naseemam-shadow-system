@@ -1020,6 +1020,9 @@ async def health():
         "build": meta["build"],
         "build_id": meta["build_id"],
         "commit": meta["commit"],
+        "commit_source": meta.get("commit_source", "unknown"),
+        "deployment_id": meta.get("deployment_id", ""),
+        "deployment_provider": meta.get("deployment_provider", "unknown"),
         "started_at": meta["started_at"],
         "documents": len(DOCUMENTS),
         "ameer_status": {
@@ -1031,6 +1034,25 @@ async def health():
         },
     }
     return utf8_json_response(payload, headers=runtime_headers(workspace_root=REPO_ROOT))
+
+
+@app.get('/build-info')
+async def build_info():
+    """Public, non-secret build identity used to verify deployment provenance."""
+    meta = runtime_metadata(workspace_root=REPO_ROOT)
+    return utf8_json_response(
+        {
+            "status": meta["status"],
+            "build": meta["build"],
+            "build_id": meta["build_id"],
+            "commit": meta["commit"],
+            "commit_source": meta.get("commit_source", "unknown"),
+            "deployment_id": meta.get("deployment_id", ""),
+            "deployment_provider": meta.get("deployment_provider", "unknown"),
+            "started_at": meta["started_at"],
+        },
+        headers=runtime_headers(workspace_root=REPO_ROOT),
+    )
 
 
 @app.get('/documents/search')

@@ -255,7 +255,7 @@ class RailwayDeploymentClient:
             raise DeliveryRemoteError(f"Railway GraphQL error: {payload['errors'][:3]}")
         return payload.get("data") or {}
 
-    def deploy(self, commit_sha: Optional[str] = None) -> Dict[str, Any]:
+    def deploy(self, commit_sha: Optional[str] = None, wait_seconds: int = 120) -> Dict[str, Any]:
         mutation = """
         mutation AmeerDeploy($serviceId: String!, $environmentId: String!, $commitSha: String) {
           serviceInstanceDeployV2(serviceId: $serviceId, environmentId: $environmentId, commitSha: $commitSha)
@@ -266,7 +266,29 @@ class RailwayDeploymentClient:
             {"serviceId": self.service_id, "environmentId": self.environment_id, "commitSha": commit_sha},
         )
         deployment_id = data.get("serviceInstanceDeployV2")
-        return {"status": "deployment_triggered", "deployment_id": deployment_id, "commit_sha": commit_sha}
+        result: Dict[str, Any] = {
+            "status": "deployment_triggered",
+            "deployment_id": deployment_id,
+            "commit_sha": commit_sha,
+            "completed": 0,
+        }
+        if not deployment_id:
+            return result
+
+        terminal = {"SUCCESS", "FAILED", "CRASHED", "CANCELED", "CANCELLED", "REMOVED"}
+        deadline = time.time() + max(0, int(wait_seconds))
+        while True:
+            observed = self.deployment_status(str(deployment_id))
+            result["deployment_status"] = observed
+            status = str(observed.get("status") or "UNKNOWN").upper()
+            if status in terminal:
+                result["status"] = "SUCCESS" if status == "SUCCESS" else status
+                result["completed"] = 1 if status == "SUCCESS" else 0
+                return result
+            if time.time() >= deadline:
+                result["status"] = "deployment_pending"
+                return result
+            time.sleep(3)
 
     def deployment_status(self, deployment_id: str) -> Dict[str, Any]:
         query = """
@@ -365,6 +387,8 @@ class DeliveryController:
                 return {"status": "ignored", "reason": "unknown_delivery_action", "action": action}
             result["status"] = "completed"
             result["duration_ms"] = int((time.time() - started) * 1000)
+            if action in {"deploy", "merge_and_deploy"} and result.get("railway", {}).get("status") == "SUCCESS":
+                result["completed"] = 1
             return result
         except (DeliveryConfigurationError, DeliveryRemoteError, OSError, ValueError) as exc:
             return {
