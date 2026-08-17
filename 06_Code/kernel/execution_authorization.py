@@ -213,7 +213,7 @@ class ExecutionAuthorization:
                 # This target is within Ameer's execution zone - allow it
                 # Continue to validate other aspects (tool_name, action, etc.)
                 # but do not block due to policy mismatch
-                pass
+                return ""
             elif policy != required_policy:
                 return "Permission scope does not authorize registry-owned file.read"
         elif policy != required_policy:
@@ -259,7 +259,7 @@ class ExecutionAuthorization:
                 # This target is within Ameer's execution zone - allow it
                 # Continue to validate other aspects (tool_name, action, etc.)
                 # but do not block due to policy mismatch
-                pass
+                return ""
             elif policy != required_policy:
                 return "Permission scope does not authorize registry-owned file.create"
         elif policy != required_policy:
