@@ -5,6 +5,7 @@
   const navItems = [
     { key: 'home', label: 'Home', icon: '🏠' },
     { key: 'executive-chat', label: 'Executive Chat', icon: '💬' },
+    { key: 'friendly-chat', label: 'Friendly Chat', icon: '☕' },
     { key: 'projects', label: 'Projects', icon: '📁' },
     { key: 'memory', label: 'Memory', icon: '🧠' },
     { key: 'development', label: 'Development', icon: '🛠' },
@@ -210,7 +211,8 @@
     });
 
     const moduleKeyMap = {
-      'executive-chat': 'executive_chat'
+      'executive-chat': 'executive_chat',
+      'friendly-chat': 'friendly-chat'
     };
     const activeKey = moduleKeyMap[state.activePage] || state.activePage;
     if (window.AmeerWorkspaceLoader && typeof window.AmeerWorkspaceLoader.load === 'function') {
@@ -230,6 +232,7 @@
     const pageMap = {
       home: ['Home', 'Ameer OS · الصفحة الرئيسية'],
       'executive-chat': ['Executive Chat', 'Ameer OS · المحادثة التنفيذية'],
+      'friendly-chat': ['Friendly Chat', 'Ameer OS · المحادثة الودية'],
       projects: ['Projects', 'Ameer OS · المشاريع'],
       memory: ['Memory', 'Ameer OS · الذاكرة'],
       development: ['Development', 'Ameer OS · التطوير'],

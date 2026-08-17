@@ -3,6 +3,7 @@
   const modulePaths = {
     home: './modules/home/index.js',
     'executive-chat': './modules/executive_chat/index.js',
+    'friendly-chat': './modules/friendly_chat/index.js',
     executive_chat: './modules/executive_chat/index.js',
     projects: './modules/projects/index.js',
     memory: './modules/memory/index.js',
@@ -21,6 +22,7 @@
   const hostIds = {
     home: 'homeContent',
     'executive-chat': 'executiveChatContent',
+    'friendly-chat': 'friendlyChatContent',
     executive_chat: 'executiveChatContent',
     projects: 'projectsContent',
     memory: 'memoryContent',

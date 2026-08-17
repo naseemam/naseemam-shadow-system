@@ -2,6 +2,7 @@
   const routeMap = {
     home: 'home',
     'executive-chat': 'executive-chat',
+    friendly_chat: 'friendly_chat',
     projects: 'projects',
     memory: 'memory',
     development: 'development',

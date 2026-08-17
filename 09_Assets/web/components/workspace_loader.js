@@ -2,6 +2,7 @@
   const moduleDefinitions = [
     { key: 'home', label: 'Home', hostId: 'homeContent', component: 'home' },
     { key: 'executive_chat', label: 'Executive Chat', hostId: 'executiveChatContent', component: 'executive_chat' },
+    { key: 'friendly_chat', label: 'Friendly Chat', hostId: 'friendlyChatContent', component: 'friendly_chat' },
     { key: 'projects', label: 'Projects', hostId: 'projectsContent', component: 'projects' },
     { key: 'memory', label: 'Memory', hostId: 'memoryContent', component: 'memory' },
     { key: 'development', label: 'Development', hostId: 'developmentContent', component: 'development' },
@@ -48,7 +49,15 @@
   function getHostForKey(key) {
     const definition = moduleDefinitions.find(item => item.key === key);
     if (!definition) return null;
-    return document.getElementById(definition.hostId);
+    let host = document.getElementById(definition.hostId);
+    if (!host && definition.key === 'friendly_chat') {
+      const content = document.querySelector('.content') || document.body;
+      host = document.createElement('div');
+      host.id = definition.hostId;
+      host.className = 'page-view';
+      content.appendChild(host);
+    }
+    return host;
   }
 
   function createHomeModule() {

@@ -261,6 +261,7 @@ DOCUMENTS = load_documents()
 class AskRequest(BaseModel):
     query: str | None = None  # Make query optional
     max_results: int = 5
+    room: str = "business"
 
     class Config:
         extra = 'allow'
@@ -387,6 +388,62 @@ ORCHESTRATOR = AmeerOrchestrator(
 
 EXECUTIVE_BRAIN = ExecutiveBrainClass(normalize_fn=normalize_arabic) if ExecutiveBrainClass else None
 RESPONSE_FORMATTER = ResponseFormatterClass() if ResponseFormatterClass else None
+
+FRIENDLY_EXECUTION_MARKERS = (
+    "نفذ", "تنفيذ", "اكتب", "اكتب لي", "أنشئ", "انشئ", "حسن", "حسّن", "طور", "طوّر", "صمم", "صمّم", "انشر", "أرسل", "احذف", "عدّل", "عدل", "برمج", "ابنِ", "ابني"
+)
+FRIENDLY_BUSINESS_MARKERS = (
+    "المخزون", "الموظف", "الموظفين", "العملاء", "الحجوزات", "الحجز", "المتجر", "الطلب", "مركز حلم الندى", "store agent"
+)
+
+
+def _friendly_room_blocked(query: str) -> bool:
+    text = (query or "").strip().lower()
+    return any(marker.lower() in text for marker in FRIENDLY_EXECUTION_MARKERS + FRIENDLY_BUSINESS_MARKERS)
+
+
+@app.post('/friendly-chat')
+async def friendly_chat(request: Request):
+    """Conversation-only room: no worker dispatch, file work, or external effect."""
+    request_id = str(uuid.uuid4())
+    try:
+        payload = await request.json()
+        req = AskRequest(**(payload if isinstance(payload, dict) else {}))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    q = req.query.strip() if isinstance(req.query, str) else ""
+    if not q:
+        raise HTTPException(status_code=400, detail="Empty query")
+    if _friendly_room_blocked(q):
+        return utf8_json_response({
+            "status": "room_switch_required",
+            "room": "friendly",
+            "message": "هذه الغرفة للمحادثة الودية فقط. افتح غرفة الأعمال إذا أردت طلبًا تنفيذيًا أو متعلقًا بمركز حلم الندى.",
+            "execution": {"started": False, "external_effect": False},
+            "request_id": request_id,
+        }, status_code=200)
+    if not EXECUTIVE_BRAIN or not EXECUTIVE_CONVERSATION_ENGINE:
+        raise HTTPException(status_code=503, detail="Conversation engine unavailable")
+    orchestrator_result = ORCHESTRATOR.answer(q, req.max_results)
+    guardian = orchestrator_result.get("guardian", {})
+    routing = orchestrator_result.get("routing") or {}
+    plan = EXECUTIVE_BRAIN.think(q, DOCUMENTS, guardian_result=guardian, routing_hint=routing)
+    reasoning_output = EXECUTIVE_BRAIN.get_reasoning_output(q, DOCUMENTS, guardian_result=guardian, routing_hint=routing, existing_plan=plan)
+    conversation_result = EXECUTIVE_CONVERSATION_ENGINE.execute(
+        query=q,
+        planner_state=EXECUTIVE_CONVERSATION_ENGINE.memory.plan(q, active_projects=[], running_tasks=[], pending_approvals=[], workspace_summary="", executive_assessment=""),
+        conversation_context="غرفة ودية مستقلة؛ لا توجد مهمة تنفيذية في هذا الدور.",
+        persistent_memory_block="",
+        pending_approvals=[], running_tasks=[], active_projects=[], is_first_turn=False,
+        dry_run=True, reasoning_output=reasoning_output,
+    )
+    reply = conversation_result.get("reply") or "أنا معك. كيف يمكنني مساعدتك اليوم؟"
+    return utf8_json_response({
+        "status": "completed", "room": "friendly", "reply": reply, "message": reply,
+        "execution": {"started": False, "external_effect": False, "worker_dispatch": False},
+        "request_id": request_id,
+    })
+
 
 @app.post('/ask')
 async def ask(request: Request):

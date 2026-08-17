@@ -2,6 +2,7 @@
   const navItems = [
     { key: 'home', label: 'Home', icon: '🏠' },
     { key: 'executive-chat', label: 'Executive Chat', icon: '💬' },
+    { key: 'friendly_chat', label: 'Friendly Chat', icon: '☕' },
     { key: 'projects', label: 'Projects', icon: '📁' },
     { key: 'memory', label: 'Memory', icon: '🧠' },
     { key: 'development', label: 'Development', icon: '🛠' },
