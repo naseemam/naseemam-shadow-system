@@ -179,6 +179,16 @@ def _load_execution_boundary():
 
 EXECUTION_BOUNDARY = _load_execution_boundary()
 
+try:
+    from kernel.agent_message_bus import AgentMessageBus
+    from kernel.worker_runtime import DEFAULT_WORKERS
+    MESSAGE_BUS = AgentMessageBus(ROOT)
+except Exception:
+    AgentMessageBus = None
+    DEFAULT_WORKERS = {}
+    MESSAGE_BUS = None
+
+
 def load_documents():
     # Paths (relative to ROOT) that must be excluded from the knowledge corpus.
     # Backups may contain outdated or conflicting information; root junk files are not
@@ -396,6 +406,17 @@ async def ask(request: Request):
         raise HTTPException(status_code=400, detail="Empty query")
 
     _log("ask_received", request_id=request_id, build_id=RUNTIME_METADATA["build_id"])
+    if MESSAGE_BUS is not None:
+        try:
+            MESSAGE_BUS.send(
+                sender="user",
+                recipient="ameer",
+                body=q,
+                kind="chat_command",
+                metadata={"channel": "web", "request_id": request_id},
+            )
+        except Exception:
+            _log("agent_message_record_failed", level="warning", request_id=request_id)
 
     # ── 1. Executive Kernel: build full executive context (pipeline step 1→5) ──
     # Pipeline: Kernel → State → Workspace → Founder → Session → Brain
@@ -1066,6 +1087,86 @@ async def workers_runtime():
     if not KERNEL:
         return utf8_json_response({"status": "unavailable", "reason": "kernel_inactive"}, status_code=503)
     return utf8_json_response({"status": "ok", "runtime": KERNEL.worker_runtime.snapshot()})
+
+
+@app.get('/agent/authority')
+async def agent_authority():
+    """Expose the governed reporting chain without exposing credentials."""
+    return utf8_json_response({
+        "status": "ok",
+        "executive": "ameer",
+        "workers": sorted(DEFAULT_WORKERS),
+        "reporting_chain": "user/founder -> ameer -> workers -> ameer -> user/founder",
+        "worker_direct_founder_contact": False,
+        "final_approval_owner": "founder",
+        "message_bus": MESSAGE_BUS.snapshot() if MESSAGE_BUS else {"status": "unavailable"},
+    })
+
+
+@app.get('/agent/messages')
+async def agent_messages(actor: str | None = None, limit: int = 100):
+    if MESSAGE_BUS is None:
+        return utf8_json_response({"status": "unavailable", "messages": []}, status_code=503)
+    try:
+        messages = MESSAGE_BUS.list(actor=actor, limit=limit)
+    except ValueError:
+        return utf8_json_response({"status": "invalid_actor"}, status_code=422)
+    return utf8_json_response({"status": "ok", "messages": messages, "count": len(messages)})
+
+
+@app.post('/agent/messages')
+async def post_agent_message(request: Request):
+    """Accept user/founder messages into Ameer's inbox; workers cannot impersonate the user."""
+    if MESSAGE_BUS is None:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return utf8_json_response({"status": "invalid_request", "reason": "invalid_json"}, status_code=400)
+    sender = str(body.get("sender") or "user").strip().lower()
+    if sender != "user":
+        return utf8_json_response({"status": "blocked", "reason": "authenticated_founder_channel_required"}, status_code=403)
+    try:
+        message = MESSAGE_BUS.send(
+            sender=sender,
+            recipient="ameer",
+            body=str(body.get("body") or body.get("message") or ""),
+            kind=str(body.get("kind") or "user_command"),
+            metadata={"channel": body.get("channel", "web"), "request_id": body.get("request_id")},
+        )
+    except PermissionError as exc:
+        return utf8_json_response({"status": "blocked", "reason": str(exc)}, status_code=403)
+    except ValueError as exc:
+        return utf8_json_response({"status": "invalid_request", "reason": str(exc)}, status_code=422)
+    return utf8_json_response({"status": "accepted", "message": message})
+
+
+@app.post('/agent/delegate')
+async def delegate_agent_task(request: Request):
+    """Ameer delegates internal work to a worker and reports the result back."""
+    if not KERNEL or MESSAGE_BUS is None:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return utf8_json_response({"status": "invalid_request", "reason": "invalid_json"}, status_code=400)
+    worker_id = str(body.get("worker_id") or "").strip().lower()
+    objective = str(body.get("objective") or "").strip()
+    ameer_review = body.get("ameer_review") is True
+    external_effect = body.get("external_effect") is True
+    if worker_id not in DEFAULT_WORKERS or not objective:
+        return utf8_json_response({"status": "invalid_request", "reason": "worker_id_and_objective_required"}, status_code=422)
+    if not ameer_review:
+        return utf8_json_response({"status": "pending", "reason": "ameer_review_required", "next": "Ameer must review and open the execution lane"}, status_code=422)
+    delegation = MESSAGE_BUS.send(sender="ameer", recipient=worker_id, body=objective, kind="delegation", metadata={"reviewed_by": "ameer", "external_effect": external_effect})
+    if external_effect:
+        approval_id = KERNEL.request_approval(action=str(body.get("approval_action") or "external"), description=objective, requested_by="ameer")
+        notice = MESSAGE_BUS.send(sender="ameer", recipient="user", body=f"يحتاج هذا الإجراء موافقتك النهائية: {objective}", kind="final_approval_request", metadata={"approval_id": approval_id, "worker_id": worker_id})
+        return utf8_json_response({"status": "pending_final_approval", "approval_id": approval_id, "delegation": delegation, "notice": notice}, status_code=202)
+    result = KERNEL.worker_runtime.dispatch(worker_id, objective, {"mode": "ameer_delegation", "delegation_id": delegation["message_id"], "ameer_review": True, "external_effect": False})
+    report = MESSAGE_BUS.send(sender=worker_id, recipient="ameer", body=json.dumps(result, ensure_ascii=False), kind="worker_report", metadata={"run_id": result.get("run_id"), "status": result.get("status")})
+    user_notice = MESSAGE_BUS.send(sender="ameer", recipient="user", body=f"تقرير العامل {worker_id}: {result.get('status')}", kind="worker_result", metadata={"run_id": result.get("run_id"), "worker_id": worker_id})
+    return utf8_json_response({"status": result.get("status"), "delegation": delegation, "worker_result": result, "worker_report": report, "user_notice": user_notice}, status_code=200 if result.get("status") == "completed" else 422)
 
 
 @app.get('/build-info')
