@@ -1459,6 +1459,48 @@ async def execute_tasks(request: Request):
     return utf8_json_response(report, status_code=status_code)
 
 
+@app.post('/workers/probe')
+async def workers_probe(request: Request):
+    """Run a read-only model probe for one registered worker.
+
+    This endpoint never invokes file, shell, browser, mail, deployment, or other
+    external tools. It exists to prove worker adapter invocation separately from
+    the side-effecting command pipeline. A valid Guardian probe scope is required.
+    """
+    if not KERNEL or not getattr(KERNEL, "worker_runtime", None):
+        return utf8_json_response({"status": "unavailable", "reason": "worker_runtime_unavailable"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return utf8_json_response({"status": "invalid_request", "reason": "invalid_json"}, status_code=400)
+    guardian = body.get("guardian") or {}
+    if guardian.get("status") != "pass" or guardian.get("scope") != "worker_probe_read_only":
+        return utf8_json_response({
+            "status": "blocked",
+            "reason": "guardian_not_pass",
+            "required": {"status": "pass", "scope": "worker_probe_read_only"},
+        }, status_code=422)
+    worker_id = str(body.get("worker_id", "")).strip().lower()
+    objective = str(body.get("objective", "")).strip()
+    if not worker_id or not objective:
+        return utf8_json_response({"status": "invalid_request", "reason": "worker_id_and_objective_required"}, status_code=422)
+    if len(objective) > 500:
+        return utf8_json_response({"status": "invalid_request", "reason": "objective_too_long"}, status_code=422)
+    forbidden = ("نشر", "ارسل", "أرسل", "حذف", "احذف", "دمج", "ادفع", "شراء", "send", "deploy", "delete", "merge", "push")
+    if any(token in objective.lower() for token in forbidden):
+        return utf8_json_response({"status": "blocked", "reason": "external_or_side_effecting_objective"}, status_code=422)
+    started = datetime.now(timezone.utc)
+    result = KERNEL.worker_runtime.dispatch(
+        worker_id,
+        objective,
+        {"mode": "read_only_probe", "tools": [], "approval_required": False},
+    )
+    elapsed_ms = round((datetime.now(timezone.utc) - started).total_seconds() * 1000, 2)
+    result["latency_ms"] = elapsed_ms
+    result["probe"] = {"read_only": True, "tools": [], "external_effect": False}
+    return utf8_json_response(result, status_code=200 if result.get("status") == "completed" else 422)
+
+
 @app.post('/execute/command')
 async def execute_command(request: Request):
     """
