@@ -8,6 +8,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from kernel.worker_runtime import WorkerRuntimeRegistry
+
 
 class ExecutiveOrchestrator:
     """Ameer is the executive manager above subordinate bots/assistants.
@@ -41,6 +43,7 @@ class ExecutiveOrchestrator:
         root = Path(os.getenv("AMEER_DATA_DIR") or workspace_root).resolve()
         root.mkdir(parents=True, exist_ok=True)
         self.db_path = root / "executive_orchestrator.sqlite3"
+        self.runtime = WorkerRuntimeRegistry(root)
         self._init_db()
         self._seed_workers()
 
@@ -84,7 +87,23 @@ class ExecutiveOrchestrator:
     def workers(self) -> List[Dict[str, Any]]:
         with self._connect() as db:
             rows = db.execute("SELECT * FROM workers ORDER BY worker_id").fetchall()
-        return [dict(row) for row in rows]
+        items = [dict(row) for row in rows]
+        runtime = {item["worker_id"]: item for item in self.runtime.snapshot()["workers"]}
+        for item in items:
+            item["runtime"] = runtime.get(item["worker_id"], {"status": "unavailable", "reason": "worker_runtime_not_registered"})
+        return items
+
+    def runtime_snapshot(self) -> Dict[str, Any]:
+        return self.runtime.snapshot()
+
+    def register_worker_runtime(self, worker_id: str, **kwargs: Any) -> Dict[str, Any]:
+        return self.runtime.register_runtime(worker_id, **kwargs)
+
+    def worker_heartbeat(self, worker_id: str, **kwargs: Any) -> Dict[str, Any]:
+        return self.runtime.heartbeat(worker_id, **kwargs)
+
+    def dispatch_to_worker(self, worker_id: str, objective: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return self.runtime.dispatch(worker_id, objective, context)
 
     def register_worker(self, worker_id: str, role: str, description: str) -> Dict[str, Any]:
         worker_id = worker_id.strip().lower().replace(" ", "_")
@@ -141,6 +160,7 @@ class ExecutiveOrchestrator:
             "executive": "ameer",
             "founder": "final_authority",
             "subordinate_workers": list(self.DEFAULT_WORKERS),
+            "worker_runtime": self.runtime.snapshot(),
             "worker_can_delegate_subtasks": True,
             "worker_can_merge_main": False,
             "worker_can_deploy_production": False,

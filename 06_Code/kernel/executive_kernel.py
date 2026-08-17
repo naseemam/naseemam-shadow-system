@@ -50,6 +50,7 @@ from context.workspace_awareness import WorkspaceAwareness
 from context.session_context import SessionContext
 from context.founder_profile import FounderProfile
 from executive_conversation import PersistentConversationMemory
+from kernel.worker_runtime import WorkerRuntimeRegistry
 
 
 def _now_iso() -> str:
@@ -84,6 +85,8 @@ class ExecutiveKernel:
         self.session: SessionContext = SessionContext()
         self.founder: FounderProfile = FounderProfile(self._root)
         self.conversation_memory: PersistentConversationMemory = PersistentConversationMemory(self._root)
+        # Worker runtime registry: registration alone is not readiness or execution.
+        self.worker_runtime: WorkerRuntimeRegistry = WorkerRuntimeRegistry(self._root)
         # P0.6 — Executive Capability Governance
         self.capabilities: CapabilityRegistry = CapabilityRegistry(self._root)
         self.permissions: PermissionRegistry = PermissionRegistry(self._root)
@@ -422,6 +425,7 @@ class ExecutiveKernel:
             "learned_preferences": self.learning.get_preferences(),
             "learned_preferences_context": self.learning.build_context_block(),
             "memory_governance": self.memory_governance.snapshot(),
+            "worker_runtime": self.worker_runtime.snapshot(),
             "session_count": self.state.session_count,
             "is_follow_up": self.session.is_follow_up(),
             "is_first_turn": is_first_turn,

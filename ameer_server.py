@@ -1032,8 +1032,17 @@ async def health():
             "Memory": "Ready",
             "Projects": "Ready",
         },
+        "worker_runtime": KERNEL.worker_runtime.snapshot() if KERNEL else {"status": "unavailable"},
     }
     return utf8_json_response(payload, headers=runtime_headers(workspace_root=REPO_ROOT))
+
+
+@app.get('/workers/runtime')
+async def workers_runtime():
+    """Read-only worker/model availability; registration is not readiness."""
+    if not KERNEL:
+        return utf8_json_response({"status": "unavailable", "reason": "kernel_inactive"}, status_code=503)
+    return utf8_json_response({"status": "ok", "runtime": KERNEL.worker_runtime.snapshot()})
 
 
 @app.get('/build-info')
