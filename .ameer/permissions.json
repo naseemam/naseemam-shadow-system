@@ -36,6 +36,132 @@
       "granted_by": "system:shell.run_activation",
       "granted_at": "2026-08-12T19:57:14Z",
       "notes": "Grants Ameer ability to run controlled shell commands within workspace. External-effect operations still require ApprovalGate."
+    },
+    {
+      "permission_id": "policy-240af273-ceb3-4c86-8474-d9019bed23a2",
+      "capability_id": "240af273-ceb3-4c86-8474-d9019bed23a2",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"actions\": [\"read\", \"write\", \"create\", \"modify\"], \"branch\": \"main\", \"repository\": \"naseemam/naseemam-shadow-system\", \"runtime_workspace\": \"09_Assets/runtime_workspace\", \"scope_kind\": \"controlled_repository\"}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-17T09:52:41Z",
+      "expires_at": null,
+      "created_at": "2026-08-17T09:52:41Z",
+      "updated_at": "2026-08-17T09:52:41Z",
+      "notes": "Ameer may read and modify files within the approved repository and runtime workspace. Deletion and external effects remain approval-gated."
+    },
+    {
+      "permission_id": "policy-90183988-6593-4b7c-b37f-40b6da508eb5",
+      "capability_id": "90183988-6593-4b7c-b37f-40b6da508eb5",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"actions\": [\"run\"], \"approval_required_for_external_effects\": true, \"repository\": \"naseemam/naseemam-shadow-system\", \"scope_kind\": \"workspace_only\"}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-17T09:52:41Z",
+      "expires_at": null,
+      "created_at": "2026-08-17T09:52:41Z",
+      "updated_at": "2026-08-17T09:52:41Z",
+      "notes": "Ameer may run controlled commands in the approved workspace. External calls, publishing, destructive actions, and account changes require ApprovalGate."
+    },
+    {
+      "permission_id": "policy-browser-integration-uuid",
+      "capability_id": "browser-integration-uuid",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"actions\": [\"navigate\", \"read\", \"interact\"], \"approval_required_for_external_effects\": true, \"connector\": \"My Browser\", \"scope_kind\": \"approved_browser_session\"}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-17T09:52:41Z",
+      "expires_at": null,
+      "created_at": "2026-08-17T09:52:41Z",
+      "updated_at": "2026-08-17T09:52:41Z",
+      "notes": "Browser reading and preparation are allowed. Form submission, sending, publishing, deletion, purchases, and account changes require final founder approval."
+    },
+    {
+      "permission_id": "policy-github-integration-uuid",
+      "capability_id": "github-integration-uuid",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"actions\": [\"read\", \"write\", \"create_pull_request\"], \"approval_required_for_external_effects\": true, \"branch\": \"main\", \"repository\": \"naseemam/naseemam-shadow-system\", \"scope_kind\": \"controlled_repository\"}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-17T09:52:41Z",
+      "expires_at": null,
+      "created_at": "2026-08-17T09:52:41Z",
+      "updated_at": "2026-08-17T09:52:41Z",
+      "notes": "Ameer may inspect and prepare repository changes. Pushes to protected branches, merges, releases, and destructive GitHub actions require final founder approval."
+    },
+    {
+      "permission_id": "policy-google-integration-uuid",
+      "capability_id": "google-integration-uuid",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"actions\": [\"read\", \"write\"], \"approval_required_for_external_effects\": true, \"connector_status\": \"to_be_connected\", \"scope_kind\": \"approved_google_account\", \"services\": [\"Drive\", \"Sheets\", \"Calendar\", \"Gmail\"]}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-17T09:52:41Z",
+      "expires_at": null,
+      "created_at": "2026-08-17T09:52:41Z",
+      "updated_at": "2026-08-17T09:52:41Z",
+      "notes": "Google access is authorized in principle but requires the selected Google connector/account to be connected. Writes, deletes, event changes, and message sends require approval."
+    },
+    {
+      "permission_id": "policy-email-integration-uuid",
+      "capability_id": "email-integration-uuid",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"actions\": [\"read\", \"draft\", \"manage\", \"send\"], \"approval_required_for_send\": true, \"connector_status\": \"to_be_connected\", \"scope_kind\": \"approved_mail_account\"}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-17T09:52:41Z",
+      "expires_at": null,
+      "created_at": "2026-08-17T09:52:41Z",
+      "updated_at": "2026-08-17T09:52:41Z",
+      "notes": "Ameer may read and draft mail after the selected mail connector is connected. Sending or deleting messages requires final founder approval."
+    },
+    {
+      "permission_id": "policy-slack-integration-uuid",
+      "capability_id": "slack-integration-uuid",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"actions\": [\"read\", \"draft\", \"send\"], \"approval_required_for_send\": true, \"connector_status\": \"to_be_connected\", \"scope_kind\": \"approved_messaging_workspace\"}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-17T09:52:41Z",
+      "expires_at": null,
+      "created_at": "2026-08-17T09:52:41Z",
+      "updated_at": "2026-08-17T09:52:41Z",
+      "notes": "Messaging access is authorized in principle but requires an account connector. Sending messages or changing channels requires final founder approval."
+    },
+    {
+      "permission_id": "policy-railway-integration-uuid",
+      "capability_id": "railway-integration-uuid",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"actions\": [\"inspect\", \"prepare_deploy\", \"deploy\", \"rollback\"], \"approval_required_for_all_external_effects\": true, \"connector_status\": \"to_be_connected\", \"scope_kind\": \"approved_service\", \"service_url\": \"https://naseemam-shadow-system-production.up.railway.app\"}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-17T09:52:41Z",
+      "expires_at": null,
+      "created_at": "2026-08-17T09:52:41Z",
+      "updated_at": "2026-08-17T09:52:41Z",
+      "notes": "Ameer may inspect and prepare deployment actions. Production deploys, rollbacks, infrastructure changes, and environment changes require final founder approval."
+    },
+    {
+      "permission_id": "policy-api-integration-uuid",
+      "capability_id": "api-integration-uuid",
+      "owned": true,
+      "enabled": true,
+      "permission_status": "granted",
+      "scope": "{\"actions\": [\"read\", \"call\", \"prepare\"], \"approval_required_for_external_effects\": true, \"connector_status\": \"service_selection_required\", \"scope_kind\": \"approved_connectors_only\"}",
+      "granted_by": "Naseem",
+      "granted_at": "2026-08-17T09:52:41Z",
+      "expires_at": null,
+      "created_at": "2026-08-17T09:52:41Z",
+      "updated_at": "2026-08-17T09:52:41Z",
+      "notes": "Only explicitly connected and approved API/MCP services may be used. Mutating or externally visible calls require final founder approval."
     }
   ],
   "audit_log": [
@@ -164,6 +290,60 @@
       "permission_id": "73ce3ccb-addf-4e45-b7e2-e6681421365a",
       "action": "granted",
       "detail": "scope={\"action\": \"read\", \"scope_kind\": \"runtime_workspace_only\", \"scope_root\": \"09_Assets/runtime_workspace\", \"tool_name\": \"file.read\"}, granted_by=system:file.read_activation, expires_at=None"
+    },
+    {
+      "timestamp": "2026-08-17T09:52:41Z",
+      "permission_id": "policy-240af273-ceb3-4c86-8474-d9019bed23a2",
+      "action": "granted",
+      "detail": "staged founder authorization policy added"
+    },
+    {
+      "timestamp": "2026-08-17T09:52:41Z",
+      "permission_id": "policy-90183988-6593-4b7c-b37f-40b6da508eb5",
+      "action": "granted",
+      "detail": "staged founder authorization policy added"
+    },
+    {
+      "timestamp": "2026-08-17T09:52:41Z",
+      "permission_id": "policy-browser-integration-uuid",
+      "action": "granted",
+      "detail": "staged founder authorization policy added"
+    },
+    {
+      "timestamp": "2026-08-17T09:52:41Z",
+      "permission_id": "policy-github-integration-uuid",
+      "action": "granted",
+      "detail": "staged founder authorization policy added"
+    },
+    {
+      "timestamp": "2026-08-17T09:52:41Z",
+      "permission_id": "policy-google-integration-uuid",
+      "action": "granted",
+      "detail": "staged founder authorization policy added"
+    },
+    {
+      "timestamp": "2026-08-17T09:52:41Z",
+      "permission_id": "policy-email-integration-uuid",
+      "action": "granted",
+      "detail": "staged founder authorization policy added"
+    },
+    {
+      "timestamp": "2026-08-17T09:52:41Z",
+      "permission_id": "policy-slack-integration-uuid",
+      "action": "granted",
+      "detail": "staged founder authorization policy added"
+    },
+    {
+      "timestamp": "2026-08-17T09:52:41Z",
+      "permission_id": "policy-railway-integration-uuid",
+      "action": "granted",
+      "detail": "staged founder authorization policy added"
+    },
+    {
+      "timestamp": "2026-08-17T09:52:41Z",
+      "permission_id": "policy-api-integration-uuid",
+      "action": "granted",
+      "detail": "staged founder authorization policy added"
     }
   ]
 }
