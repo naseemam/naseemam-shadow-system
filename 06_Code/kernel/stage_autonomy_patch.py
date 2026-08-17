@@ -99,6 +99,7 @@ def install_stage_autonomy_patch() -> None:
             # Pending/blocked records belonging to the stage must not force the
             # planner to stop and "close a task" before continuing that stage.
             kwargs["running_tasks"] = []
+            kwargs["pending_approvals"] = []
         return original_plan(self, query, *args, **kwargs)
 
     PersistentConversationMemory.plan = plan

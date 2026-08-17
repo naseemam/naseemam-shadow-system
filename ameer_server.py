@@ -307,6 +307,29 @@ def _boundary_for_server_execution():
     return EXECUTION_BOUNDARY or _load_execution_boundary()
 
 
+_PROBE_FORBIDDEN_TERMS = (
+    "نشر", "ارسل", "أرسل", "إرسال", "حذف", "احذف", "دمج", "ادفع", "دفع", "شراء",
+    "send", "deploy", "delete", "merge", "push",
+)
+_PROBE_NEGATION_TERMS = ("لا", "ما", "لن", "لم", "ليس", "لست", "مش", "دون", "بدون", "من غير", "without", "no")
+
+
+def _probe_occurrence_is_negated(text: str, start: int) -> bool:
+    prefix = text[max(0, start - 40):start].lower()
+    tokens = re.findall(r"[\w\u0600-\u06ff]+", prefix)
+    return any(token in _PROBE_NEGATION_TERMS for token in tokens[-4:])
+
+
+def _probe_has_non_negated_forbidden_term(text: str) -> bool:
+    lowered = (text or "").lower()
+    for term in _PROBE_FORBIDDEN_TERMS:
+        pattern = re.escape(term)
+        for match in re.finditer(pattern, lowered):
+            if not _probe_occurrence_is_negated(lowered, match.start()):
+                return True
+    return False
+
+
 def _manage_project_context(query: str) -> dict | None:
     text = (query or "").strip()
     if not text:
@@ -1486,8 +1509,7 @@ async def workers_probe(request: Request):
         return utf8_json_response({"status": "invalid_request", "reason": "worker_id_and_objective_required"}, status_code=422)
     if len(objective) > 500:
         return utf8_json_response({"status": "invalid_request", "reason": "objective_too_long"}, status_code=422)
-    forbidden = ("نشر", "ارسل", "أرسل", "حذف", "احذف", "دمج", "ادفع", "شراء", "send", "deploy", "delete", "merge", "push")
-    if any(token in objective.lower() for token in forbidden):
+    if _probe_has_non_negated_forbidden_term(objective):
         return utf8_json_response({"status": "blocked", "reason": "external_or_side_effecting_objective"}, status_code=422)
     started = datetime.now(timezone.utc)
     result = KERNEL.worker_runtime.dispatch(

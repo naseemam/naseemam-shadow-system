@@ -25,6 +25,24 @@ DEFAULT_WORKERS = {
 }
 
 
+# Worker capabilities are broad inside the governed workspace, not unrestricted
+# system authority. Ameer reviews and opens the internal execution lane; the
+# founder remains the final gate for external, sensitive, irreversible actions.
+WORKER_ACCESS_POLICY = {
+    "read": {"enabled": True, "scope": "runtime_workspace_only"},
+    "write": {"enabled": True, "scope": "runtime_workspace_only", "approval": "ameer_review"},
+    "execute_internal": {"enabled": True, "scope": "runtime_workspace_only", "approval": "ameer_review"},
+    "external_effect": {"enabled": False, "approval": "founder_final"},
+}
+
+
+def worker_access_policy(worker_id: str) -> dict:
+    """Return a defensive copy of the governed worker access policy."""
+    if worker_id not in DEFAULT_WORKERS:
+        raise ValueError(f"unknown_worker:{worker_id}")
+    return {key: dict(value) for key, value in WORKER_ACCESS_POLICY.items()}
+
+
 class WorkerRuntimeRegistry:
     """Persistent worker availability and adapter registry."""
 
@@ -133,6 +151,7 @@ class WorkerRuntimeRegistry:
         if not row:
             return {"worker_id": worker_id, "status": "unavailable", "reason": "worker_not_registered"}
         result = dict(row)
+        result["access_policy"] = worker_access_policy(worker_id)
         result["available"] = result["status"] == "ready" and bool(result.get("adapter")) and bool(result.get("model"))
         if not result["available"]:
             result["reason"] = "worker_runtime_not_ready"
@@ -144,6 +163,7 @@ class WorkerRuntimeRegistry:
         workers = []
         for row in rows:
             item = dict(row)
+            item["access_policy"] = worker_access_policy(item["worker_id"])
             item["available"] = item["status"] == "ready" and bool(item.get("adapter")) and bool(item.get("model"))
             if not item["available"]:
                 item["reason"] = "worker_runtime_not_ready"
@@ -177,7 +197,11 @@ class WorkerRuntimeRegistry:
             )
         self.heartbeat(worker_id, status="busy")
         try:
-            result = handler(objective, context or {}) or {}
+            dispatch_context = dict(context or {})
+            dispatch_context.setdefault("worker_id", worker_id)
+            dispatch_context.setdefault("delegated_by", "ameer")
+            dispatch_context.setdefault("access_policy", worker_access_policy(worker_id))
+            result = handler(objective, dispatch_context) or {}
             status = str(result.get("status", "completed"))
             if status not in {"completed", "failed"}:
                 status = "completed"
