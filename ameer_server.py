@@ -182,11 +182,14 @@ EXECUTION_BOUNDARY = _load_execution_boundary()
 try:
     from kernel.agent_message_bus import AgentMessageBus
     from kernel.worker_runtime import DEFAULT_WORKERS
+    from kernel.business_operations import BusinessOperations
     MESSAGE_BUS = AgentMessageBus(ROOT)
+    BUSINESS_OPERATIONS = BusinessOperations(ROOT)
 except Exception:
     AgentMessageBus = None
     DEFAULT_WORKERS = {}
     MESSAGE_BUS = None
+    BUSINESS_OPERATIONS = None
 
 
 def load_documents():
@@ -1118,6 +1121,41 @@ async def execution_audit(correlation_id: str | None = None, limit: int = 100):
     if not KERNEL or not hasattr(KERNEL, "orchestrator"):
         return utf8_json_response({"status": "unavailable", "events": []}, status_code=503)
     return utf8_json_response({"status": "ok", "audit": KERNEL.orchestrator.audit_snapshot(), "events": KERNEL.orchestrator.audit_events(correlation_id=correlation_id, limit=limit)})
+
+
+@app.get('/center/profile')
+async def center_profile():
+    if BUSINESS_OPERATIONS is None:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    return utf8_json_response({"status": "ok", "center": BUSINESS_OPERATIONS.center_profile()})
+
+
+@app.get('/center/dashboard')
+async def center_dashboard():
+    if BUSINESS_OPERATIONS is None:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    return utf8_json_response({"status": "ok", **BUSINESS_OPERATIONS.store_dashboard()})
+
+
+@app.get('/center/inventory')
+async def center_inventory():
+    if BUSINESS_OPERATIONS is None:
+        return utf8_json_response({"status": "unavailable", "items": []}, status_code=503)
+    return utf8_json_response({"status": "ok", "items": BUSINESS_OPERATIONS.list_products(), "low_stock": BUSINESS_OPERATIONS.low_stock()})
+
+
+@app.get('/center/employees')
+async def center_employees():
+    if BUSINESS_OPERATIONS is None:
+        return utf8_json_response({"status": "unavailable", "employees": []}, status_code=503)
+    return utf8_json_response({"status": "ok", "employees": BUSINESS_OPERATIONS.list_employees(status=None)})
+
+
+@app.get('/center/bookings')
+async def center_bookings(limit: int = 100):
+    if BUSINESS_OPERATIONS is None:
+        return utf8_json_response({"status": "unavailable", "bookings": []}, status_code=503)
+    return utf8_json_response({"status": "ok", "bookings": BUSINESS_OPERATIONS.list_bookings(limit=limit)})
 
 
 @app.get('/agent/messages')

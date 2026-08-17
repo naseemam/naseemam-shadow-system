@@ -13,7 +13,8 @@ def test_agent_channel_smoke():
         assert authority.status_code == 200, authority.text
         payload = authority.json()
         assert payload["executive"] == "ameer"
-        assert len(payload["workers"]) == 7
+        assert len(payload["workers"]) == 8
+        assert "store" in payload["workers"]
         assert payload["worker_direct_founder_contact"] is False
 
         orchestrator = client.get("/orchestrator/status")
@@ -23,6 +24,11 @@ def test_agent_channel_smoke():
         assert audit.status_code == 200, audit.text
         assert audit.json()["audit"]["owner"] == "ameer"
         assert audit.json()["audit"]["append_only"] is True
+
+        center = client.get("/center/dashboard")
+        assert center.status_code == 200, center.text
+        assert center.json()["center"]["name"] == "مركز حلم الندى"
+        assert set(center.json()["modules"]) >= {"inventory", "employees", "bookings"}
 
         incoming = client.post(
             "/agent/messages",

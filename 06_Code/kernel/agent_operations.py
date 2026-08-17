@@ -28,8 +28,9 @@ class AgentOperations:
                 "communications": ["gmail_search", "gmail_read", "gmail_send"],
                 "calendar": ["calendar_list", "calendar_create", "calendar_update", "calendar_delete"],
                 "business": [
-                    "products", "inventory", "low_stock", "employees", "customers", "bookings", "orders", "dashboard"
+                    "products", "inventory", "low_stock", "employees", "customers", "bookings", "orders", "dashboard", "dream_al_nada_store"
                 ],
+                "store_agent": {"worker_id": "store", "center": "مركز حلم الندى", "scope": "04_Memory/dream_al_nada + business.sqlite3"},
             },
             "google_configured": self.google.configured,
             "business_store": str(self.business.db_path),
@@ -59,6 +60,8 @@ class AgentOperations:
             return "employees.add"
         if any(x in text for x in ("الحجوزات", "قائمة الحجوزات", "list bookings")):
             return "bookings.list"
+        if any(x in text for x in ("متجر حلم الندى", "عامل المتجر", "store agent", "dream al nada", "لوحة حلم الندى")):
+            return "store.dashboard"
         if any(x in text for x in ("لوحة المركز", "ملخص المركز", "لوحة المتجر", "business dashboard")):
             return "business.dashboard"
         return None
@@ -115,6 +118,8 @@ class AgentOperations:
             return {"status": "completed", "action": action, "result": self.business.list_bookings()}
         if action == "business.dashboard":
             return {"status": "completed", "action": action, "result": self.business.dashboard()}
+        if action == "store.dashboard":
+            return {"status": "completed", "action": action, "result": self.business.store_dashboard()}
         if action == "products.add":
             name = re.sub(r"^.*?(?:اضف منتج|أضف منتج|add product)\s*", "", text, flags=re.IGNORECASE)
             name = re.split(r"\s+(?:كمية|stock|سعر|price|حد الطلب|reorder)\b", name, maxsplit=1, flags=re.IGNORECASE)[0].strip(" :،,")
@@ -170,6 +175,8 @@ class AgentOperations:
                 result = self.business.create_order(customer_id=p.get("customer_id"), total=float(p.get("total", 0)), notes=p.get("notes", ""))
             elif action == "business.dashboard":
                 result = self.business.dashboard()
+            elif action == "store.dashboard":
+                result = self.business.store_dashboard()
             else:
                 return {"status": "ignored", "action": action, "reason": "unknown_agent_action"}
             return {"status": "completed", "action": action, "result": result}

@@ -22,6 +22,7 @@ DEFAULT_WORKERS = {
     "communications": ("Email and calendar operations", "communications"),
     "research": ("Research, analysis and structured reporting", "research"),
     "operations": ("Operational monitoring and recurring administrative work", "operations"),
+    "store": ("Dream Al Nada Center store, inventory, staff, bookings and orders", "store_management"),
 }
 
 
@@ -35,6 +36,7 @@ _WORKER_SCOPES = {
     "communications": {"paths": ["04_Memory/communications", "09_Assets/communications"], "capabilities": ["communications.read", "communications.write", "draft.execute"]},
     "research": {"paths": ["04_Memory/research", "09_Assets/research"], "capabilities": ["research.read", "research.write", "analysis.execute"]},
     "operations": {"paths": ["04_Memory/operations", "09_Assets/operations"], "capabilities": ["operations.read", "operations.write", "monitor.execute"]},
+    "store": {"paths": ["04_Memory/dream_al_nada", "09_Assets/dream_al_nada"], "capabilities": ["store.read", "inventory.write", "staff.write", "bookings.write", "store_reports.execute"]},
 }
 
 

@@ -28,6 +28,7 @@ class ExecutiveOrchestrator:
         "communications": "Email and calendar operations",
         "research": "Research, analysis and structured reporting",
         "operations": "Operational monitoring and recurring administrative work",
+        "store": "Dream Al Nada Center store, inventory, staff, bookings and orders",
     }
 
     RESERVED_ACTIONS = {

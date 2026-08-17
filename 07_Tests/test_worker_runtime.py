@@ -6,7 +6,7 @@ from kernel.worker_runtime import WorkerRuntimeRegistry
 def test_defaults_are_registered_but_not_claimed_ready(tmp_path: Path):
     registry = WorkerRuntimeRegistry(tmp_path)
     snapshot = registry.snapshot()
-    assert snapshot["total_count"] == 7
+    assert snapshot["total_count"] == 8
     assert snapshot["ready_count"] == 0
     design = registry.get("design")
     assert design["status"] == "unavailable"

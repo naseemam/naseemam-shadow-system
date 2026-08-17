@@ -43,6 +43,15 @@ class BusinessOperations:
         with self._connect() as conn:
             conn.executescript(
                 """
+                CREATE TABLE IF NOT EXISTS center_profile (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    name TEXT NOT NULL,
+                    timezone TEXT NOT NULL DEFAULT 'Asia/Riyadh',
+                    currency TEXT NOT NULL DEFAULT 'SAR',
+                    settings_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS products (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     sku TEXT UNIQUE,
@@ -107,6 +116,16 @@ class BusinessOperations:
                 );
                 """
             )
+            now = _now()
+            conn.execute(
+                "INSERT OR IGNORE INTO center_profile(id,name,timezone,currency,settings_json,created_at,updated_at) VALUES(1,?,?,?,?,?,?)",
+                ("مركز حلم الندى", "Asia/Riyadh", "SAR", "{}", now, now),
+            )
+
+    def center_profile(self) -> Dict[str, Any]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM center_profile WHERE id=1").fetchone()
+        return dict(row) if row else {"id": 1, "name": "مركز حلم الندى", "timezone": "Asia/Riyadh", "currency": "SAR", "settings_json": "{}"}
 
     def add_product(self, name: str, *, sku: str = "", price: float = 0, stock: float = 0, reorder_level: float = 0) -> Dict[str, Any]:
         now = _now()
@@ -225,6 +244,9 @@ class BusinessOperations:
             order_id = int(cur.lastrowid)
             row = conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
         return dict(row)
+
+    def store_dashboard(self) -> Dict[str, Any]:
+        return {"center": self.center_profile(), "modules": ["inventory", "employees", "bookings", "customers", "orders", "reports"], "dashboard": self.dashboard()}
 
     def dashboard(self) -> Dict[str, Any]:
         with self._connect() as conn:
