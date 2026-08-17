@@ -136,6 +136,9 @@ _BUILD_WEBSITE_MARKERS = [
     "build website", "create website", "new website", "موقع جديد",
 ]
 _EXECUTE_PENDING_TASKS_MARKERS = [
+    # Single-word approvals (MUST come first for priority)
+    "موافق", "موافقة", "نفّذ", "نفذ", "اوك", "ok", "yes", "نعم", "تمام",
+    # Phrases
     "نفّذ المهام الآن", "نفذ المهام الآن", "نفّذ جميع المهام", "نفذ جميع المهام",
     "ابدأ المهام المعلقة", "ابدأ تنفيذ المهام", "شغّل المهام المعلقة", "شغل المهام المعلقة",
     "execute pending tasks", "execute all tasks", "run pending tasks",
