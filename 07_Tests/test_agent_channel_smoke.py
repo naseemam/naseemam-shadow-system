@@ -29,6 +29,9 @@ def test_agent_channel_smoke():
         assert center.status_code == 200, center.text
         assert center.json()["center"]["name"] == "مركز حلم الندى"
         assert set(center.json()["modules"]) >= {"inventory", "employees", "bookings"}
+        customers = client.get("/center/customers")
+        assert customers.status_code == 200, customers.text
+        assert customers.json()["customers"] == []
 
         incoming = client.post(
             "/agent/messages",

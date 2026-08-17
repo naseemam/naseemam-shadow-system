@@ -1158,6 +1158,13 @@ async def center_bookings(limit: int = 100):
     return utf8_json_response({"status": "ok", "bookings": BUSINESS_OPERATIONS.list_bookings(limit=limit)})
 
 
+@app.get('/center/customers')
+async def center_customers():
+    if BUSINESS_OPERATIONS is None:
+        return utf8_json_response({"status": "unavailable", "customers": []}, status_code=503)
+    return utf8_json_response({"status": "ok", "customers": BUSINESS_OPERATIONS.list_customers()})
+
+
 @app.get('/agent/messages')
 async def agent_messages(actor: str | None = None, limit: int = 100):
     if MESSAGE_BUS is None:

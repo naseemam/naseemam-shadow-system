@@ -204,6 +204,11 @@ class BusinessOperations:
             row = conn.execute("SELECT * FROM customers WHERE id=?", (customer_id,)).fetchone()
         return dict(row)
 
+    def list_customers(self, *, limit: int = 100) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM customers ORDER BY name LIMIT ?", (int(limit),)).fetchall()
+        return [dict(r) for r in rows]
+
     def create_booking(
         self,
         title: str,
