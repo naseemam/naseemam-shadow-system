@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import glob
 import json
+import html
 import logging
 import os
 import re
@@ -1866,6 +1867,28 @@ async def preview_home():
     return HTMLResponse(content=content, media_type="text/html; charset=utf-8")
 
 
+PROJECT_ACTION_BAR = r'''
+<style>
+.ameer-project-actions{font-family:inherit;max-width:1100px;margin:18px auto;padding:14px 16px;background:#ffffffee;border:1px solid #e4e7ec;border-radius:20px;box-shadow:0 10px 28px rgba(15,23,42,.08);display:grid;gap:10px;direction:rtl;position:relative;z-index:5}.ameer-project-actions .bar-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.ameer-project-actions .bar-head strong{color:#101828}.ameer-project-actions .bar-head small{color:#667085}.ameer-project-actions .bar-form{display:grid;grid-template-columns:1fr auto auto auto;gap:8px}.ameer-project-actions input{min-width:0;border:1px solid #d0d5dd;border-radius:12px;padding:11px 12px;background:#f8fafc;font:inherit}.ameer-project-actions button{border:0;border-radius:12px;padding:10px 14px;font:inherit;font-weight:800;cursor:pointer}.ameer-project-actions .run{background:#2864dc;color:#fff}.ameer-project-actions .approve{background:#fff5df;color:#8a5a00;border:1px solid #f1d18c}.ameer-project-actions .log{background:#eef4ff;color:#2864dc;border:1px solid #c9d9ff}.ameer-project-actions .status{font-size:12px;color:#667085;min-height:18px}.ameer-project-actions .status.ok{color:#178a55}.ameer-project-actions .status.warn{color:#8a5a00}@media(max-width:700px){.ameer-project-actions .bar-form{grid-template-columns:1fr 1fr}.ameer-project-actions input{grid-column:1/-1}}
+</style>
+<section class="ameer-project-actions" data-project-slug="__PROJECT_SLUG__" data-worker-id="engineering">
+  <div class="bar-head"><strong>لوحة أمير للمشروع</strong><small>التنفيذ يمر عبر أمير، والأثر الحساس ينتظر موافقتك النهائية</small></div>
+  <div class="bar-form"><input data-project-objective placeholder="اكتب المهمة المطلوبة لهذا المشروع" aria-label="المهمة المطلوبة"><button class="run" data-project-run type="button">تنفيذ مع أمير</button><button class="approve" data-project-approve type="button">طلب موافقة</button><button class="log" data-project-log type="button">سجل التنفيذ</button></div>
+  <div class="status" data-project-status>جاهز لاستقبال مهمة المشروع.</div>
+</section>
+<script>
+(function(){
+ const bar=document.querySelector('.ameer-project-actions'); if(!bar) return;
+ const slug=bar.dataset.projectSlug, worker=bar.dataset.workerId, input=bar.querySelector('[data-project-objective]'), status=bar.querySelector('[data-project-status]');
+ const setStatus=(text,kind)=>{status.textContent=text;status.className='status '+(kind||'');};
+ const objective=()=>input.value.trim() || ('راجع مشروع '+slug+' واقترح الخطوة التالية دون أثر خارجي');
+ bar.querySelector('[data-project-run]').onclick=async()=>{setStatus('أمير يراجع ويفتح مسار التنفيذ الداخلي...');try{const r=await fetch('/agent/delegate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({worker_id:worker,objective:objective(),ameer_review:true,external_effect:false,project_slug:slug})});const d=await r.json();setStatus(d.status==='completed'?'تم التنفيذ مع دليل من أمير: '+(d.worker_result&&d.worker_result.run_id||'run مسجل'):('حالة الطلب: '+(d.reason||d.status||'تعذر التنفيذ')),d.status==='completed'?'ok':'warn');}catch(e){setStatus('تعذر الاتصال بمسار أمير. لم يُسجل تنفيذ.','warn');}};
+ bar.querySelector('[data-project-approve]').onclick=async()=>{setStatus('يُنشئ أمير طلب موافقة نهائية...');try{const r=await fetch('/approvals',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'project_external_effect',description:objective(),requested_by:'ameer'})});const d=await r.json();setStatus(d.id?'طلب الموافقة محفوظ: '+d.id:'تعذر إنشاء طلب الموافقة',d.id?'ok':'warn');}catch(e){setStatus('تعذر إنشاء طلب الموافقة.','warn');}};
+ bar.querySelector('[data-project-log]').onclick=()=>{window.open('/ui/runtime','_blank','noopener');};
+})();
+</script>
+'''
+
 @app.get('/preview/projects/{slug}', response_class=HTMLResponse)
 async def preview_project(slug: str):
     """
@@ -1914,6 +1937,12 @@ async def preview_project(slug: str):
         js = open(js_path, encoding="utf-8").read()
         content = content.replace('<script src="script.js"></script>', f"<script>{js}</script>")
 
+    safe_slug = html.escape(slug, quote=True)
+    action_bar = PROJECT_ACTION_BAR.replace("__PROJECT_SLUG__", safe_slug)
+    if "</body>" in content:
+        content = content.replace("</body>", action_bar + "</body>")
+    else:
+        content += action_bar
     return HTMLResponse(content=content, media_type="text/html; charset=utf-8")
 
 
