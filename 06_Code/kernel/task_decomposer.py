@@ -46,6 +46,12 @@ _HOME_PAGE_HINTS = [
     "index", "landing",
 ]
 
+_UI_IMPROVEMENT_MARKERS = [
+    "تحسين واجهة المستخدم", "تحسين الواجهة", "تحسين واجهة", "تحسين الصفحة",
+    "حسّن الواجهة", "حسن الواجهة", "تطوير الواجهة", "تطوير واجهة",
+    "improve ui", "improve the interface", "enhance frontend", "improve frontend",
+]
+
 # Markers that signal a read/display intent — must take priority over HOME_PAGE_HINTS
 # so that "اقرأ .../home/index.html" is never misrouted to build_homepage.
 _READ_MARKERS = [
@@ -78,6 +84,12 @@ AEX1_INTENT_SPECS = {
     },
     "build_website": {
         "description": "بناء موقع جديد داخل مساحة العمل",
+        "permission_mode": "tracked_write",
+        "capability": "programming",
+        "requires_approval": False,
+    },
+    "build_homepage": {
+        "description": "تحسين أو بناء واجهة الصفحة الرئيسية داخل مساحة العمل",
         "permission_mode": "tracked_write",
         "capability": "programming",
         "requires_approval": False,
@@ -208,6 +220,8 @@ def _detect_intent(command: str) -> str:
         return "repository_review"
     if _matches(command, _CODE_EDIT_MARKERS):
         return "code_edit"
+    if _matches(command, _UI_IMPROVEMENT_MARKERS):
+        return "build_homepage"
     if _matches(command, _BUILD_STORE_MARKERS):
         return "build_store"
     if _matches(command, _BUILD_WEBSITE_MARKERS):

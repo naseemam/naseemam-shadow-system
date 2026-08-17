@@ -49,6 +49,12 @@ class TestAEX1IntentAcceptance(unittest.TestCase):
         self.assertEqual(result["permission_mode"], "tracked_write")
         self.assertTrue(all(task["action"] == "write" for task in result["tasks"]))
 
+    def test_ameer_improve_user_interface(self):
+        result = self.assert_execution_intent("تحسين واجهة المستخدم", "build_homepage")
+        self.assertEqual(result["permission_mode"], "tracked_write")
+        self.assertFalse(result["requires_approval"])
+        self.assertTrue(all(task["action"] == "write" for task in result["tasks"]))
+
     def test_ameer_run_tests(self):
         result = self.assert_execution_intent("أمير شغل الاختبارات", "run_test")
         self.assertEqual(result["permission_mode"], "read_only")
