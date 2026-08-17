@@ -5,7 +5,7 @@ from kernel import worker_adapters
 
 def test_api_base_adds_scheme_and_strips_endpoint(monkeypatch):
     monkeypatch.setenv("AMEER_LLM_API_BASE", "api.example.test/v1/chat/completions")
-    assert worker_adapters._api_base() == "https://api.example.test"
+    assert worker_adapters._api_base() == "https://api.example.test/v1"
 
 
 def test_api_base_preserves_v1_base(monkeypatch):

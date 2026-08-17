@@ -45,10 +45,10 @@ def _api_base() -> str:
     if "://" not in raw:
         raw = f"https://{raw}"
     raw = raw.rstrip("/")
-    for suffix in ("/v1/chat/completions", "/chat/completions"):
-        if raw.endswith(suffix):
-            raw = raw[: -len(suffix)].rstrip("/")
-            break
+    if raw.endswith("/v1/chat/completions"):
+        raw = raw[: -len("/chat/completions")].rstrip("/")
+    elif raw.endswith("/chat/completions"):
+        raw = raw[: -len("/chat/completions")].rstrip("/")
     return raw
 
 
