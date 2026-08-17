@@ -38,7 +38,18 @@ ROLE_PROMPTS = {
 
 
 def _api_base() -> str:
-    return (os.getenv("AMEER_LLM_API_BASE") or os.getenv("OPENAI_API_BASE") or "").rstrip("/")
+    """Return a normalized OpenAI-compatible base URL without endpoint suffixes."""
+    raw = (os.getenv("AMEER_LLM_API_BASE") or os.getenv("OPENAI_API_BASE") or "").strip()
+    if not raw:
+        return ""
+    if "://" not in raw:
+        raw = f"https://{raw}"
+    raw = raw.rstrip("/")
+    for suffix in ("/v1/chat/completions", "/chat/completions"):
+        if raw.endswith(suffix):
+            raw = raw[: -len(suffix)].rstrip("/")
+            break
+    return raw
 
 
 def _api_key() -> str:
