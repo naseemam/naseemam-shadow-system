@@ -1,0 +1,36 @@
+name: Ameer CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest fastapi pydantic starlette
+      - name: Validate imports and syntax
+        env:
+          PYTHONPATH: 06_Code
+        run: |
+          python -m py_compile ameer_server.py ameer_runtime.py
+          python -m py_compile 06_Code/kernel/*.py
+          python -c "import sys; sys.path.insert(0, '06_Code'); import kernel; import kernel.worker_runtime; import kernel.task_decomposer; print('kernel import: OK')"
+      - name: Run focused agent tests
+        env:
+          PYTHONPATH: 06_Code
+        run: |
+          python -m pytest -q 07_Tests/test_worker_runtime.py 07_Tests/test_arabic_intent_lexicon.py 07_Tests/test_aex1_agent_execution_expansion.py 07_Tests/test_execution_bridge_permissions.py 07_Tests/test_execution_claim_truth_guard.py
