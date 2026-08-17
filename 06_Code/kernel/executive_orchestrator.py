@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from kernel.worker_runtime import WorkerRuntimeRegistry
+from kernel.central_audit import CentralExecutionAudit
 
 
 class ExecutiveOrchestrator:
@@ -39,11 +40,14 @@ class ExecutiveOrchestrator:
         "activate_external_skill",
     }
 
-    def __init__(self, workspace_root: str | Path) -> None:
+    def __init__(self, workspace_root: str | Path, *, runtime: Optional[WorkerRuntimeRegistry] = None, audit: Optional[CentralExecutionAudit] = None) -> None:
         root = Path(os.getenv("AMEER_DATA_DIR") or workspace_root).resolve()
         root.mkdir(parents=True, exist_ok=True)
         self.db_path = root / "executive_orchestrator.sqlite3"
-        self.runtime = WorkerRuntimeRegistry(root)
+        self.audit = audit or CentralExecutionAudit(root)
+        self.runtime = runtime or WorkerRuntimeRegistry(root, audit=self.audit)
+        if getattr(self.runtime, "audit", None) is None:
+            self.runtime.audit = self.audit
         self._init_db()
         self._seed_workers()
 
@@ -104,6 +108,25 @@ class ExecutiveOrchestrator:
 
     def dispatch_to_worker(self, worker_id: str, objective: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         return self.runtime.dispatch(worker_id, objective, context)
+
+    def execute_delegation(self, worker_id: str, objective: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        context = dict(context or {})
+        if context.get("ameer_review") is not True:
+            return {"status": "pending", "reason": "ameer_review_required", "authority": "ameer"}
+        assigned = self.delegate(worker_id, objective, context)
+        correlation_id = assigned["delegation_id"]
+        self.audit.record(event_type="delegation_opened", actor="ameer", subject=worker_id, status="assigned", correlation_id=correlation_id, payload={"objective": objective, "worker_id": worker_id})
+        context.update({"delegation_id": correlation_id, "delegated_by": "ameer", "ameer_review": True})
+        result = self.runtime.dispatch(worker_id, objective, context)
+        if result.get("status") in {"completed", "failed"}:
+            self.complete(correlation_id, result)
+        return {"delegation": assigned, "worker_result": result, "status": result.get("status", "unknown"), "correlation_id": correlation_id}
+
+    def audit_snapshot(self) -> Dict[str, Any]:
+        return self.audit.snapshot()
+
+    def audit_events(self, *, correlation_id: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
+        return self.audit.list(correlation_id=correlation_id, limit=limit)
 
     def register_worker(self, worker_id: str, role: str, description: str) -> Dict[str, Any]:
         worker_id = worker_id.strip().lower().replace(" ", "_")
@@ -168,4 +191,5 @@ class ExecutiveOrchestrator:
             "worker_can_bypass_final_gate": False,
             "reserved_actions": sorted(self.RESERVED_ACTIONS),
             "reporting_chain": "worker -> Ameer -> Founder(final gate only)",
+            "central_audit": self.audit.snapshot(),
         }

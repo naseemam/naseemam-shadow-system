@@ -16,6 +16,14 @@ def test_agent_channel_smoke():
         assert len(payload["workers"]) == 7
         assert payload["worker_direct_founder_contact"] is False
 
+        orchestrator = client.get("/orchestrator/status")
+        assert orchestrator.status_code == 200, orchestrator.text
+        assert orchestrator.json()["executive"] == "ameer"
+        audit = client.get("/audit/execution")
+        assert audit.status_code == 200, audit.text
+        assert audit.json()["audit"]["owner"] == "ameer"
+        assert audit.json()["audit"]["append_only"] is True
+
         incoming = client.post(
             "/agent/messages",
             json={"sender": "user", "body": "راجع حالة الموقع", "channel": "web"},

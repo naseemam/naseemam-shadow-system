@@ -52,6 +52,8 @@ from context.founder_profile import FounderProfile
 from executive_conversation import PersistentConversationMemory
 from kernel.worker_runtime import WorkerRuntimeRegistry
 from kernel.worker_adapters import configure_workers_from_env
+from kernel.central_audit import CentralExecutionAudit
+from kernel.executive_orchestrator import ExecutiveOrchestrator
 
 
 def _now_iso() -> str:
@@ -87,8 +89,10 @@ class ExecutiveKernel:
         self.founder: FounderProfile = FounderProfile(self._root)
         self.conversation_memory: PersistentConversationMemory = PersistentConversationMemory(self._root)
         # Worker runtime registry: registration alone is not readiness or execution.
-        self.worker_runtime: WorkerRuntimeRegistry = WorkerRuntimeRegistry(self._root)
+        self.central_audit = CentralExecutionAudit(self._root)
+        self.worker_runtime: WorkerRuntimeRegistry = WorkerRuntimeRegistry(self._root, audit=self.central_audit)
         self.worker_runtime_config = configure_workers_from_env(self.worker_runtime)
+        self.orchestrator = ExecutiveOrchestrator(self._root, runtime=self.worker_runtime, audit=self.central_audit)
         # P0.6 — Executive Capability Governance
         self.capabilities: CapabilityRegistry = CapabilityRegistry(self._root)
         self.permissions: PermissionRegistry = PermissionRegistry(self._root)

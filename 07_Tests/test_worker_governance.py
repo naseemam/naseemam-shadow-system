@@ -8,7 +8,7 @@ for import_root in (ROOT, CODE_ROOT):
     if str(import_root) not in sys.path:
         sys.path.insert(0, str(import_root))
 
-from kernel.worker_runtime import DEFAULT_WORKERS, WorkerRuntimeRegistry
+from kernel.worker_runtime import DEFAULT_WORKERS, WorkerRuntimeRegistry, worker_access_policy
 from ameer_server import _probe_has_non_negated_forbidden_term
 
 
@@ -35,6 +35,16 @@ def test_all_workers_receive_governed_internal_access_policy(tmp_path: Path):
         assert policy["execute_internal"]["enabled"] is True
         assert policy["external_effect"]["enabled"] is False
         assert policy["external_effect"]["approval"] == "founder_final"
+
+
+def test_worker_scopes_are_isolated_by_agent():
+    policies = {worker_id: worker_access_policy(worker_id) for worker_id in DEFAULT_WORKERS}
+    assert policies["engineering"]["worker_id"] != policies["design"]["worker_id"]
+    assert policies["engineering"]["read"]["allowed_paths"] != policies["communications"]["read"]["allowed_paths"]
+    for policy in policies.values():
+        assert policy["cross_worker_access"] is False
+        assert policy["can_kill_other_processes"] is False
+        assert policy["can_modify_governance"] is False
 
 
 def test_dispatch_context_identifies_ameer_and_policy(tmp_path: Path):

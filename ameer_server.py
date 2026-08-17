@@ -1092,15 +1092,32 @@ async def workers_runtime():
 @app.get('/agent/authority')
 async def agent_authority():
     """Expose the governed reporting chain without exposing credentials."""
+    authority = KERNEL.orchestrator.authority() if KERNEL and hasattr(KERNEL, "orchestrator") else {}
     return utf8_json_response({
         "status": "ok",
         "executive": "ameer",
+        "orchestrator": "ExecutiveOrchestrator",
         "workers": sorted(DEFAULT_WORKERS),
         "reporting_chain": "user/founder -> ameer -> workers -> ameer -> user/founder",
         "worker_direct_founder_contact": False,
         "final_approval_owner": "founder",
+        "authority": authority,
         "message_bus": MESSAGE_BUS.snapshot() if MESSAGE_BUS else {"status": "unavailable"},
     })
+
+
+@app.get('/orchestrator/status')
+async def orchestrator_status():
+    if not KERNEL or not hasattr(KERNEL, "orchestrator"):
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    return utf8_json_response(KERNEL.orchestrator.authority())
+
+
+@app.get('/audit/execution')
+async def execution_audit(correlation_id: str | None = None, limit: int = 100):
+    if not KERNEL or not hasattr(KERNEL, "orchestrator"):
+        return utf8_json_response({"status": "unavailable", "events": []}, status_code=503)
+    return utf8_json_response({"status": "ok", "audit": KERNEL.orchestrator.audit_snapshot(), "events": KERNEL.orchestrator.audit_events(correlation_id=correlation_id, limit=limit)})
 
 
 @app.get('/agent/messages')
@@ -1163,10 +1180,11 @@ async def delegate_agent_task(request: Request):
         approval_id = KERNEL.request_approval(action=str(body.get("approval_action") or "external"), description=objective, requested_by="ameer")
         notice = MESSAGE_BUS.send(sender="ameer", recipient="user", body=f"يحتاج هذا الإجراء موافقتك النهائية: {objective}", kind="final_approval_request", metadata={"approval_id": approval_id, "worker_id": worker_id})
         return utf8_json_response({"status": "pending_final_approval", "approval_id": approval_id, "delegation": delegation, "notice": notice}, status_code=202)
-    result = KERNEL.worker_runtime.dispatch(worker_id, objective, {"mode": "ameer_delegation", "delegation_id": delegation["message_id"], "ameer_review": True, "external_effect": False})
-    report = MESSAGE_BUS.send(sender=worker_id, recipient="ameer", body=json.dumps(result, ensure_ascii=False), kind="worker_report", metadata={"run_id": result.get("run_id"), "status": result.get("status")})
-    user_notice = MESSAGE_BUS.send(sender="ameer", recipient="user", body=f"تقرير العامل {worker_id}: {result.get('status')}", kind="worker_result", metadata={"run_id": result.get("run_id"), "worker_id": worker_id})
-    return utf8_json_response({"status": result.get("status"), "delegation": delegation, "worker_result": result, "worker_report": report, "user_notice": user_notice}, status_code=200 if result.get("status") == "completed" else 422)
+    orchestrated = KERNEL.orchestrator.execute_delegation(worker_id, objective, {"mode": "ameer_delegation", "delegation_id": delegation["message_id"], "ameer_review": True, "external_effect": False})
+    result = orchestrated.get("worker_result", orchestrated)
+    report = MESSAGE_BUS.send(sender=worker_id, recipient="ameer", body=json.dumps(result, ensure_ascii=False), kind="worker_report", metadata={"run_id": result.get("run_id"), "status": result.get("status"), "correlation_id": orchestrated.get("correlation_id")})
+    user_notice = MESSAGE_BUS.send(sender="ameer", recipient="user", body=f"تقرير العامل {worker_id}: {result.get('status')}", kind="worker_result", metadata={"run_id": result.get("run_id"), "worker_id": worker_id, "correlation_id": orchestrated.get("correlation_id")})
+    return utf8_json_response({"status": result.get("status"), "delegation": orchestrated.get("delegation", delegation), "worker_result": result, "worker_report": report, "user_notice": user_notice, "correlation_id": orchestrated.get("correlation_id")}, status_code=200 if result.get("status") == "completed" else 422)
 
 
 @app.get('/build-info')

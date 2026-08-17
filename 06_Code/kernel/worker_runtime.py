@@ -25,22 +25,34 @@ DEFAULT_WORKERS = {
 }
 
 
-# Worker capabilities are broad inside the governed workspace, not unrestricted
-# system authority. Ameer reviews and opens the internal execution lane; the
-# founder remains the final gate for external, sensitive, irreversible actions.
-WORKER_ACCESS_POLICY = {
-    "read": {"enabled": True, "scope": "runtime_workspace_only"},
-    "write": {"enabled": True, "scope": "runtime_workspace_only", "approval": "ameer_review"},
-    "execute_internal": {"enabled": True, "scope": "runtime_workspace_only", "approval": "ameer_review"},
-    "external_effect": {"enabled": False, "approval": "founder_final"},
+# Every worker has an independent capability envelope. The common governance
+# contract is preserved, but paths and capabilities are not shared implicitly.
+_WORKER_SCOPES = {
+    "engineering": {"paths": ["06_Code", "07_Tests", "09_Assets/web"], "capabilities": ["code.read", "code.write", "tests.execute"]},
+    "design": {"paths": ["09_Assets/web", "09_Assets/design"], "capabilities": ["design.read", "design.write", "preview.execute"]},
+    "business": {"paths": ["04_Memory/business", "09_Assets/business"], "capabilities": ["business.read", "business.write", "analysis.execute"]},
+    "school": {"paths": ["04_Memory/school", "09_Assets/school"], "capabilities": ["school.read", "school.write", "report.execute"]},
+    "communications": {"paths": ["04_Memory/communications", "09_Assets/communications"], "capabilities": ["communications.read", "communications.write", "draft.execute"]},
+    "research": {"paths": ["04_Memory/research", "09_Assets/research"], "capabilities": ["research.read", "research.write", "analysis.execute"]},
+    "operations": {"paths": ["04_Memory/operations", "09_Assets/operations"], "capabilities": ["operations.read", "operations.write", "monitor.execute"]},
 }
 
 
 def worker_access_policy(worker_id: str) -> dict:
-    """Return a defensive copy of the governed worker access policy."""
+    """Return an independent, defensive capability envelope for one worker."""
     if worker_id not in DEFAULT_WORKERS:
         raise ValueError(f"unknown_worker:{worker_id}")
-    return {key: dict(value) for key, value in WORKER_ACCESS_POLICY.items()}
+    scope = _WORKER_SCOPES[worker_id]
+    return {
+        "worker_id": worker_id,
+        "read": {"enabled": True, "scope": "worker_workspace_only", "allowed_paths": list(scope["paths"])},
+        "write": {"enabled": True, "scope": "worker_workspace_only", "approval": "ameer_review", "allowed_paths": list(scope["paths"])},
+        "execute_internal": {"enabled": True, "scope": "worker_workspace_only", "approval": "ameer_review", "capabilities": list(scope["capabilities"])},
+        "external_effect": {"enabled": False, "approval": "founder_final", "allowed": []},
+        "cross_worker_access": False,
+        "can_kill_other_processes": False,
+        "can_modify_governance": False,
+    }
 
 
 class WorkerRuntimeRegistry:
@@ -48,10 +60,11 @@ class WorkerRuntimeRegistry:
 
     VALID_STATUSES = {"unavailable", "configured", "ready", "busy", "failed"}
 
-    def __init__(self, workspace_root: str | Path):
+    def __init__(self, workspace_root: str | Path, *, audit=None):
         root = Path(workspace_root).resolve()
         root.mkdir(parents=True, exist_ok=True)
         self.db_path = root / "worker_runtime.sqlite3"
+        self.audit = audit
         self._handlers: Dict[str, Callable[[str, Dict[str, Any]], Dict[str, Any]]] = {}
         self._init_db()
         self._seed_defaults()
@@ -176,6 +189,8 @@ class WorkerRuntimeRegistry:
 
     def dispatch(self, worker_id: str, objective: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         worker = self.get(worker_id)
+        if self.audit:
+            self.audit.record(event_type="worker_dispatch_requested", actor="ameer", subject=worker_id, status="requested", payload={"objective": objective, "access_policy": worker_access_policy(worker_id)})
         if not worker.get("available"):
             return {
                 "status": "unavailable",
@@ -196,6 +211,8 @@ class WorkerRuntimeRegistry:
                 (run_id, worker_id, objective, "running", now, now),
             )
         self.heartbeat(worker_id, status="busy")
+        if self.audit:
+            self.audit.record(event_type="worker_run_started", actor="ameer", subject=worker_id, status="running", correlation_id=run_id, payload={"run_id": run_id, "objective": objective, "delegated_by": "ameer"})
         try:
             dispatch_context = dict(context or {})
             dispatch_context.setdefault("worker_id", worker_id)
@@ -211,6 +228,8 @@ class WorkerRuntimeRegistry:
                     (status, json.dumps(result, ensure_ascii=False), time.time(), run_id),
                 )
             self.heartbeat(worker_id, status="ready")
+            if self.audit:
+                self.audit.record(event_type="worker_run_completed", actor=worker_id, subject="ameer", status=status, correlation_id=run_id, payload={"run_id": run_id, "worker_id": worker_id})
             return {"status": status, "run_id": run_id, "worker_id": worker_id, "result": result}
         except Exception as exc:
             with self._connect() as db:
@@ -219,4 +238,6 @@ class WorkerRuntimeRegistry:
                     (str(exc), time.time(), run_id),
                 )
             self.heartbeat(worker_id, status="failed", error=str(exc))
+            if self.audit:
+                self.audit.record(event_type="worker_run_failed", actor=worker_id, subject="ameer", status="failed", correlation_id=run_id, payload={"run_id": run_id, "worker_id": worker_id, "error": str(exc)})
             return {"status": "failed", "run_id": run_id, "worker_id": worker_id, "reason": "worker_execution_failed", "error": str(exc)}
