@@ -1,0 +1,39 @@
+# Repository metadata and local diagnostics
+.git/
+audit_artifacts/
+terminal_full_output/
+browser_html/
+console_outputs/
+page_texts/
+screenshots/
+
+# Tests, documentation, backups, and local development material
+07_Tests/
+01_Docs/
+03_Architecture/
+04_Memory/
+08_Backups/
+08_DevTools/
+10_Documentation/
+docs/
+.vscode/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.log
+*.md
+*.txt
+*.png
+*.webp
+
+# Durable runtime state is supplied by Railway's /app/.ameer volume.
+.ameer/
+09_Assets/runtime_workspace/
+*.sqlite3
+
+# Not required by the production service
+.github/
+run_ameer.bat
+render.yaml
+update_arabic_support.py
+list_arabic_missing.py
