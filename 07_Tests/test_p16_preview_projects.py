@@ -134,17 +134,19 @@ class PreviewEndpointTest(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("ameer_server_test", server_path)
         server_mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(server_mod)
+        # Other HTTP tests may redirect a shared runtime's workspace to a temp
+        # directory. A preview endpoint test must always resolve its fixtures in
+        # this repository, independently of that transient runtime state.
+        server_mod.ROOT = ROOT
+        server_mod.REPO_ROOT = ROOT
         self.app = server_mod.app
         self.client = TestClient(self.app, raise_server_exceptions=False)
 
-        # Build a project for slug testing using real workspace
-        kernel_mod = _load(
-            "ek_server_test",
-            os.path.join(CODE_ROOT, "kernel", "executive_kernel.py"),
-        )
-        real_root = ROOT
-        self.kernel = kernel_mod.ExecutiveKernel(workspace_root=real_root)
-        self.kernel.execute_command("أنشئ صفحة عن حلم الندى")
+        # The repository ships this stable preview fixture. Endpoint tests must
+        # not rebuild a shared runtime workspace because preceding chat tests can
+        # intentionally redirect a live kernel to a temporary workspace.
+        fixture = Path(ROOT) / "09_Assets" / "runtime_workspace" / "projects" / "حلم-الندى" / "index.html"
+        self.assertTrue(fixture.exists(), f"مشروع المعاينة الثابت مفقود: {fixture}")
 
     def test_preview_home_not_broken(self):
         """/preview يجب أن يستمر في الاستجابة (200 أو 404 فقط)."""

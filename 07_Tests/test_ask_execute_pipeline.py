@@ -63,8 +63,16 @@ class AskExecutePipelineTest(unittest.TestCase):
         (_tmp / "04_Memory").mkdir(parents=True, exist_ok=True)
         (_tmp / "09_Assets" / "runtime_workspace").mkdir(parents=True, exist_ok=True)
 
+        cls._original_kernel_paths = None
         if ameer_server.KERNEL:
-            # Patch the kernel's workspace root for isolation
+            # Patch the kernel's workspace root for isolation, then restore every
+            # mutated path in tearDownClass so later preview tests use the real repo.
+            cls._original_kernel_paths = {
+                "root": ameer_server.KERNEL._root,
+                "file_root": ameer_server.KERNEL.file_executor._root,
+                "runtime_workspace": ameer_server.KERNEL.file_executor._runtime_workspace,
+                "decomposer_root": ameer_server.KERNEL.task_decomposer._root,
+            }
             ameer_server.KERNEL._root = _tmp
             ameer_server.KERNEL.file_executor._root = _tmp
             ameer_server.KERNEL.file_executor._runtime_workspace = (
@@ -77,6 +85,12 @@ class AskExecutePipelineTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        if cls._original_kernel_paths and cls.app_module.KERNEL:
+            kernel = cls.app_module.KERNEL
+            kernel._root = cls._original_kernel_paths["root"]
+            kernel.file_executor._root = cls._original_kernel_paths["file_root"]
+            kernel.file_executor._runtime_workspace = cls._original_kernel_paths["runtime_workspace"]
+            kernel.task_decomposer._root = cls._original_kernel_paths["decomposer_root"]
         cls._provider_patch.stop()
 
     # ── helpers ───────────────────────────────────────────────────────────────
