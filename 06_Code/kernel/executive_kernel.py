@@ -55,6 +55,7 @@ from kernel.worker_adapters import configure_workers_from_env
 from kernel.central_audit import CentralExecutionAudit
 from kernel.executive_orchestrator import ExecutiveOrchestrator
 from kernel.shadow_foundation import ShadowFoundation
+from kernel.project_gateway import ProjectGateway
 
 
 def _now_iso() -> str:
@@ -97,6 +98,9 @@ class ExecutiveKernel:
         # This is metadata/governance only; it does not execute external effects.
         self.shadow_foundation: ShadowFoundation = ShadowFoundation(self._root)
         self.orchestrator = ExecutiveOrchestrator(self._root, runtime=self.worker_runtime, audit=self.central_audit)
+        self.project_gateway: ProjectGateway = ProjectGateway(
+            self.shadow_foundation, audit=self.central_audit, orchestrator=self.orchestrator
+        )
         # P0.6 — Executive Capability Governance
         self.capabilities: CapabilityRegistry = CapabilityRegistry(self._root)
         self.permissions: PermissionRegistry = PermissionRegistry(self._root)

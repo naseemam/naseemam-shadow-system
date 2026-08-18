@@ -1527,6 +1527,36 @@ async def shadow_projects(parent_id: str | None = None):
     return utf8_json_response({"status": "ok", "projects": KERNEL.shadow_foundation.list_projects(parent_id=parent_id)})
 
 
+@app.get('/gateway/status')
+async def gateway_status():
+    if not KERNEL or not getattr(KERNEL, "project_gateway", None):
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    return utf8_json_response({"status": "ok", **KERNEL.project_gateway.snapshot()})
+
+
+@app.post('/gateway/authorize')
+async def gateway_authorize(payload: dict):
+    if not KERNEL or not getattr(KERNEL, "project_gateway", None):
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    required = ("subject_id", "role_id", "project_id", "capability")
+    missing = [key for key in required if not payload.get(key)]
+    if missing:
+        return utf8_json_response({"status": "invalid", "missing": missing}, status_code=422)
+    try:
+        result = KERNEL.project_gateway.route_to_ameer(
+            subject_id=str(payload["subject_id"]),
+            role_id=str(payload["role_id"]),
+            project_id=str(payload["project_id"]),
+            capability=str(payload["capability"]),
+            action=str(payload.get("action", "read")),
+            context=payload.get("context") if isinstance(payload.get("context"), dict) else {},
+            worker_id=payload.get("worker_id"),
+        )
+    except (TypeError, ValueError) as exc:
+        return utf8_json_response({"status": "invalid", "reason": str(exc)}, status_code=422)
+    return utf8_json_response(result, status_code=200 if result.get("allowed") else 403)
+
+
 @app.get('/shadow/policies')
 async def shadow_policies():
     """Read-only policy snapshot; never exposes credentials or prompts."""
