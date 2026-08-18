@@ -1181,6 +1181,32 @@ async def execution_audit(correlation_id: str | None = None, limit: int = 100):
     return utf8_json_response({"status": "ok", "audit": KERNEL.orchestrator.audit_snapshot(), "events": KERNEL.orchestrator.audit_events(correlation_id=correlation_id, limit=limit)})
 
 
+@app.get('/costs/summary')
+async def costs_summary():
+    """Read-only cost totals grouped by agent; never exposes prompts or credentials."""
+    if not KERNEL or not getattr(KERNEL, "worker_runtime", None):
+        return utf8_json_response({"status": "unavailable", "reason": "worker_runtime_unavailable"}, status_code=503)
+    ledger = KERNEL.worker_runtime.cost_ledger
+    return utf8_json_response(ledger.summary())
+
+
+@app.get('/costs/usage')
+async def costs_usage(agent_id: str | None = None, task_id: str | None = None, limit: int = 100):
+    """Read-only usage events linked to task/run/agent identifiers."""
+    if not KERNEL or not getattr(KERNEL, "worker_runtime", None):
+        return utf8_json_response({"status": "unavailable", "events": []}, status_code=503)
+    limit = max(1, min(int(limit), 1000))
+    ledger = KERNEL.worker_runtime.cost_ledger
+    return utf8_json_response(ledger.snapshot(agent_id=agent_id, task_id=task_id, limit=limit))
+
+
+@app.get('/costs/health')
+async def costs_health():
+    if not KERNEL or not getattr(KERNEL, "worker_runtime", None):
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    return utf8_json_response(KERNEL.worker_runtime.cost_ledger.health())
+
+
 @app.get('/center/profile')
 async def center_profile():
     if BUSINESS_OPERATIONS is None:

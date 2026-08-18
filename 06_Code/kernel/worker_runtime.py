@@ -13,6 +13,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from kernel.cost_ledger import CostLedger
+
 
 DEFAULT_WORKERS = {
     "engineering": ("Software engineering, architecture, testing and debugging", "programming"),
@@ -62,11 +64,12 @@ class WorkerRuntimeRegistry:
 
     VALID_STATUSES = {"unavailable", "configured", "ready", "busy", "failed"}
 
-    def __init__(self, workspace_root: str | Path, *, audit=None):
+    def __init__(self, workspace_root: str | Path, *, audit=None, cost_ledger=None):
         root = Path(workspace_root).resolve()
         root.mkdir(parents=True, exist_ok=True)
         self.db_path = root / "worker_runtime.sqlite3"
         self.audit = audit
+        self.cost_ledger = cost_ledger or CostLedger(root)
         self._handlers: Dict[str, Callable[[str, Dict[str, Any]], Dict[str, Any]]] = {}
         self._init_db()
         self._seed_defaults()
@@ -215,6 +218,7 @@ class WorkerRuntimeRegistry:
         self.heartbeat(worker_id, status="busy")
         if self.audit:
             self.audit.record(event_type="worker_run_started", actor="ameer", subject=worker_id, status="running", correlation_id=run_id, payload={"run_id": run_id, "objective": objective, "delegated_by": "ameer"})
+        started_perf = time.perf_counter()
         try:
             dispatch_context = dict(context or {})
             dispatch_context.setdefault("worker_id", worker_id)
@@ -224,6 +228,22 @@ class WorkerRuntimeRegistry:
             status = str(result.get("status", "completed"))
             if status not in {"completed", "failed"}:
                 status = "completed"
+            usage = result.get("usage") or {}
+            cost_event = self.cost_ledger.record(
+                task_id=str(dispatch_context.get("task_id") or run_id),
+                run_id=run_id,
+                agent_id=worker_id,
+                provider=str(worker.get("provider") or ""),
+                model=str(worker.get("model") or result.get("model") or ""),
+                usage=usage,
+                status=status,
+                latency_ms=round((time.perf_counter() - started_perf) * 1000, 2),
+                actual_cost_usd=result.get("cost_usd"),
+                quality_signal=result.get("quality_signal"),
+                fallback_reason=str(result.get("fallback_reason") or ""),
+            )
+            result = dict(result)
+            result["cost"] = {"event_id": cost_event["event_id"], "total_tokens": cost_event["total_tokens"], "estimated_cost_usd": cost_event["estimated_cost_usd"], "actual_cost_usd": cost_event["actual_cost_usd"], "pricing_status": cost_event["pricing_status"]}
             with self._connect() as db:
                 db.execute(
                     "UPDATE worker_runs SET status=?, result_json=?, updated_at=? WHERE run_id=?",
@@ -239,6 +259,10 @@ class WorkerRuntimeRegistry:
                     "UPDATE worker_runs SET status='failed', error=?, updated_at=? WHERE run_id=?",
                     (str(exc), time.time(), run_id),
                 )
+            try:
+                self.cost_ledger.record(task_id=str((context or {}).get("task_id") or run_id), run_id=run_id, agent_id=worker_id, provider=str(worker.get("provider") or ""), model=str(worker.get("model") or ""), usage={}, status="failed", latency_ms=round((time.perf_counter() - started_perf) * 1000, 2))
+            except Exception:
+                pass
             self.heartbeat(worker_id, status="failed", error=str(exc))
             if self.audit:
                 self.audit.record(event_type="worker_run_failed", actor=worker_id, subject="ameer", status="failed", correlation_id=run_id, payload={"run_id": run_id, "worker_id": worker_id, "error": str(exc)})
