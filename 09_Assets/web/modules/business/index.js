@@ -3,6 +3,10 @@
   const getJson = async (path) => { const response = await fetch(path, { headers: { Accept: 'application/json' }, cache: 'no-store' }); if (!response.ok) throw new Error(`${path}:${response.status}`); return response.json(); };
   const statusLabel = { confirmed: 'مؤكد', pending: 'قيد المراجعة', cancelled: 'ملغى', unavailable: 'غير متاح', conflict: 'متعارض' };
   const statusClass = (status) => ({ confirmed: 'good', pending: 'warn', cancelled: 'muted', unavailable: 'bad', conflict: 'bad' }[status] || 'muted');
+  const availableRows = (items) => {
+    if (!items || !items.length) return '<div class="dashboard-item"><span>لا توجد حجوزات متاحة أو قيد الانتظار حاليًا</span><span class="chip muted">لا يوجد</span></div>';
+    return items.map((item) => `<div class="dashboard-item"><div><strong>${esc(item.title || 'موعد متاح')}</strong><small style="display:block;opacity:.7">العميلة: ${esc(item.customer_name || 'غير مرتبطة')} · الموظفة: ${esc(item.employee_name || 'غير مسندة')} · ${esc(item.starts_at || 'موعد غير محدد')}</small></div><span class="chip good">${esc(statusLabel[item.status] || item.status || 'متاح')}</span></div>`).join('');
+  };
   const bookingRows = (items) => {
     if (!items || !items.length) return '<div class="dashboard-item"><span>لا توجد حجوزات مسجلة حاليًا</span><span class="chip muted">فارغ</span></div>';
     return items.map((item) => `<div class="dashboard-item"><div><strong>${esc(item.title || 'حجز')}</strong><small style="display:block;opacity:.7">${esc(item.starts_at || 'موعد غير محدد')} · ${esc(item.employee_name || item.employee_id || 'غير مسند')}</small></div><span class="chip ${statusClass(item.status)}">${esc(statusLabel[item.status] || item.status || 'غير معروف')}</span></div>`).join('');
@@ -17,8 +21,8 @@
         const load = async () => {
           container.innerHTML = '<section class="module-card"><div class="dashboard-hero"><div><div class="status-pill">مركز حلم الندى</div><h2>لوحة المراقبة</h2><p>جاري قراءة الحجوزات وصلاحيات أمير...</p></div><div class="chip">جاري التحميل</div></div></section>';
           try {
-            const [profile, dashboard, employees, customers, inventory, bookings, authority] = await Promise.all([
-              getJson('/center/profile'), getJson('/center/dashboard'), getJson('/center/employees'), getJson('/center/customers'), getJson('/center/inventory'), getJson('/center/bookings'), getJson('/agent/authority')
+            const [profile, dashboard, employees, customers, inventory, bookings, available, authority] = await Promise.all([
+              getJson('/center/profile'), getJson('/center/dashboard'), getJson('/center/employees'), getJson('/center/customers'), getJson('/center/inventory'), getJson('/center/bookings'), getJson('/center/bookings/available'), getJson('/agent/authority')
             ]);
             const summary = dashboard.dashboard || {};
             const list = bookings.bookings || [];
@@ -35,6 +39,7 @@
                   <div class="dashboard-card"><small>تعارض/غير متاح</small><strong class="metric bad">${esc((counts.conflict || 0) + (counts.unavailable || 0))}</strong></div>
                 </div>
                 <div class="dashboard-card"><div class="section-title"><h3>صلاحيات أمير</h3><span class="chip good">Orchestrator مركزي</span></div><div class="dashboard-item"><span>تأكيد الحجز العادي المتاح</span><strong class="good">مسموح</strong></div><div class="dashboard-item"><span>التعامل مع التعارض</span><strong class="warn">يُرفض ويُسجل</strong></div><div class="dashboard-item"><span>الدفع أو الاستثناءات الحساسة</span><strong class="warn">موافقة ${esc(finalOwner)}</strong></div><div class="dashboard-item"><span>عدد العمال تحت الإدارة</span><strong>${esc(workerCount)}</strong></div></div>
+                <div class="dashboard-card"><div class="section-title"><h3>الحجوزات المتاحة للمتابعة</h3><span>العميلة والموظفة</span></div>${availableRows(available.bookings)}</div>
                 <div class="dashboard-card"><div class="section-title"><h3>حالة الحجوزات</h3><span>آخر قراءة مباشرة</span></div>${bookingRows(list)}</div>
                 <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px"><div class="dashboard-card"><h3>الموظفون</h3>${rows(employees.employees, 'لا توجد سجلات موظفين')}</div><div class="dashboard-card"><h3>العملاء</h3>${rows(customers.customers, 'لا توجد سجلات عملاء')}</div><div class="dashboard-card"><h3>المخزون</h3>${rows(inventory.items, 'لا توجد منتجات')}</div></div>
               </section>`;

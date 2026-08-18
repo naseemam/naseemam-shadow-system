@@ -255,13 +255,36 @@ class BusinessOperations:
             raise
 
     def list_bookings(self, *, status: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
+        query = """
+            SELECT b.*, c.name AS customer_name, c.phone AS customer_phone,
+                   e.name AS employee_name, e.role AS employee_role
+            FROM bookings b
+            LEFT JOIN customers c ON c.id = b.customer_id
+            LEFT JOIN employees e ON e.id = b.employee_id
+        """
+        args: list[Any] = []
+        if status:
+            query += " WHERE b.status=?"
+            args.append(status)
+        query += " ORDER BY b.starts_at LIMIT ?"
+        args.append(int(limit))
         with self._connect() as conn:
-            if status:
-                rows = conn.execute(
-                    "SELECT * FROM bookings WHERE status=? ORDER BY starts_at LIMIT ?", (status, int(limit))
-                ).fetchall()
-            else:
-                rows = conn.execute("SELECT * FROM bookings ORDER BY starts_at LIMIT ?", (int(limit),)).fetchall()
+            rows = conn.execute(query, tuple(args)).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_available_bookings(self, *, limit: int = 100) -> List[Dict[str, Any]]:
+        """Read-only queue of slots/bookings explicitly marked available or pending."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT b.*, c.name AS customer_name, c.phone AS customer_phone,
+                          e.name AS employee_name, e.role AS employee_role
+                   FROM bookings b
+                   LEFT JOIN customers c ON c.id = b.customer_id
+                   LEFT JOIN employees e ON e.id = b.employee_id
+                   WHERE b.status IN ('available','pending','held')
+                   ORDER BY b.starts_at LIMIT ?""",
+                (int(limit),),
+            ).fetchall()
         return [dict(r) for r in rows]
 
     def create_order(self, *, customer_id: Optional[int] = None, total: float = 0, notes: str = "") -> Dict[str, Any]:

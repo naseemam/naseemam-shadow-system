@@ -1243,6 +1243,14 @@ async def center_bookings(limit: int = 100):
     return utf8_json_response({"status": "ok", "bookings": BUSINESS_OPERATIONS.list_bookings(limit=limit)})
 
 
+@app.get('/center/bookings/available')
+async def center_available_bookings(limit: int = 100):
+    """Read-only availability queue; only explicitly available/pending/held records."""
+    if BUSINESS_OPERATIONS is None:
+        return utf8_json_response({"status": "unavailable", "bookings": []}, status_code=503)
+    return utf8_json_response({"status": "ok", "bookings": BUSINESS_OPERATIONS.list_available_bookings(limit=limit)})
+
+
 @app.post('/booking/confirm')
 @app.post('/center/bookings/confirm')
 async def confirm_center_booking(request: Request):
