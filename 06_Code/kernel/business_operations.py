@@ -98,6 +98,7 @@ class BusinessOperations:
                     ends_at TEXT,
                     employee_id INTEGER,
                     status TEXT NOT NULL DEFAULT 'confirmed',
+                    confirmation_source TEXT NOT NULL DEFAULT 'ameer_auto',
                     notes TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -116,6 +117,9 @@ class BusinessOperations:
                 );
                 """
             )
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(bookings)").fetchall()}
+            if "confirmation_source" not in columns:
+                conn.execute("ALTER TABLE bookings ADD COLUMN confirmation_source TEXT NOT NULL DEFAULT 'legacy'")
             now = _now()
             conn.execute(
                 "INSERT OR IGNORE INTO center_profile(id,name,timezone,currency,settings_json,created_at,updated_at) VALUES(1,?,?,?,?,?,?)",
@@ -218,16 +222,37 @@ class BusinessOperations:
         customer_id: Optional[int] = None,
         employee_id: Optional[int] = None,
         notes: str = "",
+        confirmation_source: str = "ameer_auto",
     ) -> Dict[str, Any]:
         now = _now()
         with self._connect() as conn:
+            if employee_id:
+                overlap = conn.execute(
+                    """SELECT id FROM bookings
+                       WHERE employee_id=? AND status IN ('confirmed','held')
+                       AND starts_at < COALESCE(?, starts_at)
+                       AND COALESCE(ends_at, starts_at) > ?
+                       LIMIT 1""",
+                    (int(employee_id), ends_at or starts_at, starts_at),
+                ).fetchone()
+                if overlap:
+                    raise ValueError(f"booking_unavailable:employee:{employee_id}")
             cur = conn.execute(
-                "INSERT INTO bookings(customer_id,title,starts_at,ends_at,employee_id,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
-                (customer_id, title, starts_at, ends_at or None, employee_id, notes, now, now),
+                "INSERT INTO bookings(customer_id,title,starts_at,ends_at,employee_id,status,confirmation_source,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (customer_id, title, starts_at, ends_at or None, employee_id, "confirmed", confirmation_source, notes, now, now),
             )
             booking_id = int(cur.lastrowid)
             row = conn.execute("SELECT * FROM bookings WHERE id=?", (booking_id,)).fetchone()
         return dict(row)
+
+    def confirm_booking_for_ameer(self, title: str, starts_at: str, *, ends_at: str = "", customer_id: Optional[int] = None, employee_id: Optional[int] = None, notes: str = "") -> Dict[str, Any]:
+        """Confirm a normal available booking without founder approval; sensitive extras remain separate."""
+        try:
+            return self.create_booking(title, starts_at, ends_at=ends_at, customer_id=customer_id, employee_id=employee_id, notes=notes, confirmation_source="ameer_auto")
+        except ValueError as exc:
+            if str(exc).startswith("booking_unavailable:"):
+                raise
+            raise
 
     def list_bookings(self, *, status: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
         with self._connect() as conn:

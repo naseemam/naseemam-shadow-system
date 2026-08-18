@@ -1216,6 +1216,37 @@ async def center_bookings(limit: int = 100):
     return utf8_json_response({"status": "ok", "bookings": BUSINESS_OPERATIONS.list_bookings(limit=limit)})
 
 
+@app.post('/center/bookings/confirm')
+async def confirm_center_booking(request: Request):
+    """Ameer auto-confirms a normal available booking without founder approval."""
+    if BUSINESS_OPERATIONS is None:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return utf8_json_response({"status": "invalid_request", "reason": "invalid_json"}, status_code=400)
+    if str(body.get("actor") or "").strip().lower() != "ameer":
+        return utf8_json_response({"status": "blocked", "reason": "ameer_authority_required"}, status_code=403)
+    title = str(body.get("title") or "").strip()
+    starts_at = str(body.get("starts_at") or "").strip()
+    if not title or not starts_at:
+        return utf8_json_response({"status": "invalid_request", "reason": "title_and_starts_at_required"}, status_code=422)
+    try:
+        booking = BUSINESS_OPERATIONS.confirm_booking_for_ameer(
+            title,
+            starts_at,
+            ends_at=str(body.get("ends_at") or ""),
+            customer_id=body.get("customer_id"),
+            employee_id=body.get("employee_id"),
+            notes=str(body.get("notes") or ""),
+        )
+    except ValueError as exc:
+        if str(exc).startswith("booking_unavailable:"):
+            return utf8_json_response({"status": "unavailable", "reason": str(exc), "founder_approval_required": False}, status_code=409)
+        return utf8_json_response({"status": "invalid_request", "reason": str(exc)}, status_code=422)
+    return utf8_json_response({"status": "confirmed", "booking": booking, "confirmed_by": "ameer", "founder_approval_required": False})
+
+
 @app.get('/center/customers')
 async def center_customers():
     if BUSINESS_OPERATIONS is None:
