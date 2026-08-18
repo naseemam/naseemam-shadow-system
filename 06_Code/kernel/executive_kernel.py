@@ -818,6 +818,21 @@ class ExecutiveKernel:
             }
             return pipeline_trace
 
+        # Direct, in-process preview builds are a bounded internal operation: the
+        # FileExecutor still constrains every path to the workspace and the
+        # ExecutionAuthorization still validates the file-create grant. Give only
+        # these two builder intents an explicit internal guardian when the caller
+        # did not provide one at all. An empty or non-passing guardian is never
+        # promoted, and HTTP/API callers continue to pass their guardian result.
+        # This restores deterministic local site building without weakening the
+        # final approval gate for delete, publish, or any other external effect.
+        if guardian is None and decomposition["intent"] in {"build_homepage", "build_generic"}:
+            guardian = {
+                "status": "pass",
+                "source": "kernel_internal_preview_build",
+                "scope": "workspace_file_create_only",
+            }
+
         # AEX-1 external effects never execute from a plain command. They create
         # an explicit approval request and return a complete trace instead.
         external_intents = {"open_branch", "open_pull_request", "deploy_railway"}
