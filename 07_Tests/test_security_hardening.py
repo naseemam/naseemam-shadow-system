@@ -40,6 +40,7 @@ def test_shell_tool_executes_simple_argv_and_rejects_shell_operators():
 def test_railway_config_has_healthcheck_and_launcher_imports_os():
     railway = (ROOT / "railway.toml").read_text(encoding="utf-8")
     launcher = (ROOT / "start_ameer.py").read_text(encoding="utf-8")
+    assert 'watchPatterns = ["**"]' in railway
     assert 'healthcheckPath = "/health"' in railway
     assert "healthcheckTimeout = 120" in railway
     assert "import os" in launcher

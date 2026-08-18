@@ -1,5 +1,8 @@
 [build]
 builder = "NIXPACKS"
+# Ameer is a single service: any tracked source, policy, UI, or deployment
+# configuration change must be eligible for production deployment.
+watchPatterns = ["**"]
 
 [deploy]
 startCommand = "python start_ameer.py"
