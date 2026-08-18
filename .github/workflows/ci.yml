@@ -22,7 +22,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest fastapi pydantic starlette
+        run: python -m pip install --upgrade pip pytest fastapi pydantic starlette httpx2
       - name: Validate imports and syntax
         env:
           PYTHONPATH: 06_Code
