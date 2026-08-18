@@ -3,3 +3,5 @@ builder = "NIXPACKS"
 
 [deploy]
 startCommand = "python start_ameer.py"
+healthcheckPath = "/health"
+healthcheckTimeout = 120

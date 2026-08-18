@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   validate:
+    name: Validate Ameer
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -26,11 +27,58 @@ jobs:
         env:
           PYTHONPATH: 06_Code
         run: |
-          python -m py_compile ameer_server.py ameer_runtime.py
+          python -m py_compile ameer_server.py ameer_runtime.py start_ameer.py ameer_delivery_bootstrap.py
           python -m py_compile 06_Code/kernel/*.py
           python -c "import sys; sys.path.insert(0, '06_Code'); import kernel; import kernel.worker_runtime; import kernel.task_decomposer; print('kernel import: OK')"
-      - name: Run focused agent tests
+      - name: Run executive acceptance tests
         env:
           PYTHONPATH: 06_Code
         run: |
-          python -m pytest -q 07_Tests/test_worker_runtime.py 07_Tests/test_arabic_intent_lexicon.py 07_Tests/test_aex1_agent_execution_expansion.py 07_Tests/test_execution_bridge_permissions.py 07_Tests/test_execution_claim_truth_guard.py
+          python -m pytest -q \
+            07_Tests/test_worker_runtime.py \
+            07_Tests/test_arabic_intent_lexicon.py \
+            07_Tests/test_aex1_agent_execution_expansion.py \
+            07_Tests/test_execution_bridge_permissions.py \
+            07_Tests/test_execution_claim_truth_guard.py \
+            07_Tests/test_chat_final_approval_policy.py \
+            07_Tests/test_ameer_execution_authority.py \
+            07_Tests/test_operator_ui_execution_visibility.py \
+            07_Tests/test_p04_executive_activation.py
+
+  dependency_audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Audit declared Python dependencies
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip-audit --requirement requirements.txt
+
+  static_security:
+    name: Static security scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan committed history for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run Python security analysis
+        run: |
+          python -m pip install --upgrade pip bandit
+          bandit -q -lll -r 06_Code ameer_server.py ameer_delivery_bootstrap.py ameer_identity_bootstrap.py ameer_proactive_bootstrap.py start_ameer.py -x 07_Tests
