@@ -25,7 +25,7 @@ Design rules
 * Fail-closed: any ambiguous, missing, or unknown guardian status → deny
 * Only an explicit "pass" from Guardian allows execution to proceed
 * Conversational request_types never enter side-effect execution
-* ApprovalGate is consulted for high-risk actions
+* ApprovalGate is consulted only for delete/publish/deploy/rollback actions
 * ExecutionAuthorization is the final gate (capability + permission)
 """
 
@@ -38,14 +38,14 @@ from typing import Any, Dict, Optional, Set
 # Statuses that Guardian must explicitly produce for execution to be allowed.
 _GUARDIAN_PASS_VALUES: Set[str] = {"pass"}
 
-# Founder approval is required only for publishing/deployment and effects
-# that leave the controlled repository/project boundary. Internal repository
-# work, including merge and delete, is under Ameer's executive authority.
+# Founder approval is required only for destructive deletion and production
+# delivery. Internal repository work, including branch creation, pull requests,
+# push, merge, design, code changes, and tests, remains under Ameer's authority.
 _HIGH_RISK_ACTIONS_REQUIRING_APPROVAL: Set[str] = {
+    "delete",
     "publish",
     "deploy",
-    "external",
-    "financial",
+    "rollback",
 }
 
 # Request types that are purely conversational — they must never trigger side effects.

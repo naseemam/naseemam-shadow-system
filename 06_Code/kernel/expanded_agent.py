@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 import re
 import uuid
@@ -8,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from kernel.agent_operations import AgentExecutiveKernel
+from kernel.repository_execution import ControlledRepositoryPolicy
 from kernel.school_operations import SchoolOperations
 from kernel.stage_governance import StageGovernancePolicy
 
@@ -17,10 +16,12 @@ def _now() -> str:
 
 
 class FinalStageGate:
-    """One meaningful Founder approval at the end of a stage.
+    """Persistent, founder-only gate for destructive deletion and production delivery.
 
-    Internal, reversible work does not create approvals. Merge/deploy/irreversible
-    activation is queued here and executed only after explicit Founder approval.
+    All ordinary engineering, design, testing, branch, pull-request, merge, and
+    push work remains under Ameer's executive authority. The gate records the
+    exact pending command so that the approved action can be resumed by the
+    authenticated chat endpoint, never by a free-text public message.
     """
 
     def __init__(self, workspace_root: str | Path) -> None:
@@ -44,27 +45,29 @@ class FinalStageGate:
     def _save(self) -> None:
         self.path.write_text(json.dumps(self.data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def create(self, action: str, command: str, *, summary: str = "") -> Dict[str, Any]:
-        # Reuse an identical pending gate rather than pestering the Founder repeatedly.
+    def create(self, action: str, command: str, *, summary: str = "", metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         for req in reversed(self.data["requests"]):
             if req.get("status") == "pending" and req.get("action") == action and req.get("command") == command:
-                return req
+                return dict(req)
         request = {
             "approval_id": uuid.uuid4().hex[:10],
             "status": "pending",
             "action": action,
             "command": command,
-            "summary": summary or f"Final approval required for {action}",
+            "summary": summary or f"Founder approval required for {action}",
+            "metadata": metadata or {},
             "created_at": _now(),
             "resolved_at": None,
+            "resolved_by": None,
+            "result": None,
         }
         self.data["requests"].append(request)
         self.data["requests"] = self.data["requests"][-100:]
         self._save()
-        return request
+        return dict(request)
 
     def pending(self) -> list[Dict[str, Any]]:
-        return [r for r in self.data["requests"] if r.get("status") == "pending"]
+        return [dict(r) for r in self.data["requests"] if r.get("status") == "pending"]
 
     def get(self, approval_id: str) -> Optional[Dict[str, Any]]:
         for req in self.data["requests"]:
@@ -72,7 +75,7 @@ class FinalStageGate:
                 return req
         return None
 
-    def approve(self, approval_id: str) -> Dict[str, Any]:
+    def approve(self, approval_id: str, *, approved_by: str = "founder") -> Dict[str, Any]:
         req = self.get(approval_id)
         if req is None:
             raise KeyError("approval_not_found")
@@ -80,17 +83,29 @@ class FinalStageGate:
             raise ValueError("approval_already_resolved")
         req["status"] = "approved"
         req["resolved_at"] = _now()
+        req["resolved_by"] = approved_by
         self._save()
-        return req
+        return dict(req)
 
-    def deny(self, approval_id: str) -> Dict[str, Any]:
+    def deny(self, approval_id: str, *, denied_by: str = "founder") -> Dict[str, Any]:
         req = self.get(approval_id)
         if req is None:
             raise KeyError("approval_not_found")
+        if req.get("status") != "pending":
+            raise ValueError("approval_already_resolved")
         req["status"] = "denied"
         req["resolved_at"] = _now()
+        req["resolved_by"] = denied_by
         self._save()
-        return req
+        return dict(req)
+
+    def record_result(self, approval_id: str, result: Dict[str, Any]) -> Dict[str, Any]:
+        req = self.get(approval_id)
+        if req is None:
+            raise KeyError("approval_not_found")
+        req["result"] = result
+        self._save()
+        return dict(req)
 
 
 class ExpandedAgentOperations:
@@ -151,24 +166,26 @@ class ExpandedAgentOperations:
 
 
 class ExpandedAgentExecutiveKernel(AgentExecutiveKernel):
-    """Ameer as a founder-governed multi-domain operating agent."""
+    """Ameer as an executive agent with founder approval only for delete/deploy."""
 
-    APPROVAL_RE = re.compile(r"(?:وافق|أوافق|approve)\s+(?:على\s+)?([a-f0-9]{6,20})", re.IGNORECASE)
-    DENY_RE = re.compile(r"(?:ارفض|أرفض|رفض|deny)\s+(?:على\s+)?([a-f0-9]{6,20})", re.IGNORECASE)
+    _DELETE_RE = re.compile(r"^(?:احذف|أحذف|امسح|أمسح|delete|remove)\s+(?:ملف\s+)?(.+?)\s*$", re.IGNORECASE)
+    _DEPLOYMENT_ACTIONS = {"deploy", "merge_and_deploy", "rollback"}
 
     def __init__(self, workspace_root: str | Path) -> None:
         super().__init__(workspace_root)
         self.stage_policy = StageGovernancePolicy()
         self.final_gate = FinalStageGate(workspace_root)
         self.expanded_ops = ExpandedAgentOperations(workspace_root)
+        self._repository_policy = ControlledRepositoryPolicy(workspace_root)
 
     def expanded_capabilities(self) -> Dict[str, Any]:
         base = self.agent_ops.capabilities()
         base["domains"].update(self.expanded_ops.capabilities())
         base["approval_model"] = {
-            "mode": "final_gate_only",
+            "mode": "chat_final_gate",
             "autonomous_inside_stage": True,
             "founder_final_authority": True,
+            "founder_approval_actions": ["delete", "deploy", "publish", "rollback"],
             "pending_final_approvals": len(self.final_gate.pending()),
         }
         return base
@@ -179,40 +196,124 @@ class ExpandedAgentExecutiveKernel(AgentExecutiveKernel):
             return expanded
         return self.agent_ops.execute_structured(action, payload)
 
+    @staticmethod
+    def _trace(intent: str, result: Dict[str, Any]) -> Dict[str, Any]:
+        status = str(result.get("status") or "blocked")
+        accepted = status in {"completed", "needs_parameters", "pending_approval"}
+        return {
+            "pipeline": [{"stage": intent, "status": status}],
+            "final": {
+                "accepted": accepted,
+                "completed": 1 if status == "completed" else 0,
+                "results": [{"status": status, "content": str(result.get("message") or result.get("summary") or result.get("reason") or ""), "data": result}],
+                "message": str(result.get("message") or result.get("summary") or result.get("reason") or ""),
+            },
+        }
+
     def _approval_trace(self, req: Dict[str, Any]) -> Dict[str, Any]:
-        message = (
-            f"أنهيت العمل الداخلي ووصلت للبوابة النهائية. أحتاج موافقتك مرة واحدة لتنفيذ {req['action']}. "
-            f"رقم الموافقة: {req['approval_id']}"
-        )
+        action_names = {
+            "delete": "الحذف",
+            "deploy": "النشر على Railway",
+            "merge_and_deploy": "الدمج ثم النشر على Railway",
+            "rollback": "التراجع عن النشر",
+        }
+        action_label = action_names.get(str(req.get("action")), str(req.get("action")))
+        message = f"وصلت إلى بوابة المؤسس: {action_label}. راجع الملخص ثم استخدم زر «أوافق» أو «أرفض» داخل هذه المحادثة."
         return self._trace("final_approval", {
-            "status": "needs_parameters",
+            "status": "pending_approval",
             "action": req["action"],
             "message": message,
-            "approval": req,
+            "summary": req.get("summary", ""),
+            "approval": {
+                "approval_id": req["approval_id"],
+                "action": req["action"],
+                "summary": req.get("summary", ""),
+                "created_at": req.get("created_at"),
+            },
         })
 
-    def execute_command(self, command: str, *args: Any, **kwargs: Any) -> Dict[str, Any]:
-        approve = self.APPROVAL_RE.search(command or "")
-        if approve:
-            approval_id = approve.group(1)
-            try:
-                req = self.final_gate.approve(approval_id)
-                result = self.delivery.execute(req["action"], req["command"])
-                return self._trace("final_approval_execute", result)
-            except (KeyError, ValueError) as exc:
-                return self._trace("final_approval", {"status": "blocked", "reason": str(exc)})
+    def _delete_request(self, command: str) -> Optional[Dict[str, Any]]:
+        match = self._DELETE_RE.match(command or "")
+        if not match:
+            return None
+        target = match.group(1).strip().strip("`'\"،,.")
+        if not self._repository_policy.is_allowed(target):
+            return self._trace("final_approval", {
+                "status": "blocked",
+                "reason": "delete_target_outside_controlled_repository",
+                "message": "لا أستطيع حذف هذا المسار لأنه خارج نطاق المستودع المعتمد.",
+            })
+        path = self._repository_policy.resolve(target)
+        if not path.exists() or not path.is_file():
+            return self._trace("final_approval", {
+                "status": "blocked",
+                "reason": "delete_target_missing_or_not_file",
+                "message": "لم أجد ملفًا صالحًا للحذف داخل النطاق المعتمد.",
+            })
+        req = self.final_gate.create(
+            "delete",
+            command,
+            summary=f"حذف الملف: {target}",
+            metadata={"target": target, "bytes": path.stat().st_size},
+        )
+        return self._approval_trace(req)
 
-        deny = self.DENY_RE.search(command or "")
-        if deny:
-            try:
-                req = self.final_gate.deny(deny.group(1))
-                return self._trace("final_approval", {"status": "completed", "action": "deny", "result": req})
-            except (KeyError, ValueError) as exc:
-                return self._trace("final_approval", {"status": "blocked", "reason": str(exc)})
+    def _execute_delete(self, req: Dict[str, Any]) -> Dict[str, Any]:
+        target = str((req.get("metadata") or {}).get("target") or "").strip()
+        if not self._repository_policy.is_allowed(target):
+            return {"status": "blocked", "action": "delete", "reason": "delete_target_outside_controlled_repository"}
+        path = self._repository_policy.resolve(target)
+        if not path.exists() or not path.is_file():
+            return {"status": "blocked", "action": "delete", "reason": "delete_target_missing_or_not_file", "target": target}
+        bytes_deleted = path.stat().st_size
+        path.unlink()
+        return {
+            "status": "completed",
+            "action": "delete",
+            "target": target,
+            "bytes_deleted": bytes_deleted,
+            "message": f"تم حذف {target} بعد موافقة المؤسس.",
+        }
+
+    def resolve_chat_approval(self, approval_id: str, *, decision: str, approved_by: str = "founder") -> Dict[str, Any]:
+        decision = str(decision or "").strip().lower()
+        if decision not in {"approve", "deny"}:
+            return self._trace("final_approval", {"status": "blocked", "reason": "invalid_approval_decision"})
+        try:
+            if decision == "deny":
+                req = self.final_gate.deny(approval_id, denied_by=approved_by)
+                return self._trace("final_approval", {
+                    "status": "completed",
+                    "action": "deny",
+                    "message": "تم رفض الطلب ولن ينفذ أمير هذا الإجراء.",
+                    "approval": {"approval_id": req["approval_id"], "action": req["action"], "status": req["status"]},
+                })
+            req = self.final_gate.approve(approval_id, approved_by=approved_by)
+            if req.get("action") == "delete":
+                result = self._execute_delete(req)
+            else:
+                result = self.delivery.execute(str(req.get("action") or ""), str(req.get("command") or ""))
+            self.final_gate.record_result(approval_id, result)
+            result = dict(result)
+            result["approval"] = {"approval_id": approval_id, "action": req.get("action"), "status": req.get("status")}
+            return self._trace("final_approval_execute", result)
+        except (KeyError, ValueError) as exc:
+            return self._trace("final_approval", {"status": "blocked", "reason": str(exc)})
+
+    def execute_command(self, command: str, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        deletion = self._delete_request(command)
+        if deletion is not None:
+            return deletion
 
         delivery_action = self.delivery.detect(command)
-        if delivery_action in {"merge", "deploy", "merge_and_deploy", "rollback"}:
-            req = self.final_gate.create(delivery_action, command, summary="Founder final gate for external delivery")
+        if delivery_action in self._DEPLOYMENT_ACTIONS:
+            req = self.final_gate.create(
+                delivery_action,
+                command,
+                summary="موافقة المؤسس مطلوبة قبل النشر أو التراجع عن النشر على Railway.",
+            )
             return self._approval_trace(req)
 
+        # Push, branch, pull-request, and merge are deliberate executive GitHub
+        # operations. They remain traceable but do not need a founder gate.
         return super().execute_command(command, *args, **kwargs)

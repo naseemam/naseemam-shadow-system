@@ -117,16 +117,16 @@ AEX1_INTENT_SPECS = {
         "requires_approval": False,
     },
     "open_branch": {
-        "description": "فتح فرع Git جديد",
-        "permission_mode": "external_approval",
+        "description": "فتح فرع Git جديد تحت سجل أمير التنفيذي",
+        "permission_mode": "tracked_delivery",
         "capability": "engineering",
-        "requires_approval": True,
+        "requires_approval": False,
     },
     "open_pull_request": {
-        "description": "فتح طلب سحب على GitHub",
-        "permission_mode": "external_approval",
+        "description": "فتح طلب سحب على GitHub تحت سجل أمير التنفيذي",
+        "permission_mode": "tracked_delivery",
         "capability": "engineering",
-        "requires_approval": True,
+        "requires_approval": False,
     },
     "deploy_railway": {
         "description": "النشر على Railway",
@@ -150,7 +150,8 @@ _BUILD_STORE_MARKERS = [
 ]
 _BUILD_WEBSITE_MARKERS = [
     "ابن موقع", "ابنِ موقع", "أنشئ موقع", "انشئ موقع", "بناء موقع",
-    "build website", "create website", "new website", "موقع جديد",
+    "صمم موقع", "صمّم موقع", "تصميم موقع", "صمم الموقع", "صمّم الموقع", "تصميم الموقع",
+    "build website", "create website", "design website", "new website", "موقع جديد",
 ]
 _EXECUTE_PENDING_TASKS_MARKERS = [
     # Single-word approvals (MUST come first for priority)
