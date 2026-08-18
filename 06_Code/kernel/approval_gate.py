@@ -8,7 +8,7 @@ Approval Gate — بوابة الموافقة التنفيذية.
 
 الأنواع المدعومة من الطلبات:
 - "publish"  — نشر محتوى أو نشر إنتاجي
-- "external" — استدعاء API خارجي أو إرسال بيانات
+- "external" — استدعاء خارجي يحتاج موافقة صريحة عند تفعيله في سياسة منفصلة
 - "financial"— أي عملية مالية
 - "config"   — تغيير إعدادات النظام الخارجية
 - "other"    — أي طلب حساس آخر
@@ -72,11 +72,11 @@ class ApprovalGate:
     }
     """
 
-    VALID_ACTIONS = {"publish", "deploy", "external", "financial", "config", "other"}
+    VALID_ACTIONS = {"delete", "publish", "deploy", "rollback", "external", "financial", "config", "other"}
     VALID_STATUSES = {"pending", "approved", "rejected", "expired"}
 
-    # الأفعال التي تحتاج موافقة المؤسس دائمًا
-    HIGH_RISK_ACTIONS = {"publish", "deploy", "external", "financial"}
+    # سياسة أمير: موافقة المؤسس للحذف أو النشر/التراجع فقط.
+    HIGH_RISK_ACTIONS = {"delete", "publish", "deploy", "rollback"}
 
     def __init__(self, workspace_root: str | Path) -> None:
         self._root = Path(workspace_root).resolve()

@@ -230,14 +230,11 @@ class TestApprovalGateCore(unittest.TestCase):
         self.assertIn("pending", snap)
         self.assertIn("recent", snap)
 
-    def test_requires_approval_for_high_risk(self):
-        for action in ("delete", "publish", "external", "financial"):
+    def test_requires_approval_for_founder_final_actions(self):
+        for action in ("delete", "publish", "deploy", "rollback"):
             self.assertTrue(self.gate.requires_approval(action), f"{action} should require approval")
-
-    def test_requires_approval_false_for_config_and_other(self):
-        # config and other are not HIGH_RISK per design
-        self.assertFalse(self.gate.requires_approval("config"))
-        self.assertFalse(self.gate.requires_approval("other"))
+        for action in ("external", "financial", "config", "other"):
+            self.assertFalse(self.gate.requires_approval(action), f"{action} should not require approval")
 
     def test_empty_description_raises(self):
         with self.assertRaises(ValueError):

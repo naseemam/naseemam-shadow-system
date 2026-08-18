@@ -179,9 +179,41 @@ async def agent_approvals(request: Request):
     _require_agent_access(request)
     return ameer_server.utf8_json_response(
         {
-            "approval_model": "final_gate_only",
+            "approval_model": "chat_final_gate",
             "pending": ameer_server.KERNEL.final_gate.pending(),
         },
+        headers=ameer_server.runtime_headers(workspace_root=ameer_server.REPO_ROOT),
+    )
+
+
+@app.post("/chat/approvals/{approval_id}")
+async def resolve_chat_approval(approval_id: str, request: Request):
+    """Resolve one founder-only delete/deploy approval from the business chat.
+
+    The endpoint is deliberately protected by the existing operator bearer token.
+    It accepts only approve/deny and replays the exact command saved in FinalStageGate;
+    user-provided content can never replace the pending action.
+    """
+    _require_agent_access(request)
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+    decision = str((payload or {}).get("decision") or "").strip().lower()
+    result = ameer_server.KERNEL.resolve_chat_approval(
+        approval_id,
+        decision=decision,
+        approved_by="business_chat_owner",
+    )
+    final = result.get("final") or {}
+    status = 200 if final.get("accepted") else 409
+    return ameer_server.utf8_json_response(
+        {
+            "reply": final.get("message") or "تعذر إتمام قرار الموافقة.",
+            "message": final.get("message") or "تعذر إتمام قرار الموافقة.",
+            "execution_trace": result,
+        },
+        status_code=status,
         headers=ameer_server.runtime_headers(workspace_root=ameer_server.REPO_ROOT),
     )
 
@@ -266,7 +298,16 @@ if _original_ask_route is not None:
             if stage in {"agent_action", "delivery_action", "final_approval", "final_approval_execute"} and message:
                 body["reply"] = message
                 body["message"] = message
-                body["agent_action"] = (trace.get("final") or {}).get("results", [{}])[0].get("data")
+                action_data = (trace.get("final") or {}).get("results", [{}])[0].get("data") or {}
+                body["agent_action"] = action_data
+                approval = action_data.get("approval") if isinstance(action_data, dict) else None
+                if stage == "final_approval" and isinstance(approval, dict) and approval.get("approval_id"):
+                    body["chat_approval"] = {
+                        "approval_id": approval.get("approval_id"),
+                        "action": approval.get("action"),
+                        "summary": approval.get("summary") or message,
+                        "created_at": approval.get("created_at"),
+                    }
                 headers = {
                     k: v for k, v in dict(response.headers).items()
                     if k.lower() not in {"content-length", "content-type"}

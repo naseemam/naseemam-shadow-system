@@ -7,11 +7,12 @@ def test_operator_ui_is_more_than_ephemeral_chat():
     assert "مركز التشغيل التنفيذي" in html
     assert "سجل التنفيذ" in html
     assert "الموافقات النهائية" in html
-    assert "اختبار قدرة أمير" in html
+    assert "محادثة الأعمال" in html
     assert "تنفيذ فعلي موثّق" in html
-    assert "لا يوجد دليل تنفيذ فعلي" in html
+    assert "أوافق وأنفذ" in html
     assert "/ui/runtime" in html
-    assert "/execute/command" in html
+    assert "/ask" in html
+    assert "/chat/approvals/" in html
     assert "execution_evidence" in html
 
 

@@ -4,10 +4,9 @@ authorization_framework.py
 Complete Authorization Framework for Ameer
 
 Operations categorized by approval requirement:
-- LOCAL_OPERATIONS: Execute immediately (read/write workspace, shell, analysis)
-- EXTERNAL_OPERATIONS: Requires founder approval (browser, API, GitHub push)
-- DEPLOYMENT_OPERATIONS: Requires founder approval (Railway deploy)
-- DESTRUCTIVE_OPERATIONS: Requires founder approval (delete, rollback)
+- INTERNAL_OPERATIONS: Execute immediately (read/write workspace, shell, analysis, GitHub branch/PR/push/merge)
+- DEPLOYMENT_OPERATIONS: Requires founder approval (Railway publish/deploy/rollback)
+- DESTRUCTIVE_OPERATIONS: Requires founder approval (delete)
 """
 
 from __future__ import annotations
@@ -53,13 +52,14 @@ AUTHORIZATION_MATRIX = {
     # Local Operations - No approval
     (ResourceType.FILES, OperationType.LOCAL): ApprovalLevel.NONE,
     (ResourceType.SHELL, OperationType.LOCAL): ApprovalLevel.NONE,
-    # External Operations - Founder approval
-    (ResourceType.BROWSER, OperationType.EXTERNAL): ApprovalLevel.FOUNDER,
-    (ResourceType.GITHUB, OperationType.EXTERNAL): ApprovalLevel.FOUNDER,
-    (ResourceType.EMAIL, OperationType.EXTERNAL): ApprovalLevel.FOUNDER,
-    (ResourceType.GOOGLE, OperationType.EXTERNAL): ApprovalLevel.FOUNDER,
-    (ResourceType.SLACK, OperationType.EXTERNAL): ApprovalLevel.FOUNDER,
-    (ResourceType.API, OperationType.EXTERNAL): ApprovalLevel.FOUNDER,
+    # Executive integrations - no founder approval in this policy. Each connector
+    # remains bounded by its own scope and audit trail.
+    (ResourceType.BROWSER, OperationType.EXTERNAL): ApprovalLevel.NONE,
+    (ResourceType.GITHUB, OperationType.EXTERNAL): ApprovalLevel.NONE,
+    (ResourceType.EMAIL, OperationType.EXTERNAL): ApprovalLevel.NONE,
+    (ResourceType.GOOGLE, OperationType.EXTERNAL): ApprovalLevel.NONE,
+    (ResourceType.SLACK, OperationType.EXTERNAL): ApprovalLevel.NONE,
+    (ResourceType.API, OperationType.EXTERNAL): ApprovalLevel.NONE,
     # Deployment Operations - Founder approval
     (ResourceType.RAILWAY, OperationType.DEPLOYMENT): ApprovalLevel.FOUNDER,
     # Destructive Operations - Founder approval
