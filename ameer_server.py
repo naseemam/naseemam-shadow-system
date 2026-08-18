@@ -8,6 +8,7 @@ import html
 import logging
 import os
 import re
+import tempfile
 import sys
 import uuid
 import importlib.util
@@ -1242,6 +1243,7 @@ async def center_bookings(limit: int = 100):
     return utf8_json_response({"status": "ok", "bookings": BUSINESS_OPERATIONS.list_bookings(limit=limit)})
 
 
+@app.post('/booking/confirm')
 @app.post('/center/bookings/confirm')
 async def confirm_center_booking(request: Request):
     """Ameer auto-confirms a normal available booking without founder approval."""
@@ -1271,6 +1273,54 @@ async def confirm_center_booking(request: Request):
             return utf8_json_response({"status": "unavailable", "reason": str(exc), "founder_approval_required": False}, status_code=409)
         return utf8_json_response({"status": "invalid_request", "reason": str(exc)}, status_code=422)
     return utf8_json_response({"status": "confirmed", "booking": booking, "confirmed_by": "ameer", "founder_approval_required": False})
+
+
+@app.post('/test/booking/confirm')
+async def test_confirm_booking(request: Request):
+    """Run booking confirmation scenarios only in an explicitly isolated test environment."""
+    test_mode = (os.getenv("AMEER_TEST_MODE") or "").strip().lower() == "true"
+    environment = (os.getenv("AMEER_ENV") or os.getenv("ENVIRONMENT") or "production").strip().lower()
+    if not test_mode or environment in {"production", "prod"}:
+        return utf8_json_response({"status": "blocked", "reason": "test_endpoint_disabled_in_production"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:
+        return utf8_json_response({"status": "invalid_request", "reason": "invalid_json"}, status_code=400)
+    scenario = str(body.get("scenario") or "available").strip().lower()
+    actor = str(body.get("actor") or "").strip().lower()
+    if scenario not in {"available", "conflict"}:
+        return utf8_json_response({"status": "invalid_request", "reason": "unknown_fixture_scenario"}, status_code=422)
+    if actor != "ameer":
+        return utf8_json_response({"status": "blocked", "reason": "ameer_authority_required", "fixture": True}, status_code=403)
+    old_data_dir = os.environ.get("AMEER_DATA_DIR")
+    try:
+        with tempfile.TemporaryDirectory(prefix="ameer-booking-fixture-") as fixture_root:
+            os.environ["AMEER_DATA_DIR"] = fixture_root
+            fixture_store = BusinessOperations(fixture_root)
+            employee = fixture_store.add_employee("Fixture Employee", role="beauty")
+            payload = {
+                "title": "Fixture booking",
+                "starts_at": "2035-01-01T10:00:00Z",
+                "ends_at": "2035-01-01T11:00:00Z",
+                "employee_id": employee["id"],
+            }
+            if scenario == "conflict":
+                fixture_store.confirm_booking_for_ameer(**payload)
+                payload["title"] = "Fixture conflicting booking"
+                payload["starts_at"] = "2035-01-01T10:30:00Z"
+                payload["ends_at"] = "2035-01-01T11:30:00Z"
+            try:
+                booking = fixture_store.confirm_booking_for_ameer(**payload)
+            except ValueError as exc:
+                if str(exc).startswith("booking_unavailable:"):
+                    return utf8_json_response({"status": "unavailable", "reason": "booking_conflict_detected", "fixture": True}, status_code=409)
+                return utf8_json_response({"status": "invalid_request", "reason": str(exc), "fixture": True}, status_code=422)
+            return utf8_json_response({"status": "confirmed", "booking": booking, "confirmed_by": "ameer", "fixture": True}, status_code=200)
+    finally:
+        if old_data_dir is None:
+            os.environ.pop("AMEER_DATA_DIR", None)
+        else:
+            os.environ["AMEER_DATA_DIR"] = old_data_dir
 
 
 @app.get('/center/customers')
