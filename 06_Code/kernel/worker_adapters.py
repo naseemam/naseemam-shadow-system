@@ -77,7 +77,8 @@ def _call_chat(model: str, system: str, objective: str, context: Dict[str, Any])
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=90) as response:
+        timeout_seconds = float(os.getenv("AMEER_WORKER_TIMEOUT_SECONDS", "180"))
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             body = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[:500]

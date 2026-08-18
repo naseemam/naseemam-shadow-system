@@ -50,9 +50,9 @@ def worker_access_policy(worker_id: str) -> dict:
     return {
         "worker_id": worker_id,
         "read": {"enabled": True, "scope": "worker_workspace_only", "allowed_paths": list(scope["paths"])},
-        "write": {"enabled": True, "scope": "worker_workspace_only", "approval": "ameer_review", "allowed_paths": list(scope["paths"])},
-        "execute_internal": {"enabled": True, "scope": "worker_workspace_only", "approval": "ameer_review", "capabilities": list(scope["capabilities"])},
-        "external_effect": {"enabled": False, "approval": "founder_final", "allowed": []},
+        "write": {"enabled": True, "scope": "worker_workspace_only", "authority": "ameer", "approval": "ameer_review", "user_approval_required": False, "allowed_paths": list(scope["paths"])},
+        "execute_internal": {"enabled": True, "scope": "worker_workspace_only", "authority": "ameer", "approval": "ameer_review", "user_approval_required": False, "capabilities": list(scope["capabilities"])},
+        "external_effect": {"enabled": False, "authority": "founder", "approval": "founder_final", "allowed": []},
         "cross_worker_access": False,
         "can_kill_other_processes": False,
         "can_modify_governance": False,

@@ -38,15 +38,14 @@ from typing import Any, Dict, Optional, Set
 # Statuses that Guardian must explicitly produce for execution to be allowed.
 _GUARDIAN_PASS_VALUES: Set[str] = {"pass"}
 
-# High-risk actions that require an ApprovalGate to be available.
-# Mirrors ApprovalGate.HIGH_RISK_ACTIONS.
+# Founder approval is required only for publishing/deployment and effects
+# that leave the controlled repository/project boundary. Internal repository
+# work, including merge and delete, is under Ameer's executive authority.
 _HIGH_RISK_ACTIONS_REQUIRING_APPROVAL: Set[str] = {
-    "delete",
     "publish",
+    "deploy",
     "external",
     "financial",
-    "merge",
-    "deploy",
 }
 
 # Request types that are purely conversational — they must never trigger side effects.
@@ -66,8 +65,9 @@ KERNEL_ACTIONABLE_INTENTS: Set[str] = {
     "open_branch", "open_pull_request", "deploy_railway",
 }
 
-# AEX-1 permission matrix. Read/analyze and workspace writes are eligible for
-# the normal audited path; merge/publish/deploy require explicit approval.
+# AEX-1 permission matrix. Read/analyze, workspace writes, merge, and delete
+# are eligible for Ameer's audited internal path; publish/deploy/external/financial
+# effects require the founder approval gate.
 AEX1_PERMISSION_MATRIX: Dict[str, Dict[str, Any]] = {
     "read_only": {"allow": True, "tracked": True, "approval": False},
     "tracked_write": {"allow": True, "tracked": True, "approval": False},

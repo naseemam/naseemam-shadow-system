@@ -7,12 +7,14 @@ Approval Gate — بوابة الموافقة التنفيذية.
 المؤسسة هي صاحبة القرار النهائي — أمير لا ينفّذ إجراءات حساسة دون موافقة.
 
 الأنواع المدعومة من الطلبات:
-- "delete"   — حذف ملف أو بيانات
-- "publish"  — نشر محتوى أو نشر على الإنترنت
+- "publish"  — نشر محتوى أو نشر إنتاجي
 - "external" — استدعاء API خارجي أو إرسال بيانات
 - "financial"— أي عملية مالية
-- "config"   — تغيير إعدادات النظام
+- "config"   — تغيير إعدادات النظام الخارجية
 - "other"    — أي طلب حساس آخر
+
+عمليات المستودع الداخلية مثل القراءة والكتابة والاختبار والدمج والحذف داخل النطاق
+المصرح بها تقع تحت سلطة أمير ولا تتطلب موافقة المؤسس لكل خطوة.
 
 كل طلب موافقة له حالة:
 - "pending"  — ينتظر رد المؤسسة
@@ -59,7 +61,7 @@ class ApprovalGate:
     كل طلب له بنية:
     {
         "id": "<uuid>",
-        "action": "delete|publish|external|financial|config|other",
+        "action": "publish|deploy|external|financial|config|other",
         "description": "...",
         "requested_by": "...",
         "status": "pending|approved|rejected|expired",
@@ -70,11 +72,11 @@ class ApprovalGate:
     }
     """
 
-    VALID_ACTIONS = {"delete", "publish", "external", "financial", "config", "other"}
+    VALID_ACTIONS = {"publish", "deploy", "external", "financial", "config", "other"}
     VALID_STATUSES = {"pending", "approved", "rejected", "expired"}
 
-    # الإجراءات التي تحتاج موافقة دائمًا
-    HIGH_RISK_ACTIONS = {"delete", "publish", "external", "financial"}
+    # الأفعال التي تحتاج موافقة المؤسس دائمًا
+    HIGH_RISK_ACTIONS = {"publish", "deploy", "external", "financial"}
 
     def __init__(self, workspace_root: str | Path) -> None:
         self._root = Path(workspace_root).resolve()
