@@ -186,6 +186,7 @@ try:
     from kernel.worker_runtime import DEFAULT_WORKERS
     from kernel.business_operations import BusinessOperations
     from kernel.commerce_test_environment import CommerceTestEnvironment
+    from kernel.tap_webhook_verifier import verify_tap_hashstring, tap_status_to_test_status
     MESSAGE_BUS = AgentMessageBus(ROOT)
     BUSINESS_OPERATIONS = BusinessOperations(ROOT)
     COMMERCE_TEST = CommerceTestEnvironment(ROOT)
@@ -195,6 +196,8 @@ except Exception:
     MESSAGE_BUS = None
     BUSINESS_OPERATIONS = None
     COMMERCE_TEST = None
+    verify_tap_hashstring = None
+    tap_status_to_test_status = None
 
 
 def load_documents():
@@ -1586,6 +1589,33 @@ async def test_commerce_payment_webhook(payload: dict):
     except ValueError as exc:
         return utf8_json_response({"status": "invalid", "reason": str(exc)}, status_code=422)
     return utf8_json_response(result)
+
+
+@app.post('/test/commerce/webhooks/tap')
+async def test_commerce_tap_webhook(request: Request):
+    if not COMMERCE_TEST or not verify_tap_hashstring:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    if not os.getenv("TAP_SECRET_KEY", "").strip():
+        return utf8_json_response({"status": "unconfigured", "reason": "TAP_SECRET_KEY_missing"}, status_code=503)
+    try:
+        payload = await request.json()
+    except Exception:
+        return utf8_json_response({"status": "invalid", "reason": "invalid_json"}, status_code=400)
+    received_hash = request.headers.get("hashstring") or request.headers.get("x-tap-hashstring") or ""
+    if not verify_tap_hashstring(payload, received_hash):
+        return utf8_json_response({"status": "rejected", "reason": "tap_hashstring_invalid"}, status_code=401)
+    try:
+        result = COMMERCE_TEST.process_payment_webhook(
+            event_id=str(payload.get("id") or ""),
+            order_id=str((payload.get("reference") or {}).get("order") or ""),
+            event_type=str(payload.get("object") or "charge"),
+            status=tap_status_to_test_status(str(payload.get("status") or "")),
+            payload=payload,
+            provider="tap_sandbox",
+        )
+    except (KeyError, ValueError) as exc:
+        return utf8_json_response({"status": "invalid", "reason": str(exc)}, status_code=422)
+    return utf8_json_response({"status": "verified", "tap": result})
 
 
 @app.post('/test/commerce/orders/{order_id}/shipment')
