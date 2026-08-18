@@ -1511,6 +1511,31 @@ async def promote_learned_knowledge(payload: KnowledgePromotionRequest):
     return utf8_json_response({"promoted": True, "record": promoted})
 
 
+@app.get('/shadow/foundation')
+async def shadow_foundation_snapshot():
+    """Read-only snapshot of Shadow identity, projects, roles, and default policies."""
+    if not KERNEL or not getattr(KERNEL, "shadow_foundation", None):
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    return utf8_json_response({"status": "ok", **KERNEL.shadow_foundation.snapshot()})
+
+
+@app.get('/shadow/projects')
+async def shadow_projects(parent_id: str | None = None):
+    """Read-only project registry; mutations remain behind the governed project flow."""
+    if not KERNEL or not getattr(KERNEL, "shadow_foundation", None):
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    return utf8_json_response({"status": "ok", "projects": KERNEL.shadow_foundation.list_projects(parent_id=parent_id)})
+
+
+@app.get('/shadow/policies')
+async def shadow_policies():
+    """Read-only policy snapshot; never exposes credentials or prompts."""
+    if not KERNEL or not getattr(KERNEL, "shadow_foundation", None):
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    snapshot = KERNEL.shadow_foundation.snapshot()
+    return utf8_json_response({"status": "ok", "policies": snapshot["policies"], "trading_execution_default": snapshot["trading_execution_default"]})
+
+
 @app.get('/projects')
 async def list_projects():
     return {"projects": _load_project_store()}
