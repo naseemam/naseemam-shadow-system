@@ -185,13 +185,16 @@ try:
     from kernel.agent_message_bus import AgentMessageBus
     from kernel.worker_runtime import DEFAULT_WORKERS
     from kernel.business_operations import BusinessOperations
+    from kernel.commerce_test_environment import CommerceTestEnvironment
     MESSAGE_BUS = AgentMessageBus(ROOT)
     BUSINESS_OPERATIONS = BusinessOperations(ROOT)
+    COMMERCE_TEST = CommerceTestEnvironment(ROOT)
 except Exception:
     AgentMessageBus = None
     DEFAULT_WORKERS = {}
     MESSAGE_BUS = None
     BUSINESS_OPERATIONS = None
+    COMMERCE_TEST = None
 
 
 def load_documents():
@@ -1525,6 +1528,77 @@ async def shadow_projects(parent_id: str | None = None):
     if not KERNEL or not getattr(KERNEL, "shadow_foundation", None):
         return utf8_json_response({"status": "unavailable"}, status_code=503)
     return utf8_json_response({"status": "ok", "projects": KERNEL.shadow_foundation.list_projects(parent_id=parent_id)})
+
+
+@app.get('/test/commerce/snapshot')
+async def test_commerce_snapshot():
+    if not COMMERCE_TEST:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    return utf8_json_response({"status": "ok", **COMMERCE_TEST.snapshot()})
+
+
+@app.post('/test/commerce/orders')
+async def test_commerce_create_order(payload: dict):
+    if not COMMERCE_TEST:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    if not payload.get("customer_name") or payload.get("total") is None:
+        return utf8_json_response({"status": "invalid", "required": ["customer_name", "total"]}, status_code=422)
+    try:
+        order = COMMERCE_TEST.create_order(
+            customer_name=str(payload["customer_name"]),
+            total=float(payload["total"]),
+            currency=str(payload.get("currency", "SAR")),
+        )
+    except (TypeError, ValueError) as exc:
+        return utf8_json_response({"status": "invalid", "reason": str(exc)}, status_code=422)
+    return utf8_json_response({"status": "created", "mode": "test", "no_real_money": True, "order": order}, status_code=201)
+
+
+@app.post('/test/commerce/orders/{order_id}/payment-session')
+async def test_commerce_payment_session(order_id: str):
+    if not COMMERCE_TEST:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    try:
+        session = COMMERCE_TEST.create_payment_session(order_id)
+    except KeyError as exc:
+        return utf8_json_response({"status": "not_found", "reason": str(exc)}, status_code=404)
+    except ValueError as exc:
+        return utf8_json_response({"status": "invalid", "reason": str(exc)}, status_code=409)
+    return utf8_json_response({"status": "created", **session})
+
+
+@app.post('/test/commerce/webhooks/payment')
+async def test_commerce_payment_webhook(payload: dict):
+    if not COMMERCE_TEST:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    required = ("event_id", "order_id", "event_type", "status")
+    missing = [key for key in required if not payload.get(key)]
+    if missing:
+        return utf8_json_response({"status": "invalid", "missing": missing}, status_code=422)
+    try:
+        result = COMMERCE_TEST.process_payment_webhook(
+            event_id=str(payload["event_id"]), order_id=str(payload["order_id"]),
+            event_type=str(payload["event_type"]), status=str(payload["status"]),
+            payload=payload, provider=str(payload.get("provider", "test_gateway")),
+        )
+    except KeyError as exc:
+        return utf8_json_response({"status": "not_found", "reason": str(exc)}, status_code=404)
+    except ValueError as exc:
+        return utf8_json_response({"status": "invalid", "reason": str(exc)}, status_code=422)
+    return utf8_json_response(result)
+
+
+@app.post('/test/commerce/orders/{order_id}/shipment')
+async def test_commerce_create_shipment(order_id: str, payload: dict | None = None):
+    if not COMMERCE_TEST:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    try:
+        result = COMMERCE_TEST.create_test_shipment(order_id, provider=str((payload or {}).get("provider", "test_carrier")))
+    except KeyError as exc:
+        return utf8_json_response({"status": "not_found", "reason": str(exc)}, status_code=404)
+    except ValueError as exc:
+        return utf8_json_response({"status": "blocked", "reason": str(exc)}, status_code=409)
+    return utf8_json_response(result)
 
 
 @app.get('/gateway/status')
