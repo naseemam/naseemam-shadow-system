@@ -82,40 +82,53 @@ async def file_write_tool(job: Job) -> Dict[str, Any]:
 # SHELL EXECUTION TOOLS
 
 async def shell_execute_tool(job: Job) -> Dict[str, Any]:
-    """Tool: Execute shell command."""
+    """Execute one argv-based internal command without invoking a shell.
+
+    Shell operators are intentionally rejected. Plans that need composition must
+    create separate governed tasks, which prevents one text field from becoming
+    an arbitrary shell script.
+    """
+    import shlex
     import subprocess
 
     command = job.details.get("command", "")
+    argv = job.details.get("argv")
+    if argv is None:
+        if not isinstance(command, str) or not command.strip():
+            raise ValueError("No command specified")
+        argv = shlex.split(command)
+    if not isinstance(argv, list) or not argv or not all(isinstance(item, str) and item for item in argv):
+        raise ValueError("Command must be a non-empty argv list or a simple command string")
+    forbidden = {"|", "||", "&&", ";", ">", ">>", "<", "<<", "`", "&"}
+    if any(token in forbidden for token in argv):
+        raise ValueError("Shell operators are not allowed; split the work into governed tasks")
 
-    if not command:
-        raise ValueError("No command specified")
-
+    display = " ".join(shlex.quote(item) for item in argv)
     job.progress = 25
-    job.progress_message = f"Executing: {command[:50]}..."
-
+    job.progress_message = f"Executing: {display[:50]}..."
     try:
         result = subprocess.run(
-            command,
-            shell=True,
+            argv,
+            shell=False,
             capture_output=True,
             text=True,
             timeout=30,
+            check=False,
         )
-
         job.progress = 100
         job.progress_message = "Command executed"
-
         return {
-            "command": command,
+            "command": display,
+            "argv": argv,
             "returncode": result.returncode,
             "stdout": result.stdout,
             "stderr": result.stderr,
             "success": result.returncode == 0,
         }
-    except subprocess.TimeoutExpired:
-        raise Exception("Command execution timed out")
-    except Exception as e:
-        raise Exception(f"Failed to execute command: {e}")
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("Command execution timed out") from exc
+    except OSError as exc:
+        raise RuntimeError(f"Failed to execute command: {exc}") from exc
 
 
 # BROWSER TOOLS
