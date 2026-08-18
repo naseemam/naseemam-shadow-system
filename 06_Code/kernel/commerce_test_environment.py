@@ -78,6 +78,15 @@ class CommerceTestEnvironment:
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(order_id) REFERENCES test_orders(id)
                 );
+                CREATE TABLE IF NOT EXISTS test_shipping_events (
+                    event_id TEXT PRIMARY KEY,
+                    shipment_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    payload_hash TEXT NOT NULL,
+                    processed_at TEXT NOT NULL,
+                    FOREIGN KEY(shipment_id) REFERENCES test_shipments(id)
+                );
                 """
             )
 
@@ -153,11 +162,41 @@ class CommerceTestEnvironment:
             row = conn.execute("SELECT * FROM test_shipments WHERE id=?", (shipment_id,)).fetchone()
             return {"status": "created", "shipment": dict(row), "no_real_shipment": True}
 
+    def get_test_shipment(self, order_id: str) -> Dict[str, Any]:
+        with self._connect() as conn:
+            self._order(conn, order_id)
+            row = conn.execute("SELECT * FROM test_shipments WHERE order_id=?", (order_id,)).fetchone()
+            if row is None:
+                raise KeyError("test_shipment_not_found")
+            return {"mode": self.MODE, "no_real_shipment": True, "shipment": dict(row)}
+
+    def process_shipping_webhook(self, *, event_id: str, shipment_id: str, status: str, payload: Dict[str, Any], provider: str = "test_carrier") -> Dict[str, Any]:
+        allowed = {"created", "picked_up", "in_transit", "delivered", "returned", "cancelled"}
+        if status not in allowed:
+            raise ValueError("unsupported_test_shipping_status")
+        payload_hash = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        now = _now()
+        with self._connect() as conn:
+            shipment = conn.execute("SELECT * FROM test_shipments WHERE id=?", (shipment_id,)).fetchone()
+            if shipment is None:
+                raise KeyError("test_shipment_not_found")
+            existing = conn.execute("SELECT * FROM test_shipping_events WHERE event_id=?", (event_id,)).fetchone()
+            if existing:
+                return {"status": "duplicate_ignored", "event_id": event_id, "no_real_shipment": True, "shipment": dict(shipment)}
+            conn.execute(
+                "INSERT INTO test_shipping_events(event_id,shipment_id,provider,status,payload_hash,processed_at) VALUES(?,?,?,?,?,?)",
+                (event_id, shipment_id, provider, status, payload_hash, now),
+            )
+            conn.execute("UPDATE test_shipments SET status=?, updated_at=? WHERE id=?", (status, now, shipment_id))
+            updated = conn.execute("SELECT * FROM test_shipments WHERE id=?", (shipment_id,)).fetchone()
+            return {"status": "processed", "event_id": event_id, "no_real_shipment": True, "shipment": dict(updated)}
+
     def snapshot(self) -> Dict[str, Any]:
         with self._connect() as conn:
             orders = conn.execute("SELECT * FROM test_orders ORDER BY created_at DESC LIMIT 50").fetchall()
             shipments = conn.execute("SELECT * FROM test_shipments ORDER BY created_at DESC LIMIT 50").fetchall()
             events = conn.execute("SELECT * FROM test_payment_events ORDER BY processed_at DESC LIMIT 50").fetchall()
+            shipping_events = conn.execute("SELECT * FROM test_shipping_events ORDER BY processed_at DESC LIMIT 50").fetchall()
         return {
             "mode": self.MODE,
             "project_id": self.PROJECT_ID,
@@ -166,4 +205,5 @@ class CommerceTestEnvironment:
             "orders": [dict(row) for row in orders],
             "shipments": [dict(row) for row in shipments],
             "payment_events": [dict(row) for row in events],
+            "shipping_events": [dict(row) for row in shipping_events],
         }

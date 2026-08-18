@@ -1631,6 +1631,39 @@ async def test_commerce_create_shipment(order_id: str, payload: dict | None = No
     return utf8_json_response(result)
 
 
+@app.get('/test/commerce/orders/{order_id}/shipment')
+async def test_commerce_get_shipment(order_id: str):
+    if not COMMERCE_TEST:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    try:
+        return utf8_json_response(COMMERCE_TEST.get_test_shipment(order_id))
+    except KeyError as exc:
+        return utf8_json_response({"status": "not_found", "reason": str(exc)}, status_code=404)
+
+
+@app.post('/test/commerce/webhooks/shipping')
+async def test_commerce_shipping_webhook(payload: dict):
+    if not COMMERCE_TEST:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    required = ("event_id", "shipment_id", "status")
+    missing = [key for key in required if not payload.get(key)]
+    if missing:
+        return utf8_json_response({"status": "invalid", "missing": missing}, status_code=422)
+    try:
+        result = COMMERCE_TEST.process_shipping_webhook(
+            event_id=str(payload["event_id"]),
+            shipment_id=str(payload["shipment_id"]),
+            status=str(payload["status"]),
+            payload=payload,
+            provider=str(payload.get("provider", "test_carrier")),
+        )
+    except KeyError as exc:
+        return utf8_json_response({"status": "not_found", "reason": str(exc)}, status_code=404)
+    except ValueError as exc:
+        return utf8_json_response({"status": "invalid", "reason": str(exc)}, status_code=422)
+    return utf8_json_response(result)
+
+
 @app.get('/gateway/status')
 async def gateway_status():
     if not KERNEL or not getattr(KERNEL, "project_gateway", None):
