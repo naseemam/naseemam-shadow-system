@@ -232,7 +232,7 @@ class TestExecutionBoundaryFailClosedDependencies(unittest.TestCase):
         self.assertEqual(result.verdict, self.BoundaryVerdict.DENY)
         self.assertEqual(result.reason, "execution_authorization_missing")
 
-    def test_guardian_pass_with_required_approval_gate_missing_denies(self):
+    def test_guardian_pass_with_root_asset_gate_missing_denies(self):
         class _ApprovedAuth:
             def check(self, **kwargs):
                 return {"status": "approved", "request_id": "req-1"}
@@ -242,7 +242,8 @@ class TestExecutionBoundaryFailClosedDependencies(unittest.TestCase):
             guardian={"status": "pass"},
             request_type="execution",
             intent="build_homepage",
-            action="delete",  # high risk → approval gate required
+            action="create_site",
+            context={"asset_name": "موقع جديد"},
         )
         self.assertEqual(result.verdict, self.BoundaryVerdict.DENY)
         self.assertEqual(result.reason, "approval_gate_required_missing")

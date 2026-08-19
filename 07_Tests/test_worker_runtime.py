@@ -55,5 +55,6 @@ def test_on_demand_specialist_dispatch_is_internal_and_traceable(tmp_path: Path)
     assert result["run_id"]
     policy = result["result"]["context"]["access_policy"]
     assert policy["worker_id"] == "specialist"
-    assert policy["external_effect"]["enabled"] is False
-    assert policy["external_effect"]["approval"] == "founder_final"
+    assert policy["external_effect"]["enabled"] is True
+    assert policy["external_effect"]["authority"] == "ameer"
+    assert policy["external_effect"]["approval"] == "ameer_orchestrated_root_asset_creation_gate"

@@ -20,6 +20,7 @@ if _CODE_ROOT not in sys.path:
     sys.path.insert(0, _CODE_ROOT)
 
 from kernel.task_decomposer import normalize_arabic_for_match
+from kernel.ameer_authority import policy_snapshot as authority_policy_snapshot
 
 from ameer_runtime import (
     public_runtime_identity,
@@ -1905,6 +1906,12 @@ async def shadow_policies():
         return utf8_json_response({"status": "unavailable"}, status_code=503)
     snapshot = KERNEL.shadow_foundation.snapshot()
     return utf8_json_response({"status": "ok", "policies": snapshot["policies"], "trading_execution_default": snapshot["trading_execution_default"]})
+
+
+@app.get('/authority')
+async def authority_snapshot():
+    """Public, credential-free summary of Ameer's delegated operating authority."""
+    return utf8_json_response({"status": "ok", "authority": authority_policy_snapshot()})
 
 
 @app.get('/projects')

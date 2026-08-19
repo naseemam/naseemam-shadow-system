@@ -230,10 +230,10 @@ class TestApprovalGateCore(unittest.TestCase):
         self.assertIn("pending", snap)
         self.assertIn("recent", snap)
 
-    def test_requires_approval_for_founder_final_actions(self):
-        for action in ("delete", "publish", "deploy", "rollback"):
+    def test_requires_approval_only_for_new_root_assets(self):
+        for action in ("create_site", "create_program", "create_system", "create_repository"):
             self.assertTrue(self.gate.requires_approval(action), f"{action} should require approval")
-        for action in ("external", "financial", "config", "other"):
+        for action in ("delete", "publish", "deploy", "rollback", "external", "financial", "config", "other"):
             self.assertFalse(self.gate.requires_approval(action), f"{action} should not require approval")
 
     def test_empty_description_raises(self):

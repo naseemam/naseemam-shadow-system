@@ -35,4 +35,4 @@ def test_test_publish_and_approval_routes():
     assert classify_arabic_intent("شغل الاختبارات").route == "test"
     assert classify_arabic_intent("انشر على Railway").route == "publish"
     assert classify_arabic_intent("أوافق على النشر").route == "approval"
-    assert classify_arabic_intent("انشر على Railway").requires_approval is True
+    assert classify_arabic_intent("انشر على Railway").requires_approval is False

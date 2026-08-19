@@ -63,7 +63,9 @@ LEXICON: Dict[str, Dict[str, Tuple[str, ...]]] = {
 
 _FRIENDLY_FILLERS = ("لو سمحت", "من فضلك", "ممكن", "هل تستطيع", "يا أمير", "أمير")
 _ACTION_INTENTS = {"read", "plan", "write", "test", "publish", "approval"}
-_APPROVAL_INTENTS = {"publish", "approval"}
+# النشر فعل تنفيذي مفوض داخل أصل قائم. intent "approval" هنا يعني
+# التعامل مع قرار موافقة موجود، لا فتح موافقة جديدة لمجرد وجود أثر خارجي.
+_APPROVAL_INTENTS = {"approval"}
 _EXECUTION_TARGETS = ("ملف", "كود", "واجهة", "صفحة", "مستودع", "مشروع", "موقع", "تطبيق", "زر", "css", "html", "script", "repository", "project", "website", "frontend", "ui")
 
 
@@ -103,6 +105,8 @@ def classify_arabic_intent(text: str) -> IntentMatch:
         return IntentMatch("conversation", "conversation", False, True, False, 0.98, matches, raw)
 
     # Test/publish/approval are more specific than generic execution verbs.
+    # Publishing is classified for delivery routing but not treated as a founder
+    # approval gate; root-asset creation is decided later by ameer_authority.
     priority = ("approval", "publish", "test", "read", "plan", "write")
     intent = max(priority, key=lambda route: route_scores[route])
     explicit = True

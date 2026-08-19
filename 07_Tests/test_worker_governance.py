@@ -33,8 +33,9 @@ def test_all_workers_receive_governed_internal_access_policy(tmp_path: Path):
         assert policy["read"]["enabled"] is True
         assert policy["write"]["enabled"] is True
         assert policy["execute_internal"]["enabled"] is True
-        assert policy["external_effect"]["enabled"] is False
-        assert policy["external_effect"]["approval"] == "founder_final"
+        assert policy["external_effect"]["enabled"] is True
+        assert policy["external_effect"]["authority"] == "ameer"
+        assert policy["external_effect"]["approval"] == "ameer_orchestrated_root_asset_creation_gate"
 
 
 def test_worker_scopes_are_isolated_by_agent():
@@ -55,4 +56,5 @@ def test_dispatch_context_identifies_ameer_and_policy(tmp_path: Path):
     context = result["result"]["context"]
     assert context["delegated_by"] == "ameer"
     assert context["access_policy"]["write"]["approval"] == "ameer_review"
-    assert context["access_policy"]["external_effect"]["enabled"] is False
+    assert context["access_policy"]["external_effect"]["enabled"] is True
+    assert context["access_policy"]["external_effect"]["authority"] == "ameer"

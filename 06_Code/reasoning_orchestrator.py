@@ -15,6 +15,7 @@ if CODE_ROOT not in sys.path:
 from agents.base import AgentContext, AgentOutput
 from agents.registry import AGENTS, AGENT_CAPABILITIES
 from adapters.agent_brain_adapter import AgentBrainAdapter
+from kernel.ameer_authority import requires_founder_approval
 
 
 def _now_iso() -> str:
@@ -466,6 +467,38 @@ class AmeerOrchestrator:
         ]
         return any(pattern in q for pattern in project_patterns)
 
+    def _root_asset_creation_action(self, query: str) -> str | None:
+        """Map an explicit request for a *new independent* asset to its gate.
+
+        Building a page, component, worker, or feature is intentionally absent:
+        these are autonomous inside an existing shadow asset. The word "new" or
+        an explicit creation phrase is required so ordinary improvement requests
+        do not pause the operating agent.
+        """
+        q = self.normalize_fn(query.lower())
+        patterns = {
+            "create_site": (
+                "موقع جديد", "انشئ موقع جديد", "انشاء موقع جديد", "ابن موقع جديد",
+                "new website", "create new website", "build new website",
+            ),
+            "create_program": (
+                "برنامج جديد", "تطبيق جديد", "انشئ برنامج جديد", "انشاء برنامج جديد",
+                "new program", "new application", "create new app", "build new app",
+            ),
+            "create_system": (
+                "نظام جديد", "انشئ نظام جديد", "انشاء نظام جديد",
+                "new system", "create new system", "build new system",
+            ),
+            "create_repository": (
+                "مستودع جديد", "انشئ مستودع جديد", "انشاء مستودع جديد",
+                "new repository", "create repository", "create new repository",
+            ),
+        }
+        for action, phrases in patterns.items():
+            if any(self.normalize_fn(phrase.lower()) in q for phrase in phrases):
+                return action
+        return None
+
     def _persist_onboarding_memory(self, query: str, intent: str) -> Dict[str, object]:
         if intent != "onboarding":
             return {"saved": False, "file": None, "fact": None, "reason": "intent_not_onboarding"}
@@ -698,25 +731,45 @@ class AmeerOrchestrator:
         # Examples: "approved by founder", "موافقة المؤسس", "founder approved".
         approval_token = has_explicit_approval and has_founder_identity
 
-        if has_risky_action and approval_token:
-            return {
-                "status": "pass",
-                "risk_level": "medium",
-                "mode": "execution_ready",
-                "reason": "تم رصد موافقة صريحة من المؤسس، ويمكن متابعة التنفيذ مع الحذر.",
-                "approval_token": "founder_explicit_approval",
-            }
-
-        if has_risky_action and not approval_token:
+        root_creation_action = self._root_asset_creation_action(query)
+        if root_creation_action and requires_founder_approval(root_creation_action):
+            if approval_token:
+                return {
+                    "status": "pass",
+                    "risk_level": "medium",
+                    "mode": "execution_ready",
+                    "reason": "تم رصد موافقة صريحة من المؤسس على إنشاء أصل رقمي مستقل جديد.",
+                    "approval_token": "founder_explicit_approval",
+                    "approval_action": root_creation_action,
+                }
             return {
                 "status": "needs_approval",
-                "risk_level": "high",
+                "risk_level": "medium",
                 "mode": "read_only",
-                "reason": "تم اكتشاف طلب تنفيذي/حساس بدون موافقة صريحة من المؤسس.",
+                "reason": "إنشاء موقع أو برنامج أو نظام أو مستودع مستقل جديد يحتاج موافقة المالك.",
+                "approval_token": None,
+                "approval_action": root_creation_action,
+            }
+
+        if has_risky_action:
+            return {
+                "status": "pass",
+                "risk_level": "low",
+                "mode": "execution_ready",
+                "reason": "الفعل التنفيذي مفوض لأمير داخل الأصول القائمة وسيبقى موثقًا.",
                 "approval_token": None,
             }
 
-        if intent in ["identity", "memory", "project", "investment", "execution", "migration", "guidance"]:
+        if intent == "execution":
+            return {
+                "status": "pass",
+                "risk_level": "low",
+                "mode": "execution_ready",
+                "reason": "طلب التنفيذ داخل أصل قائم مفوض لأمير.",
+                "approval_token": None,
+            }
+
+        if intent in ["identity", "memory", "project", "investment", "migration", "guidance"]:
             return {
                 "status": "pass",
                 "risk_level": "low",

@@ -27,11 +27,11 @@ def test_generic_execution_does_not_request_step_approval() -> None:
     assert result["risk_level"] == "low"
 
 
-def test_destructive_action_remains_guarded() -> None:
+def test_destructive_action_is_delegated_inside_existing_asset() -> None:
     install_stage_autonomy_patch()
     result = _orchestrator().guardian_check("احذف الملف نهائيًا", "execution")
-    assert result["status"] == "needs_approval"
-    assert result["risk_level"] == "high"
+    assert result["status"] == "pass"
+    assert result["risk_level"] == "low"
 
 
 def test_same_stage_continuation_ignores_stale_blocked_task(tmp_path: Path) -> None:
@@ -50,7 +50,7 @@ def test_explicit_delegation_is_not_interrupted_by_stale_approval(tmp_path: Path
     install_stage_autonomy_patch()
     engine = ExecutiveConversationEngine(tmp_path)
     planner = engine.memory.plan(
-        "نفذ اللي طلبته منك ولا ترجع لموافقتي إلا وقت النشر انجز كلشي بالكامل",
+        "نفذ اللي طلبته منك ولا ترجع لموافقتي إلا عند إنشاء نظام جديد انجز كلشي بالكامل",
         running_tasks=[{"status": "blocked", "title": "old-task"}],
         pending_approvals=[{"description": "legacy approval"}],
     )
@@ -74,21 +74,22 @@ def test_explicit_delegation_is_not_interrupted_by_stale_approval(tmp_path: Path
     assert result["reply"] == "بدأت التنفيذ وسأكمل المراجعة والاختبار تلقائيًا."
 
 
-def test_destructive_delegation_still_requires_approval(tmp_path: Path) -> None:
+def test_destructive_delegation_does_not_request_approval(tmp_path: Path) -> None:
     install_stage_autonomy_patch()
     engine = ExecutiveConversationEngine(tmp_path)
     planner = engine.memory.plan("نفذ واحذف الملف", running_tasks=[], pending_approvals=[])
     result = engine.execute(
         query="نفذ واحذف الملف",
-        draft_reply="",
+        draft_reply="تم الحذف ضمن الأصل القائم.",
         planner_state=planner,
         reasoning_output={
             "reasoning": {
                 "request_type": "execution",
                 "guardian_status": "needs_approval",
-                "guardian_reason": "destructive_action",
+                "guardian_reason": "legacy_destructive_action",
             }
         },
         dry_run=True,
     )
-    assert "هل تمضي" in result["reply"]
+    assert "هل تمضي" not in result["reply"]
+    assert result["reply"] == "تم الحذف ضمن الأصل القائم."

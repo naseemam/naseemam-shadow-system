@@ -137,9 +137,6 @@ class ToolDispatcher:
         if not callable(auth_check):
             return self._deny("execution_authorization_unavailable", execution_request)
 
-        if self._approval_gate is None and action in {"delete", "publish", "external", "financial"}:
-            return self._deny("approval_gate_required_missing", execution_request)
-
         policy_result = self._enforce_tool_policy(tool_name, tool_def, sanitized_context, execution_request, requested_by)
         if isinstance(policy_result, dict) and policy_result.get("decision") == "DENY":
             if tool_name == "shell.run":
@@ -278,62 +275,12 @@ class ToolDispatcher:
                     detail={"cwd": raw_cwd},
                 )
 
-        # Founder policy delegates all commands to Ameer, including GitHub,
-        # connectors and dependency work. Only deletion and final publication
-        # are presented for a Business Chat approval.
+        # The command classification is retained as evidence. Inside an approved
+        # shadow asset, publish, deploy, communication, and deletion are delegated
+        # operating actions; they do not create a founder approval gate here.
         classification = ShellExternalEffectClassifier.classify(command)
-        command_text = " ".join(str(command).lower().split())
-        root = str(classification.get("command_root") or "")
-        subcommand = str(classification.get("subcommand") or "")
-        delete_command = root in {"rm", "rmdir", "unlink", "shred"} or " rm " in f" {command_text} "
-        publish_command = (
-            (root == "railway" and subcommand in {"up", "deploy", "redeploy"})
-            or (root in {"vercel", "netlify", "heroku", "flyctl"} and subcommand in {"deploy", "publish", "production"})
-            or (root in {"npm", "yarn", "pnpm", "twine"} and subcommand in {"publish", "upload"})
-            or (root == "gh" and subcommand == "release")
-        )
-        approval_action = "delete" if delete_command else ("publish" if publish_command else "")
-        if approval_action:
-            if self._approval_gate is None:
-                return self._deny(
-                    "approval_gate_required_for_final_action",
-                    execution_request,
-                    detail={"command_classification": classification, "action": approval_action},
-                )
-            approval_id = context.get("approval_id")
-            if approval_id:
-                is_approved_fn = getattr(self._approval_gate, "is_approved", None)
-                if not (callable(is_approved_fn) and is_approved_fn(approval_id)):
-                    return {
-                        **self._deny(
-                            "final_action_approval_not_verified",
-                            execution_request,
-                            detail={"approval_id": approval_id, "action": approval_action},
-                        ),
-                        "status": "approval_required",
-                        "approval_required": True,
-                        "approval_id": approval_id,
-                    }
-            else:
-                request_fn = getattr(self._approval_gate, "request", None)
-                new_approval_id = request_fn(
-                    action=approval_action,
-                    description=f"shell.run {approval_action} command: {root!r}",
-                    requested_by=requested_by,
-                    context={"command_root": root, "subcommand": subcommand, "tool_name": "shell.run"},
-                ) if callable(request_fn) else None
-                return {
-                    **self._deny(
-                        "approval_required",
-                        execution_request,
-                        detail={"command_classification": classification, "approval_id": new_approval_id},
-                    ),
-                    "status": "approval_required",
-                    "approval_required": True,
-                    "approval_id": new_approval_id,
-                }
-
         trusted_context = dict(context)
+        trusted_context["external_effect_classification"] = classification
         trusted_payload: dict = dict(context.get("executor_payload") or {})
         trusted_payload["command"] = command
         trusted_payload["action"] = str(getattr(tool_def, "action", "run"))

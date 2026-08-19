@@ -31,8 +31,10 @@ from typing import Any, Dict, List
 
 try:
     from kernel.arabic_intent_lexicon import classify_arabic_intent
+    from kernel.ameer_authority import requires_founder_approval
 except ImportError:  # direct module loading in legacy tests
     from arabic_intent_lexicon import classify_arabic_intent
+    from ameer_authority import requires_founder_approval
 
 
 # ── Intent patterns ────────────────────────────────────────────────────────────
@@ -129,10 +131,10 @@ AEX1_INTENT_SPECS = {
         "requires_approval": False,
     },
     "deploy_railway": {
-        "description": "النشر على Railway",
-        "permission_mode": "external_approval",
+        "description": "النشر على Railway داخل الخدمة القائمة",
+        "permission_mode": "tracked_delivery",
         "capability": "engineering",
-        "requires_approval": True,
+        "requires_approval": False,
     },
 }
 
@@ -179,6 +181,21 @@ _DEPLOY_RAILWAY_MARKERS = [
 def _matches(text: str, patterns: list[str]) -> bool:
     lower = text.lower()
     return any(p.lower() in lower for p in patterns)
+
+
+def _root_asset_creation_action(command: str) -> str | None:
+    """Identify the four owner-approved root assets from an explicit command."""
+    normalized = normalize_arabic_for_match(command)
+    patterns = {
+        "create_site": ("موقع جديد", "new website", "create new website", "build new website"),
+        "create_program": ("برنامج جديد", "تطبيق جديد", "new program", "new application", "create new app", "build new app"),
+        "create_system": ("نظام جديد", "new system", "create new system", "build new system"),
+        "create_repository": ("مستودع جديد", "new repository", "create repository", "create new repository"),
+    }
+    for action, markers in patterns.items():
+        if any(marker in normalized for marker in markers):
+            return action
+    return None
 
 
 def _matches_execute_pending_tasks(command: str) -> bool:
@@ -689,8 +706,16 @@ class TaskDecomposer:
         intent = _detect_intent(command)
         tasks = self._build_tasks(intent, command)
         spec = AEX1_INTENT_SPECS.get(intent, {})
+        normalized = normalize_arabic_for_match(command)
+        root_creation_action = _root_asset_creation_action(command)
+        if root_creation_action is None and intent == "build_store" and any(marker in normalized for marker in ("متجر جديد", "new store", "create new store")):
+            root_creation_action = "create_site"
+        requires_approval = bool(root_creation_action and requires_founder_approval(root_creation_action))
+        permission_mode = "root_asset_creation" if requires_approval else spec.get("permission_mode", "conversation_only")
         for task in tasks:
-            task.setdefault("permission_mode", spec.get("permission_mode", "conversation_only"))
+            task.setdefault("permission_mode", permission_mode)
+            if root_creation_action:
+                task.setdefault("approval_action", root_creation_action)
             if spec.get("capability") and not task.get("capability"):
                 task["capability"] = spec["capability"]
         return {
@@ -698,9 +723,10 @@ class TaskDecomposer:
             "command": command,
             "tasks": tasks,
             "task_count": len(tasks),
-            "permission_mode": spec.get("permission_mode", "conversation_only"),
+            "permission_mode": permission_mode,
             "capability": spec.get("capability"),
-            "requires_approval": bool(spec.get("requires_approval", False)),
+            "requires_approval": requires_approval,
+            "approval_action": root_creation_action,
             "execution_intent": intent in AEX1_INTENT_SPECS,
             "decomposed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
@@ -754,7 +780,7 @@ class TaskDecomposer:
         if intent == "build_store":
             return self._store_tasks(command)
         if intent in {"open_branch", "open_pull_request", "deploy_railway"}:
-            return self._external_approval_tasks(intent, command)
+            return self._delivery_tasks(intent, command)
         if intent == "build_homepage":
             return self._homepage_tasks()
         if intent == "build_generic":
@@ -818,7 +844,7 @@ class TaskDecomposer:
             "permission_mode": "tracked_write",
         }]
 
-    def _external_approval_tasks(self, intent: str, command: str) -> List[Dict[str, Any]]:
+    def _delivery_tasks(self, intent: str, command: str) -> List[Dict[str, Any]]:
         target = {
             "open_branch": "github/branch",
             "open_pull_request": "github/pull_request",
@@ -826,15 +852,15 @@ class TaskDecomposer:
         }[intent]
         return [{
             "id": f"{intent}-{uuid.uuid4().hex[:6]}",
-            "action": "request",
-            "executor": "api",
+            "action": "execute",
+            "executor": "delivery",
             "target": target,
             "command": command,
             "priority": "high",
             "description": AEX1_INTENT_SPECS[intent]["description"],
             "capability": "engineering",
-            "permission_mode": "external_approval",
-            "requires_approval": True,
+            "permission_mode": "tracked_delivery",
+            "requires_approval": False,
         }]
 
     def _run_test_tasks(self, command: str) -> List[Dict[str, Any]]:
