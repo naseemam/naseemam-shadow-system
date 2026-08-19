@@ -159,8 +159,8 @@ class ConversationalLeakRegressionTests(unittest.TestCase):
             self.assertEqual(reply, draft,
                              "Draft reply must be returned unchanged for conversational request")
 
-    def test_execution_request_with_stalled_tasks_still_triggers_executive_signal(self):
-        """request_type=execution + stalled tasks → executive signal must remain active."""
+    def test_execution_request_with_stalled_tasks_keeps_current_draft(self):
+        """Historical stalled tasks must not block a fresh internal execution."""
         mod = self._load_ece()
         with tempfile.TemporaryDirectory() as tmp:
             ece = mod.ExecutiveConversationEngine(tmp)
@@ -177,11 +177,9 @@ class ConversationalLeakRegressionTests(unittest.TestCase):
                 dry_run=True,
             )
             reply = result["reply"]
-            # For execution requests with stalled tasks the executive warning must appear
-            self.assertTrue(
-                "مهام مفتوحة" in reply or "نغلق" in reply or "مفتوح" in reply,
-                f"Executive signal expected for execution request with stalled tasks, got: {reply!r}",
-            )
+            self.assertEqual(reply, "سأبدأ المشروع.")
+            self.assertNotIn("مهام مفتوحة", reply)
+            self.assertNotIn("نغلق", reply)
 
     def test_greeting_with_stalled_tasks_does_not_leak_task_warning(self):
         """request_type=greeting + stalled tasks → conversational pass-through."""
@@ -306,12 +304,8 @@ class ConversationalLeakRegressionTests(unittest.TestCase):
                              "Conversational greeting must return draft unchanged with stale pending approvals")
             self.assertNotIn("مهام مفتوحة", reply)
 
-    def test_pending_approvals_still_trigger_executive_path(self):
-        """
-        E3 — For non-conversational (execution) requests, pending approvals must
-        still activate the executive path.  They are only prevented from hijacking
-        purely conversational turns.
-        """
+    def test_stale_pending_approvals_do_not_hijack_internal_execution(self):
+        """Historical approvals do not replace a new internal execution reply."""
         mod = self._load_ece()
         pending_approvals = [{"id": "a3", "action": "deploy", "status": "pending"}]
         with tempfile.TemporaryDirectory() as tmp:
@@ -326,9 +320,8 @@ class ConversationalLeakRegressionTests(unittest.TestCase):
                 dry_run=True,
             )
             reply = result["reply"]
-            # Executive path must engage — reply should contain an approval prompt
-            self.assertIn("قرارًا", reply,
-                          "Execution request with pending approvals must engage the executive path")
+            self.assertEqual(reply, "سأبدأ النشر.")
+            self.assertNotIn("قرارًا", reply)
 
     # ── F: conversation → actionable transition ───────────────────────────────
 
@@ -370,13 +363,9 @@ class ConversationalLeakRegressionTests(unittest.TestCase):
                 dry_run=True,
             )
             reply_2 = result_2["reply"]
-            # Executive path must activate for execution + stalled tasks.
-            # The executive branch replaces the draft, so at least one of the
-            # known warning tokens must appear in the reply.
-            self.assertTrue(
-                "مهام مفتوحة" in reply_2 or "نغلق" in reply_2 or "مفتوح" in reply_2,
-                f"Actionable turn must engage executive path, got: {reply_2!r}",
-            )
+            self.assertEqual(reply_2, "سأربطه الآن.")
+            self.assertNotIn("مهام مفتوحة", reply_2)
+            self.assertNotIn("نغلق", reply_2)
 
 
 

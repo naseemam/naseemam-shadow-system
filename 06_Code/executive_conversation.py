@@ -373,16 +373,15 @@ class ExecutiveConversationEngine:
             planner_risks_count=len((planner_state.risks or [])),
         )
 
-        # DIAGNOSTIC-ONLY: evaluate and log each sub-condition individually so
-        # we can see exactly which OR clause triggers has_executive_signals.
-        _cond_pending_approvals = bool(not _is_conversational and pending_approvals)
-        _cond_stalled = bool(not _is_conversational and _stalled)
-        _cond_planner_risks = bool(
-            not _is_conversational and (planner_state.risks or planner_state.detected_risks)
-        )
-        _cond_first_turn_active_projects = bool(
-            not _is_conversational and is_first_turn and active_projects
-        )
+        # Stale tasks and old approvals are context for reporting, never a gate
+        # for a fresh internal execution.  The request guardian and the kernel
+        # final gate remain the only authorities that can block the current turn.
+        # This prevents a historical `pending`/`blocked` task from replacing a
+        # site-build response with an instruction to close unrelated work first.
+        _cond_pending_approvals = False
+        _cond_stalled = False
+        _cond_planner_risks = False
+        _cond_first_turn_active_projects = False
         _cond_guardian_not_pass = bool(
             reasoning_output and reasoning_output.get("reasoning", {}).get("guardian_status") != "pass"
         )
@@ -397,13 +396,10 @@ class ExecutiveConversationEngine:
         )
 
         has_executive_signals = bool(
-            # Pending approvals surface only for non-conversational requests.
-            # Stale/persistent approvals must not hijack a purely conversational turn.
-            (not _is_conversational and pending_approvals)
-            or (not _is_conversational and _stalled)
-            or (not _is_conversational and (planner_state.risks or planner_state.detected_risks))
-            or (not _is_conversational and is_first_turn and active_projects)
-            or (reasoning_output and reasoning_output.get("reasoning", {}).get("guardian_status") != "pass")
+            # A current request is interrupted only when its own guardian denies
+            # or requires final approval.  Persistent state is advisory and must
+            # never prevent internal build, design, write, test, push, or merge.
+            reasoning_output and reasoning_output.get("reasoning", {}).get("guardian_status") != "pass"
         )
 
         # DIAGNOSTIC-ONLY: log the computed decision and which path will be
