@@ -22,6 +22,7 @@ sys.modules[spec.name] = task_decomposer
 spec.loader.exec_module(task_decomposer)
 
 _detect_intent = task_decomposer._detect_intent
+_extract_read_target = task_decomposer._extract_read_target
 TaskDecomposer = task_decomposer.TaskDecomposer
 
 
@@ -55,6 +56,20 @@ class TestDetectIntentRegression(unittest.TestCase):
         result = _detect_intent("read file 09_Assets/runtime_workspace/home/index.html")
         self.assertNotEqual(result, "build_homepage")
         self.assertEqual(result, "file_read")
+
+    def test_extract_read_target_after_definite_arabic_file_label(self):
+        """اقرأ الملف AMEER_GUIDE.md must extract the filename, not «الملف»."""
+        self.assertEqual(
+            _extract_read_target("اقرأ الملف AMEER_GUIDE.md"),
+            "AMEER_GUIDE.md",
+        )
+
+    def test_extract_read_target_after_plain_arabic_file_label(self):
+        """اقرأ ملف AMEER_GUIDE.md remains supported."""
+        self.assertEqual(
+            _extract_read_target("اقرأ ملف AMEER_GUIDE.md"),
+            "AMEER_GUIDE.md",
+        )
 
     def test_show_home_index(self):
         """show home/index.html → file_read"""
@@ -108,6 +123,12 @@ class TestDecomposeIntentRegression(unittest.TestCase):
             result["tasks"][0]["target"],
             "09_Assets/runtime_workspace/home/index.html",
         )
+
+    def test_decompose_read_with_definite_file_label_generates_correct_target(self):
+        result = self.decomposer.decompose("اقرأ الملف AMEER_GUIDE.md")
+        self.assertEqual(result["intent"], "file_read")
+        self.assertEqual(result["task_count"], 1)
+        self.assertEqual(result["tasks"][0]["target"], "AMEER_GUIDE.md")
 
 
 if __name__ == "__main__":

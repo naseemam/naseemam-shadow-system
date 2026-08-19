@@ -207,8 +207,8 @@ def _has_read_intent(command: str) -> bool:
 def _extract_read_target(command: str) -> str:
     """Extract the requested file path from an explicit read/display command."""
     patterns = (
-        r"(?:اقرأ|read|show|اعرض|عرض|افتح|open|display)\s+(?:محتوى\s+|contents?\s+of\s+)?(?:ملف|file)?\s*[\"'“”]?([^\"'“”\s]+)[\"'“”]?",
-        r"(?:ملف|file)\s+[\"'“”]?([^\"'“”\s]+)[\"'“”]?",
+        r"(?:اقرأ|read|show|اعرض|عرض|افتح|open|display)\s+(?:محتوى\s+|contents?\s+of\s+)?(?:(?:ال)?ملف|file)?\s*[\"'“”]?([^\"'“”\s]+)[\"'“”]?",
+        r"(?:(?:ال)?ملف|file)\s+[\"'“”]?([^\"'“”\s]+)[\"'“”]?",
     )
     for pattern in patterns:
         match = re.search(pattern, command, flags=re.IGNORECASE)
