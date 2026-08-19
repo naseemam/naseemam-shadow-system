@@ -83,6 +83,10 @@ class TestDetectIntentRegression(unittest.TestCase):
         self.assertNotEqual(result, "build_homepage")
         self.assertEqual(result, "file_read")
 
+    def test_review_system_status_routes_to_repository_review(self):
+        """راجع حالة النظام → repository_review with real read-only tasks."""
+        self.assertEqual(_detect_intent("راجع حالة النظام"), "repository_review")
+
     def test_build_homepage_still_works_no_read(self):
         """home — no read marker → still build_homepage"""
         self.assertEqual(_detect_intent("home"), "build_homepage")
@@ -129,6 +133,13 @@ class TestDecomposeIntentRegression(unittest.TestCase):
         self.assertEqual(result["intent"], "file_read")
         self.assertEqual(result["task_count"], 1)
         self.assertEqual(result["tasks"][0]["target"], "AMEER_GUIDE.md")
+
+    def test_decompose_system_review_generates_repository_tasks(self):
+        result = self.decomposer.decompose("راجع حالة النظام")
+        self.assertEqual(result["intent"], "repository_review")
+        self.assertEqual(result["task_count"], 2)
+        self.assertTrue(all(task["executor"] == "shell" for task in result["tasks"]))
+        self.assertTrue(all(task["permission_mode"] == "read_only" for task in result["tasks"]))
 
 
 if __name__ == "__main__":

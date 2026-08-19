@@ -156,6 +156,7 @@ _WORKER_REQUEST_MARKERS = {
     "communications": ("عامل الاتصالات", "عامل تواصل", "communications worker"),
     "operations": ("عامل العمليات", "عامل عمليات", "operations worker"),
     "store": ("عامل المتجر", "عامل حلم الندى", "store worker"),
+    "specialist": ("عامل متخصص", "عامل التخصص", "specialist worker"),
 }
 
 
@@ -168,6 +169,53 @@ def _requested_worker_id(query: str) -> str:
         if any(normalize_arabic_for_match(marker) in text for marker in markers):
             return worker_id
     return ""
+
+
+_WORKER_AUTO_ROUTE_RULES = (
+    ("store", ("حلم الندى", "المخزون", "الحجوزات", "الموظفين", "المتجر", "الطلبات")),
+    ("school", ("المدرسة", "الطلاب", "الحضور", "الدرجات", "الواجبات")),
+    ("communications", ("بريد", "ايميل", "إيميل", "رسالة", "موعد", "تقويم")),
+    ("research", ("ابحث", "بحث", "دراسة", "مقارنة", "مصادر", "تقرير")),
+    ("business", ("العملاء", "عميل", "المبيعات", "الصفقات", "حجوزات العملاء")),
+    ("design", ("واجهة", "ui", "ux", "تصميم", "تجربة المستخدم", "هوية بصرية")),
+    ("engineering", ("كود", "برمجة", "خطأ", "bug", "api", "اختبار", "python", "javascript", "css", "html")),
+)
+_WORKER_ACTION_MARKERS = (
+    "راجع", "حلل", "افحص", "صمم", "رتب", "نظم", "ابحث", "جهز",
+    "review", "analyze", "design", "research", "prepare",
+)
+_DIRECT_KERNEL_ACTION_MARKERS = (
+    "أنشئ", "انشئ", "ابن", "عدل", "اصلح", "صلح", "اكتب", "اختبر", "شغل الاختبارات",
+    "انشر", "ادمج", "صمم موقع", "صمم الموقع",
+    "create", "build", "edit", "fix", "run test", "deploy", "merge", "design website",
+)
+
+
+def _select_worker_id(query: str) -> tuple[str, str]:
+    """Choose a worker for an actionable specialist task; never route greetings or vague chat."""
+    explicit = _requested_worker_id(query)
+    if explicit:
+        return explicit, "explicit"
+    text = normalize_arabic_for_match(query or "")
+    if not text or not any(marker in text for marker in _WORKER_ACTION_MARKERS):
+        return "", ""
+    # Build, write, test, merge, and publish requests retain their governed
+    # kernel path; a worker must not silently replace the real operation.
+    if any(normalize_arabic_for_match(marker) in text for marker in _DIRECT_KERNEL_ACTION_MARKERS):
+        return "", ""
+    for worker_id, markers in _WORKER_AUTO_ROUTE_RULES:
+        if any(normalize_arabic_for_match(marker) in text for marker in markers):
+            return worker_id, "automatic"
+    # No existing role covers the request: use the constrained on-demand
+    # specialist instead of inventing a capability or returning a vague reply.
+    return "specialist", "automatic"
+
+
+def _worker_result_content(worker_result: dict) -> str:
+    result = worker_result.get("result") if isinstance(worker_result.get("result"), dict) else worker_result
+    content = str(result.get("content") or "").strip()
+    return str(_sanitize_response_payload(content))[:1800]
+
 
 # ─── Executive Operating Kernel ───────────────────────────────────────────────
 
@@ -451,6 +499,48 @@ def _friendly_personal_reply(query: str) -> str:
     return "أنا معك في المحادثة الودية. تحدث معي براحتك؛ ماذا يدور في بالك؟"
 
 
+def _execution_result_output(item: dict) -> str:
+    """Return a bounded, display-safe evidence snippet from one kernel result."""
+    record = item.get("result") if isinstance(item.get("result"), dict) else item
+    output = record.get("stdout") or record.get("content") or item.get("stdout") or item.get("content") or ""
+    output = str(_sanitize_response_payload(output)).strip()
+    return output[:1200]
+
+
+def _format_kernel_execution_reply(intent: str, final: dict) -> str:
+    """Describe the operation actually completed, never a generic homepage claim."""
+    results = [item for item in (final.get("results") or []) if isinstance(item, dict)]
+    completed = int(final.get("completed") or 0)
+    files = [str(path) for path in (final.get("files_created") or []) if path]
+
+    if intent == "repository_review":
+        evidence = [snippet for item in results if (snippet := _execution_result_output(item))]
+        report = "\n\n".join(evidence)
+        prefix = "✅ أجريت مراجعة فعلية للمستودع باستخدام مسار التحليل والقراءة المصرح به."
+        if report:
+            return f"{prefix}\n\nنتيجة المراجعة:\n{report}"
+        return f"{prefix}\n\nلم تُظهر أوامر الحالة والفروق أي مخرجات محلية قابلة للعرض."
+
+    if intent == "run_test":
+        evidence = [snippet for item in results if (snippet := _execution_result_output(item))]
+        report = "\n\n".join(evidence)
+        prefix = f"✅ شغّلت الاختبارات فعلياً عبر صلاحية التنفيذ المحلي المقيدة. اكتملت {completed} مهمة."
+        return f"{prefix}\n\n{report}" if report else prefix
+
+    if intent == "code_edit":
+        target = files[0] if files else "مساحة العمل المراقبة"
+        return f"✅ سجلت طلب تعديل الكود في {target} ضمن صلاحية الكتابة المتتبعة؛ لم يُنشر أي تغيير خارجي."
+
+    if intent in {"build_homepage", "build_generic", "build_website", "build_store"}:
+        file_list = "، ".join(files)
+        return (
+            f"✅ اكتمل بناء العمل المطلوب ضمن مساحة التنفيذ المراقبة. أُنجزت {completed} مهمة"
+            + (f": {file_list}." if file_list else ".")
+        )
+
+    return f"✅ اكتمل التنفيذ المصرح به للمسار «{intent}» عبر {completed} مهمة موثقة."
+
+
 @app.post('/friendly-chat')
 async def friendly_chat(request: Request):
     """Conversation-only room: no worker dispatch, file work, or external effect."""
@@ -556,25 +646,35 @@ async def ask(request: Request):
     routing = orchestrator_result.get("routing") or {}
     project_manager = _manage_project_context(q)
 
-    # An explicit worker request is a real runtime operation, not a planning
-    # suggestion and not a replay of historical file tasks.  It creates a
-    # traceable WorkerRuntime run before any conversational response is built.
-    requested_worker = _requested_worker_id(q)
+    # A specialist task is delegated by Ameer only after routing and governance
+    # have both passed.  Explicit selection is honoured; otherwise the routing
+    # rules choose a ready domain worker for an actionable task.
+    requested_worker, worker_selection_mode = _select_worker_id(q)
     worker_execution_trace: dict | None = None
     worker_execution_reply: str | None = None
     if requested_worker and KERNEL and getattr(KERNEL, "worker_runtime", None):
         if str((guardian or {}).get("status") or "").strip().lower() == "pass":
-            worker_result = KERNEL.worker_runtime.dispatch(
-                requested_worker,
-                q,
-                {
-                    "mode": "business_chat_worker_dispatch",
-                    "tools": [],
-                    "request_id": request_id,
-                    "room": "business",
-                },
-            )
-            worker_status = str(worker_result.get("status") or "failed")
+            worker_context = {
+                "mode": "business_chat_worker_dispatch",
+                "tools": [],
+                "request_id": request_id,
+                "room": "business",
+                "selection_mode": worker_selection_mode,
+                "ameer_review": True,
+            }
+            if getattr(KERNEL, "orchestrator", None):
+                delegation = KERNEL.orchestrator.execute_delegation(
+                    requested_worker,
+                    q,
+                    worker_context,
+                )
+                worker_result = delegation.get("worker_result") or delegation
+                worker_status = str(delegation.get("status") or worker_result.get("status") or "failed")
+                worker_delegation_id = delegation.get("correlation_id")
+            else:
+                worker_result = KERNEL.worker_runtime.dispatch(requested_worker, q, worker_context)
+                worker_status = str(worker_result.get("status") or "failed")
+                worker_delegation_id = None
             worker_run_id = worker_result.get("run_id")
             worker_execution_trace = {
                 "command": q,
@@ -592,24 +692,31 @@ async def ask(request: Request):
                     "blocked": 0,
                     "run_id": worker_run_id,
                     "worker_id": requested_worker,
+                    "delegation_id": worker_delegation_id,
+                    "selection_mode": worker_selection_mode,
                     "results": [{
                         "task_id": worker_run_id or f"worker-{requested_worker}",
                         "worker_id": requested_worker,
                         "run_id": worker_run_id,
+                        "delegation_id": worker_delegation_id,
                         "status": worker_status,
                         "result": worker_result.get("result"),
                         "reason": worker_result.get("reason"),
                     }],
                 },
             }
+            selection_text = "تلقائياً" if worker_selection_mode == "automatic" else "بناءً على طلبك"
             if worker_status == "completed":
+                evidence = _worker_result_content(worker_result)
                 worker_execution_reply = (
-                    f"✅ استدعى أمير عامل {requested_worker} فعليًا. "
-                    f"رقم التشغيل: {worker_run_id or 'مسجل'}."
+                    f"✅ وجّه أمير المهمة {selection_text} إلى عامل {requested_worker}. "
+                    f"رقم التشغيل: {worker_run_id or 'مسجل'}"
+                    + (f"، ومعرّف التفويض: {worker_delegation_id}." if worker_delegation_id else ".")
+                    + (f"\n\nنتيجة العامل:\n{evidence}" if evidence else "")
                 )
             else:
                 worker_execution_reply = (
-                    f"⚠️ بدأ استدعاء عامل {requested_worker} لكنه لم يكتمل. "
+                    f"⚠️ اختار أمير عامل {requested_worker} {selection_text}، لكنه لم يكتمل. "
                     f"السبب التقني: {worker_result.get('reason') or worker_result.get('error') or worker_status}."
                 )
         else:
@@ -625,6 +732,7 @@ async def ask(request: Request):
                     "failed": 0,
                     "blocked": 1,
                     "worker_id": requested_worker,
+                    "selection_mode": worker_selection_mode,
                 },
             }
             worker_execution_reply = "⚠️ لم يُستدع العامل لأن تصريح الحوكمة الحالي غير صالح."
@@ -729,15 +837,9 @@ async def ask(request: Request):
                         if read_result is not None:
                             kernel_execution_reply = str(read_result.get("content") or "")
                     else:
-                        completed = final_exec.get("completed", 0)
-                        files = final_exec.get("files_created") or []
-                        file_list = "، ".join(f for f in files if f) if files else ""
-                        kernel_execution_reply = (
-                            f"✅ تم بناء الصفحة الرئيسية بنجاح! "
-                            f"أُنشئت {completed} ملفات"
-                            + (f": {file_list}" if file_list else "")
-                            + ".\n\n"
-                            "يمكنك معاينتها الآن عبر رابط Preview أدناه."
+                        kernel_execution_reply = _format_kernel_execution_reply(
+                            kernel_detected_intent,
+                            final_exec,
                         )
                 elif not final_exec.get("accepted"):
                     technical_reason = final_exec.get("technical_reason") or final_exec.get("reason") or "execution_failed"

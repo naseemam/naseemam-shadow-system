@@ -103,6 +103,21 @@ class AskFileReadPipelineTest(unittest.TestCase):
         self.assertEqual(after_paths, before_paths)
         self.assertEqual(self.target.read_text(encoding="utf-8"), self.content)
 
+    def test_repository_review_reply_reports_real_execution_evidence(self):
+        reply = self.app_module._format_kernel_execution_reply(
+            "repository_review",
+            {
+                "completed": 2,
+                "results": [
+                    {"status": "completed", "stdout": " M 09_Assets/web/index.html"},
+                    {"status": "completed", "stdout": " 2 files changed"},
+                ],
+            },
+        )
+        self.assertIn("مراجعة فعلية للمستودع", reply)
+        self.assertIn("09_Assets/web/index.html", reply)
+        self.assertNotIn("بناء الصفحة الرئيسية", reply)
+
 
 if __name__ == "__main__":
     unittest.main()

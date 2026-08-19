@@ -25,6 +25,7 @@ DEFAULT_WORKERS = {
     "research": ("Research, analysis and structured reporting", "research"),
     "operations": ("Operational monitoring and recurring administrative work", "operations"),
     "store": ("Dream Al Nada Center store, inventory, staff, bookings and orders", "store_management"),
+    "specialist": ("On-demand specialist for uncategorized analysis and project requirements", "specialist_analysis"),
 }
 
 
@@ -39,6 +40,7 @@ _WORKER_SCOPES = {
     "research": {"paths": ["04_Memory/research", "09_Assets/research"], "capabilities": ["research.read", "research.write", "analysis.execute"]},
     "operations": {"paths": ["04_Memory/operations", "09_Assets/operations"], "capabilities": ["operations.read", "operations.write", "monitor.execute"]},
     "store": {"paths": ["04_Memory/dream_al_nada", "09_Assets/dream_al_nada"], "capabilities": ["store.read", "inventory.write", "staff.write", "bookings.write", "store_reports.execute"]},
+    "specialist": {"paths": ["04_Memory/specialists", "09_Assets/specialists"], "capabilities": ["specialist.read", "specialist.write", "analysis.execute"]},
 }
 
 
@@ -53,10 +55,10 @@ def worker_access_policy(worker_id: str) -> dict:
         "write": {"enabled": True, "scope": "worker_workspace_only", "authority": "ameer", "approval": "ameer_review", "user_approval_required": False, "allowed_paths": list(scope["paths"])},
         "execute_internal": {"enabled": True, "scope": "worker_workspace_only", "authority": "ameer", "approval": "ameer_review", "user_approval_required": False, "capabilities": list(scope["capabilities"])},
         "external_effect": {
-            "enabled": True,
-            "authority": "ameer",
-            "approval": "ameer_orchestrated_delete_publish_gate",
-            "allowed": list(scope["capabilities"]),
+            "enabled": False,
+            "authority": "founder",
+            "approval": "founder_final",
+            "allowed": [],
         },
         "cross_worker_access": False,
         "can_kill_other_processes": False,
