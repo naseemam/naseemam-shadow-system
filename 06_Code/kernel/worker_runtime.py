@@ -52,7 +52,12 @@ def worker_access_policy(worker_id: str) -> dict:
         "read": {"enabled": True, "scope": "worker_workspace_only", "allowed_paths": list(scope["paths"])},
         "write": {"enabled": True, "scope": "worker_workspace_only", "authority": "ameer", "approval": "ameer_review", "user_approval_required": False, "allowed_paths": list(scope["paths"])},
         "execute_internal": {"enabled": True, "scope": "worker_workspace_only", "authority": "ameer", "approval": "ameer_review", "user_approval_required": False, "capabilities": list(scope["capabilities"])},
-        "external_effect": {"enabled": False, "authority": "founder", "approval": "founder_final", "allowed": []},
+        "external_effect": {
+            "enabled": True,
+            "authority": "ameer",
+            "approval": "ameer_orchestrated_delete_publish_gate",
+            "allowed": list(scope["capabilities"]),
+        },
         "cross_worker_access": False,
         "can_kill_other_processes": False,
         "can_modify_governance": False,

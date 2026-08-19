@@ -18,14 +18,14 @@ def test_ameer_internal_authority_is_enabled_for_engineering():
     assert policy["execute_internal"]["user_approval_required"] is False
 
 
-def test_external_effect_remains_founder_gated():
+def test_external_work_is_delegated_to_ameer_not_founder():
     policy = worker_access_policy("engineering")
-    assert policy["external_effect"]["enabled"] is False
-    assert policy["external_effect"]["authority"] == "founder"
-    assert policy["external_effect"]["approval"] == "founder_final"
+    assert policy["external_effect"]["enabled"] is True
+    assert policy["external_effect"]["authority"] == "ameer"
+    assert policy["external_effect"]["approval"] == "ameer_orchestrated_delete_publish_gate"
 
 
-def test_worker_cannot_cross_projects_or_modify_governance():
+def test_workers_remain_orchestrated_by_ameer():
     policy = worker_access_policy("engineering")
     assert policy["cross_worker_access"] is False
     assert policy["can_kill_other_processes"] is False

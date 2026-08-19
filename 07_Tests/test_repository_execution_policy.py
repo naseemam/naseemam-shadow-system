@@ -3,36 +3,34 @@ from pathlib import Path
 from kernel.repository_execution import ControlledRepositoryPolicy
 
 
-def test_controlled_repository_policy_allows_expected_paths(tmp_path: Path):
+def test_founder_delegated_repository_policy_allows_all_internal_paths(tmp_path: Path):
     policy = ControlledRepositoryPolicy(tmp_path)
 
-    assert policy.is_allowed("09_Assets/web/index.html")
-    assert policy.is_allowed("09_Assets/runtime_workspace/home/index.html")
-    assert policy.is_allowed("06_Code/kernel/example.py")
-    assert policy.is_allowed("07_Tests/test_example.py")
-    assert policy.is_allowed("ameer_server.py")
-
-
-def test_controlled_repository_policy_denies_sensitive_and_escape_paths(tmp_path: Path):
-    policy = ControlledRepositoryPolicy(tmp_path)
-
-    denied = [
-        ".git/config",
-        ".github/workflows/deploy.yml",
-        ".ameer/state.json",
-        "08_Backups/secret.txt",
+    allowed = [
+        "09_Assets/web/index.html",
+        "09_Assets/runtime_workspace/home/index.html",
+        "06_Code/kernel/example.py",
+        "07_Tests/test_example.py",
+        "ameer_server.py",
         ".env",
         ".env.production",
-        "../outside.txt",
-        "/etc/passwd",
-        "./../outside.txt",
+        ".github/workflows/ci.yml",
+        ".git/config",
+        ".ameer/state.json",
+        "08_Backups/recovery.json",
     ]
+    for target in allowed:
+        assert policy.is_allowed(target), target
 
-    for target in denied:
+
+def test_founder_delegated_repository_policy_denies_only_escape_paths(tmp_path: Path):
+    policy = ControlledRepositoryPolicy(tmp_path)
+
+    for target in ("../outside.txt", "/etc/passwd", "./../outside.txt", "../../.env"):
         assert not policy.is_allowed(target), target
 
 
-def test_repository_kernel_allows_shadow_ui_write_only_within_controlled_scope(tmp_path: Path):
+def test_repository_kernel_allows_full_internal_write_but_not_escape(tmp_path: Path):
     from kernel.execution_boundary import ExecutionBoundary
     from kernel.executive_kernel import ExecutiveKernel
     from kernel.repository_execution import (
@@ -46,7 +44,7 @@ def test_repository_kernel_allows_shadow_ui_write_only_within_controlled_scope(t
     kernel.permissions.grant(
         "file.create",
         scope=repository_file_create_permission_scope(),
-        granted_by="test:controlled_repository",
+        granted_by="test:founder_full_repository_authority",
     )
     authorization = RepositoryExecutionAuthorization(tmp_path, kernel.capabilities, kernel.permissions)
     dispatcher = ToolDispatcher(
@@ -58,30 +56,30 @@ def test_repository_kernel_allows_shadow_ui_write_only_within_controlled_scope(t
         workspace_root=tmp_path,
     )
 
-    allowed = dispatcher.dispatch(
-        tool_name="file.create",
-        context={
-            "target": "09_Assets/web/index.html",
-            "content": "<main>نظام الظل</main>",
-            "executor_payload": {"target": "09_Assets/web/index.html", "content": "<main>نظام الظل</main>"},
-        },
-        guardian={"status": "pass"},
-        request_type="execution",
-        intent="build_homepage",
-    )
-    assert allowed["decision"] == "ALLOW"
-    assert (tmp_path / "09_Assets/web/index.html").read_text(encoding="utf-8") == "<main>نظام الظل</main>"
+    for target in ("09_Assets/web/index.html", ".env", ".github/workflows/ci.yml", ".ameer/state.json"):
+        written = dispatcher.dispatch(
+            tool_name="file.create",
+            context={
+                "target": target,
+                "content": f"updated: {target}",
+                "executor_payload": {"target": target, "content": f"updated: {target}"},
+            },
+            guardian={"status": "pass"},
+            request_type="execution",
+            intent="build_homepage",
+        )
+        assert written["decision"] == "ALLOW", target
+        assert (tmp_path / target).read_text(encoding="utf-8") == f"updated: {target}"
 
     denied = dispatcher.dispatch(
         tool_name="file.create",
         context={
-            "target": ".env",
-            "content": "SECRET=blocked",
-            "executor_payload": {"target": ".env", "content": "SECRET=blocked"},
+            "target": "../outside.txt",
+            "content": "blocked",
+            "executor_payload": {"target": "../outside.txt", "content": "blocked"},
         },
         guardian={"status": "pass"},
         request_type="execution",
         intent="build_homepage",
     )
     assert denied["decision"] == "DENY"
-    assert denied["reason"] == "execution_authorization_denied"

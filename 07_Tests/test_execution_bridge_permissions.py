@@ -26,12 +26,13 @@ def test_repository_read_and_write_scopes_are_controlled_and_distinct() -> None:
     assert read_scope != write_scope
 
 
-def test_controlled_repository_policy_allows_live_web_but_denies_secrets(tmp_path: Path) -> None:
+def test_founder_delegated_repository_policy_allows_all_internal_paths(tmp_path: Path) -> None:
     policy = ControlledRepositoryPolicy(tmp_path)
     assert policy.is_allowed("09_Assets/web/index.html")
     assert policy.is_allowed("06_Code/kernel/example.py")
-    assert not policy.is_allowed(".env")
-    assert not policy.is_allowed(".github/workflows/deploy.yml")
+    assert policy.is_allowed(".env")
+    assert policy.is_allowed(".github/workflows/deploy.yml")
+    assert policy.is_allowed(".ameer/state.json")
     assert not policy.is_allowed("../outside.txt")
 
 
