@@ -40,8 +40,9 @@ def test_chat_rooms_and_approval_controls_are_wired_to_correct_routes():
         "/chat/approvals/",
         "أوافق وأنفذ",
         "أرفض",
-        "room==='business'?'/ask':'/friendly-chat'",
-        "room==='business'?d.chat_approval:null",
+            "postJsonWithRetry",
+            "isBusiness?'/ask':'/friendly-chat'",
+            "isBusiness?d.chat_approval:null",
     ):
         assert required in html
 

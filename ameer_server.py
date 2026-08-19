@@ -1,5 +1,5 @@
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import glob
@@ -12,6 +12,7 @@ import tempfile
 import sys
 import uuid
 import importlib.util
+from pathlib import Path
 from datetime import datetime, timezone
 
 # ─── 06_Code on sys.path — must be first so kernel imports resolve everywhere ─
@@ -21,6 +22,7 @@ if _CODE_ROOT not in sys.path:
 
 from kernel.task_decomposer import normalize_arabic_for_match
 from kernel.ameer_authority import policy_snapshot as authority_policy_snapshot
+from kernel.chat_media import ChatMediaStore, MAX_UPLOAD_BYTES
 
 from ameer_runtime import (
     public_runtime_identity,
@@ -133,6 +135,7 @@ app = FastAPI(title="Ameer Local Server")
 #            persistent volume via AMEER_DATA_DIR (see ameer_runtime.resolve_data_root).
 REPO_ROOT = os.path.dirname(__file__)
 DATA_ROOT = str(resolve_data_root())
+CHAT_MEDIA = ChatMediaStore(DATA_ROOT)
 
 # Load markdown documents from workspace (always from the repo checkout)
 ROOT = DATA_ROOT
@@ -343,6 +346,7 @@ class AskRequest(BaseModel):
     query: str | None = None  # Make query optional
     max_results: int = 5
     room: str = "business"
+    attachments: list[str] | None = None
 
     class Config:
         extra = 'allow'
@@ -573,6 +577,54 @@ async def friendly_chat(request: Request):
     })
 
 
+@app.post("/chat/uploads")
+async def upload_business_attachment(
+    file: UploadFile = File(...),
+    room: str = Form("business"),
+):
+    """Persist a founder attachment for the existing business-chat asset."""
+    if str(room or "business").strip().lower() != "business":
+        raise HTTPException(status_code=400, detail="Attachments are available in business chat only")
+    try:
+        data = await file.read(MAX_UPLOAD_BYTES + 1)
+        metadata = CHAT_MEDIA.save(
+            filename=file.filename or "attachment",
+            content_type=file.content_type or "application/octet-stream",
+            data=data,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        status = 413 if detail == "attachment_exceeds_50mb_limit" else 400
+        raise HTTPException(status_code=status, detail=detail) from exc
+    finally:
+        await file.close()
+
+    public = CHAT_MEDIA.public(metadata)
+    _log(
+        "chat_attachment_uploaded",
+        attachment_id=metadata["attachment_id"],
+        filename=metadata["filename"],
+        category=metadata["category"],
+        size_bytes=metadata["size_bytes"],
+    )
+    return utf8_json_response({"attachment": public}, headers=runtime_headers(workspace_root=REPO_ROOT))
+
+
+@app.get("/chat/uploads/{attachment_id}")
+async def download_business_attachment(attachment_id: str):
+    try:
+        metadata = CHAT_MEDIA.get(attachment_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="attachment_not_found") from exc
+    return FileResponse(
+        metadata["path"],
+        media_type=metadata["mime_type"],
+        filename=metadata["filename"],
+    )
+
+
 @app.post('/ask')
 async def ask(request: Request):
     request_id = str(uuid.uuid4())
@@ -593,7 +645,19 @@ async def ask(request: Request):
     if not q:
         raise HTTPException(status_code=400, detail="Empty query")
 
-    _log("ask_received", request_id=request_id, build_id=RUNTIME_METADATA["build_id"])
+    attachment_ids = [item for item in (req.attachments or []) if isinstance(item, str)][:12]
+    try:
+        attachment_context, attached_files = CHAT_MEDIA.attachment_context(attachment_ids)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=400, detail=f"invalid_attachment: {exc}") from exc
+    reasoning_query = q + attachment_context
+
+    _log(
+        "ask_received",
+        request_id=request_id,
+        build_id=RUNTIME_METADATA["build_id"],
+        attachment_count=len(attached_files),
+    )
     if MESSAGE_BUS is not None:
         try:
             MESSAGE_BUS.send(
@@ -740,14 +804,14 @@ async def ask(request: Request):
 
     # ── 3. Executive Brain think + execute ────────────────────────────────────
     plan = EXECUTIVE_BRAIN.think(
-        q,
+        reasoning_query,
         DOCUMENTS,
         guardian_result=guardian,
         routing_hint=routing,
     )
     # P0.2 — pass existing plan so get_reasoning_output does NOT call think() again
     reasoning_output = EXECUTIVE_BRAIN.get_reasoning_output(
-        q,
+        reasoning_query,
         DOCUMENTS,
         guardian_result=guardian,
         routing_hint=routing,
@@ -866,7 +930,7 @@ async def ask(request: Request):
                 )
     # ── 4. Compose fallback reply (used only if ECE is unavailable) ─────────────
     fallback_reply, reply_source = EXECUTIVE_BRAIN.compose_final_reply(
-        q,
+        reasoning_query,
         orchestrator_result,
         DOCUMENTS,
         existing_plan=plan,
@@ -884,7 +948,7 @@ async def ask(request: Request):
     final_reply = fallback_reply
     if EXECUTIVE_CONVERSATION_ENGINE:
         planner_state = EXECUTIVE_CONVERSATION_ENGINE.memory.plan(
-            q,
+            reasoning_query,
             active_projects=active_projects,
             running_tasks=running_tasks,
             pending_approvals=pending_approvals,
@@ -892,7 +956,7 @@ async def ask(request: Request):
             executive_assessment=executive_assessment,
         )
         conversation_result = EXECUTIVE_CONVERSATION_ENGINE.execute(
-            query=q,
+            query=reasoning_query,
             draft_reply=fallback_reply,
             planner_state=planner_state,
             conversation_context=conversation_context,
@@ -1004,6 +1068,9 @@ async def ask(request: Request):
         user_payload["message"] = kernel_execution_reply
     user_payload.update(public_runtime_identity(workspace_root=REPO_ROOT))
     user_payload["request_id"] = request_id
+    user_payload["attachments"] = attached_files
+    if attached_files:
+        user_payload["attachment_audit"] = CHAT_MEDIA.audit_summary(attachment_ids)
     if kernel_execution_trace is not None:
         user_payload["execution_trace"] = kernel_execution_trace
         user_payload["run_trace"] = kernel_execution_trace
