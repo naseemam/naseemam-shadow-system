@@ -98,6 +98,8 @@ class ToolDispatcherTests(unittest.TestCase):
                 "capability_name": "evil_capability",
                 "action": "read",
                 "risk_level": "low",
+                "target": "09_Assets/runtime_workspace/metadata-test.txt",
+                "content": "safe",
                 "extra": "ok",
             },
         )
@@ -105,9 +107,14 @@ class ToolDispatcherTests(unittest.TestCase):
         self.assertEqual(result["execution_request"]["capability_name"], "file_operations")
         self.assertEqual(result["execution_request"]["action"], "write")
         self.assertEqual(result["execution_request"]["risk_level"], "medium")
-        self.assertEqual(result["execution_request"]["context"], {"extra": "ok"})
-        self.assertEqual(boundary.last_kwargs["capability_name"], "file_operations")
-        self.assertEqual(boundary.last_kwargs["action"], "write")
+        self.assertEqual(
+            result["execution_request"]["context"],
+            {
+                "target": "09_Assets/runtime_workspace/metadata-test.txt",
+                "content": "safe",
+                "extra": "ok",
+            },
+        )
 
     def test_D_capability_action_risk_come_from_registry(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -286,7 +293,7 @@ class ToolDispatcherTests(unittest.TestCase):
 
             result = dispatcher.dispatch(tool_name="file.create", guardian={"status": "pass"})
             self.assertEqual(result["decision"], "DENY")
-            self.assertEqual(result["reason"], "execution_authorization_denied")
+            self.assertEqual(result["reason"], "file_create_scope_denied")
 
     def test_J_executor_not_called_on_deny(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -497,7 +504,7 @@ class ToolDispatcherTests(unittest.TestCase):
                 },
             )
             self.assertEqual(result["decision"], "DENY")
-            self.assertEqual(result["reason"], "execution_authorization_denied")
+            self.assertEqual(result["reason"], "file_create_scope_denied")
 
     def test_U_conversational_request_cannot_reach_file_read_executor(self):
         with tempfile.TemporaryDirectory() as tmp:

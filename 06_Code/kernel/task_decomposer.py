@@ -179,6 +179,26 @@ def _matches(text: str, patterns: list[str]) -> bool:
     return any(p.lower() in lower for p in patterns)
 
 
+def _matches_execute_pending_tasks(command: str) -> bool:
+    """Match only an explicit request to replay the pending queue.
+
+    A verb such as «نفّذ» is common in a *new* worker/design request.  Treating
+    it as a substring match replays every historical task and starves the new
+    request.  Short approvals remain exact-turn matches; queue replay phrases
+    must explicitly mention tasks/pending work.
+    """
+    normalized = normalize_arabic_for_match(command).strip(" .،؟!\\n\\t")
+    exact_turns = {"موافق", "موافقة", "نفذ", "اوك", "ok", "yes", "نعم", "تمام"}
+    if normalized in exact_turns:
+        return True
+    explicit_queue_phrases = (
+        "نفذ المهام الان", "نفذ المهام المعلقة", "نفذ جميع المهام", "ابدأ المهام المعلقة",
+        "ابدأ تنفيذ المهام", "شغل المهام المعلقة",
+        "execute pending tasks", "execute all tasks", "run pending tasks",
+    )
+    return any(phrase in normalized for phrase in explicit_queue_phrases)
+
+
 def _has_read_intent(command: str) -> bool:
     """Return True when the command explicitly requests reading/displaying a file."""
     return _matches(command, _READ_MARKERS)
@@ -219,7 +239,7 @@ def _detect_intent(command: str) -> str:
         return "file_read"
 
     # AEX-1 execution intents take priority over generic build markers.
-    if _matches(command, _EXECUTE_PENDING_TASKS_MARKERS):
+    if _matches_execute_pending_tasks(command):
         return "execute_pending_tasks"
     if _matches(command, _DEPLOY_RAILWAY_MARKERS):
         return "deploy_railway"
