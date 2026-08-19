@@ -235,8 +235,10 @@ async def ui_runtime_status():
         }
         for item in pending
     ]
+    runtime_identity = ameer_server.public_runtime_identity(workspace_root=ameer_server.REPO_ROOT)
     return ameer_server.utf8_json_response(
         {
+            **runtime_identity,
             "approval_model": "final_gate_only",
             "pending_approval_count": len(approvals),
             "pending_approvals": approvals,
