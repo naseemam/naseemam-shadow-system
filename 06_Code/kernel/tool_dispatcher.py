@@ -278,78 +278,60 @@ class ToolDispatcher:
                     detail={"cwd": raw_cwd},
                 )
 
-        # ── External-effect enforcement ────────────────────────────────────
-        # The ToolRegistry declares `approval_required_for_external_effects: True`
-        # in the shell.run input_policy.  This block makes that declaration
-        # an actual enforcement decision — not just metadata.
-        requires_ext_approval = bool(
-            getattr(tool_def, "input_policy", {}).get(
-                "approval_required_for_external_effects", False
-            )
+        # Founder policy delegates all commands to Ameer, including GitHub,
+        # connectors and dependency work. Only deletion and final publication
+        # are presented for a Business Chat approval.
+        classification = ShellExternalEffectClassifier.classify(command)
+        command_text = " ".join(str(command).lower().split())
+        root = str(classification.get("command_root") or "")
+        subcommand = str(classification.get("subcommand") or "")
+        delete_command = root in {"rm", "rmdir", "unlink", "shred"} or " rm " in f" {command_text} "
+        publish_command = (
+            (root == "railway" and subcommand in {"up", "deploy", "redeploy"})
+            or (root in {"vercel", "netlify", "heroku", "flyctl"} and subcommand in {"deploy", "publish", "production"})
+            or (root in {"npm", "yarn", "pnpm", "twine"} and subcommand in {"publish", "upload"})
+            or (root == "gh" and subcommand == "release")
         )
-        if requires_ext_approval:
-            classification = ShellExternalEffectClassifier.classify(command)
-            if classification["is_external_effect"]:
-                if self._approval_gate is None:
-                    return self._deny(
-                        "approval_gate_required_for_external_effect",
-                        execution_request,
-                        detail={"command_classification": classification},
-                    )
-                # Caller may supply a pre-approved approval_id in context.
-                approval_id = context.get("approval_id")
-                if approval_id:
-                    is_approved_fn = getattr(self._approval_gate, "is_approved", None)
-                    if callable(is_approved_fn) and is_approved_fn(approval_id):
-                        # Pre-verified — annotate trusted context and proceed.
-                        pass  # fall through to build trusted_context below
-                    else:
-                        return {
-                            **self._deny(
-                                "external_effect_approval_not_verified",
-                                execution_request,
-                                detail={
-                                    "approval_id": approval_id,
-                                    "command_classification": classification,
-                                },
-                            ),
-                            "status": "approval_required",
-                            "approval_required": True,
-                            "approval_id": approval_id,
-                        }
-                else:
-                    # No prior approval — create approval request and block.
-                    request_fn = getattr(self._approval_gate, "request", None)
-                    if callable(request_fn):
-                        new_approval_id = request_fn(
-                            action="external",
-                            description=(
-                                f"shell.run external-effect command: "
-                                f"{classification['command_root']!r}"
-                            ),
-                            requested_by=requested_by,
-                            context={
-                                "command_root": classification["command_root"],
-                                "subcommand": classification["subcommand"],
-                                "tool_name": "shell.run",
-                            },
-                        )
-                    else:
-                        new_approval_id = None
+        approval_action = "delete" if delete_command else ("publish" if publish_command else "")
+        if approval_action:
+            if self._approval_gate is None:
+                return self._deny(
+                    "approval_gate_required_for_final_action",
+                    execution_request,
+                    detail={"command_classification": classification, "action": approval_action},
+                )
+            approval_id = context.get("approval_id")
+            if approval_id:
+                is_approved_fn = getattr(self._approval_gate, "is_approved", None)
+                if not (callable(is_approved_fn) and is_approved_fn(approval_id)):
                     return {
                         **self._deny(
-                            "approval_required",
+                            "final_action_approval_not_verified",
                             execution_request,
-                            detail={
-                                "command_classification": classification,
-                                "approval_id": new_approval_id,
-                            },
+                            detail={"approval_id": approval_id, "action": approval_action},
                         ),
                         "status": "approval_required",
                         "approval_required": True,
-                        "approval_id": new_approval_id,
+                        "approval_id": approval_id,
                     }
-        # ── End external-effect enforcement ───────────────────────────────
+            else:
+                request_fn = getattr(self._approval_gate, "request", None)
+                new_approval_id = request_fn(
+                    action=approval_action,
+                    description=f"shell.run {approval_action} command: {root!r}",
+                    requested_by=requested_by,
+                    context={"command_root": root, "subcommand": subcommand, "tool_name": "shell.run"},
+                ) if callable(request_fn) else None
+                return {
+                    **self._deny(
+                        "approval_required",
+                        execution_request,
+                        detail={"command_classification": classification, "approval_id": new_approval_id},
+                    ),
+                    "status": "approval_required",
+                    "approval_required": True,
+                    "approval_id": new_approval_id,
+                }
 
         trusted_context = dict(context)
         trusted_payload: dict = dict(context.get("executor_payload") or {})

@@ -37,14 +37,16 @@ ROLES: Dict[str, Dict[str, Any]] = {
 }
 
 DEFAULT_POLICIES: Dict[str, Dict[str, Any]] = {
-    "shadow.admin": {"read": True, "write": True, "execute_internal": True, "external_effect": False, "approval": "founder_final"},
-    "project.read": {"read": True, "write": False, "execute_internal": False, "external_effect": False, "approval": "none"},
-    "project.write": {"read": True, "write": True, "execute_internal": True, "external_effect": False, "approval": "ameer_review"},
+    # Founder-delegated executive authority.  Publication stays founder-final;
+    # all other project and integration operations belong to Ameer.
+    "shadow.admin": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "ameer_policy"},
+    "project.read": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "ameer_policy"},
+    "project.write": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "ameer_policy"},
     "booking.auto_confirm": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "ameer_policy"},
-    "customer.public_chat": {"read": True, "write": True, "execute_internal": False, "external_effect": False, "approval": "none"},
-    "trading.observe": {"read": True, "write": False, "execute_internal": True, "external_effect": False, "approval": "none"},
-    "trading.propose": {"read": True, "write": True, "execute_internal": True, "external_effect": False, "approval": "founder_final"},
-    "trading.execute": {"read": True, "write": False, "execute_internal": False, "external_effect": True, "approval": "disabled_by_default"},
+    "customer.public_chat": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "ameer_policy"},
+    "trading.observe": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "ameer_policy"},
+    "trading.propose": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "ameer_policy"},
+    "trading.execute": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "ameer_policy"},
     "publish.external": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "founder_final"},
 }
 
@@ -121,9 +123,15 @@ class ShadowFoundation:
                 )
             for capability, policy in DEFAULT_POLICIES.items():
                 db.execute(
-                    """INSERT OR IGNORE INTO shadow_policies
+                    """INSERT INTO shadow_policies
                     (policy_id,capability,read_enabled,write_enabled,execute_internal,external_effect,approval,created_at)
-                    VALUES(?,?,?,?,?,?,?,?)""",
+                    VALUES(?,?,?,?,?,?,?,?)
+                    ON CONFLICT(capability) DO UPDATE SET
+                        read_enabled=excluded.read_enabled,
+                        write_enabled=excluded.write_enabled,
+                        execute_internal=excluded.execute_internal,
+                        external_effect=excluded.external_effect,
+                        approval=excluded.approval""",
                     (str(uuid.uuid4()), capability, int(policy["read"]), int(policy["write"]), int(policy["execute_internal"]), int(policy["external_effect"]), policy["approval"], now),
                 )
             # The founder and Ameer are the only global assignments by default.
@@ -199,8 +207,6 @@ class ShadowFoundation:
             return {"allowed": False, "reason": "unknown_action"}
         if role_id == "customer" and project_id != "dream_al_nada_store":
             allowed = False
-        if capability == "trading.execute":
-            allowed = False
         return {"allowed": allowed, "reason": "allowed" if allowed else "policy_denied", "approval": policy["approval"], "project_id": project_id, "capability": capability}
 
     def snapshot(self) -> dict[str, Any]:
@@ -211,5 +217,5 @@ class ShadowFoundation:
             "projects": self.list_projects(),
             "roles": [{"role_id": k, **v} for k, v in ROLES.items()],
             "policies": [{"capability": k, **v} for k, v in DEFAULT_POLICIES.items()],
-            "trading_execution_default": "disabled",
+            "trading_execution_default": "ameer_delegated",
         }

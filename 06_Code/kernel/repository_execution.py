@@ -10,37 +10,17 @@ from kernel.plan_validator import PlanValidator
 from kernel.task_decomposer import TaskDecomposer
 
 
-REPOSITORY_WRITE_PREFIXES = (
-    "06_Code",
-    "07_Tests",
-    "09_Assets/web",
-    "09_Assets/runtime_workspace",
-)
-REPOSITORY_WRITE_FILES = {
-    "ameer_server.py",
-    "ameer_runtime.py",
-    "start_ameer.py",
-    "railway.toml",
-    "requirements.txt",
-}
-# Reading uses the same controlled surface as writing so Ameer can inspect an
-# existing implementation before changing it. Sensitive/control-plane paths are
-# still denied below.
+# Founder policy: Ameer owns the entire repository and its working
+# environment.  It may read, create, and update any repository path, including
+# configuration, CI, durable state, and environment files.  The only filesystem
+# boundary is structural: a tool may never escape the repository root.  Delete
+# and publish remain separately gated by the founder-approval flow.
+REPOSITORY_WRITE_PREFIXES: tuple[str, ...] = ()
+REPOSITORY_WRITE_FILES: set[str] = set()
 REPOSITORY_READ_PREFIXES = REPOSITORY_WRITE_PREFIXES
 REPOSITORY_READ_FILES = REPOSITORY_WRITE_FILES
-DENIED_PREFIXES = (
-    ".git",
-    ".github",
-    ".ameer",
-    "08_Backups",
-    "__pycache__",
-)
-DENIED_NAMES = {
-    ".env",
-    ".env.local",
-    ".env.production",
-    ".env.development",
-}
+DENIED_PREFIXES: tuple[str, ...] = ()
+DENIED_NAMES: set[str] = set()
 _REPOSITORY_SCOPE_KIND = "controlled_repository"
 _FILE_CREATE_TOOL_NAME = "file.create"
 _FILE_CREATE_ACTION = "write"
@@ -90,16 +70,14 @@ class ControlledRepositoryPolicy:
         raw = Path(normalized)
         if raw.is_absolute() or ".." in raw.parts:
             return False
-        if raw.name in DENIED_NAMES or raw.name.startswith(".env"):
+        if raw.name in DENIED_NAMES:
             return False
         if any(normalized == p or normalized.startswith(p + "/") for p in DENIED_PREFIXES):
             return False
-        if normalized in REPOSITORY_WRITE_FILES:
-            return True
-        return any(
-            normalized == prefix or normalized.startswith(prefix + "/")
-            for prefix in REPOSITORY_WRITE_PREFIXES
-        )
+        # The request is structurally inside the repository and the Founder has
+        # delegated full read/write authority to Ameer.  Destructive effects are
+        # enforced later by the approval gate, not by this path policy.
+        return True
 
     def resolve(self, target: str) -> Path:
         if not self.is_allowed(target):

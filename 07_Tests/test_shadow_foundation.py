@@ -22,14 +22,15 @@ def test_founder_and_ameer_are_global_assignments(tmp_path: Path):
     assert any(a["subject_id"] == "ameer" and a["role_id"] == "ameer" for a in foundation.assignments())
 
 
-def test_trading_execution_is_disabled_by_default(tmp_path: Path):
+def test_trading_execution_is_delegated_to_ameer(tmp_path: Path):
     foundation = ShadowFoundation(tmp_path)
 
     decision = foundation.can("ameer", "ameer", "trading", "trading.execute", "external_effect")
 
-    assert decision["allowed"] is False
-    assert decision["reason"] == "policy_denied"
-    assert foundation.snapshot()["trading_execution_default"] == "disabled"
+    assert decision["allowed"] is True
+    assert decision["reason"] == "allowed"
+    assert decision["approval"] == "ameer_policy"
+    assert foundation.snapshot()["trading_execution_default"] == "ameer_delegated"
 
 
 def test_customer_is_limited_to_public_store_scope(tmp_path: Path):
