@@ -60,6 +60,52 @@ def test_shadow_ui_uses_live_operational_data_and_separate_local_history():
         assert required in html
 
 
+def test_business_chat_restores_pending_approvals_and_prevents_duplicate_decisions():
+    html = _html()
+    for required in (
+        'id="loadBusinessApprovals"',
+        "استعادة طلبات الموافقة",
+        "/chat/approvals/pending",
+        "loadPendingApprovals",
+        "markApprovalResolved",
+        "hasApproval",
+        "تمت الموافقة",
+        "تم الرفض",
+    ):
+        assert required in html
+
+
+def test_dream_main_sites_have_active_preview_and_focus_routes():
+    html = _html()
+    for required in (
+        'data-focus="home"',
+        'data-focus="management"',
+        'data-focus="status"',
+        'data-focus="store"',
+        "setDreamFocus",
+        "/preview/projects/حلم-الندى",
+        "/preview/projects/حلم-الندى-الإدارة",
+        "/preview/projects/حلم-الندى-الحالة",
+        "/preview/projects/حلم-الندى-المتجر",
+    ):
+        assert required in html
+
+
+def test_pending_chat_approval_endpoint_exposes_display_safe_cards_only():
+    source = (
+        Path(__file__).resolve().parents[1] / "ameer_delivery_bootstrap.py"
+    ).read_text(encoding="utf-8")
+    for required in (
+        '@app.get("/chat/approvals/pending")',
+        "Return authenticated, display-safe cards",
+        '"approval_id": item.get("approval_id")',
+        '"summary": item.get("summary")',
+        "_require_agent_access(request)",
+    ):
+        assert required in source
+    assert '"command": item.get("command")' not in source
+
+
 def test_admin_exposes_delegated_authority_and_delivery_evidence():
     html = _html()
     for required in (
