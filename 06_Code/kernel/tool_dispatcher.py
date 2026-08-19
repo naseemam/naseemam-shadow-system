@@ -194,7 +194,7 @@ class ToolDispatcher:
                 **result,
                 "decision": "DENY",
                 "allowed": False,
-                "reason": "executor_unavailable",
+                "reason": "executor_execution_failed",
                 "detail": {"error": str(exc)},
             }
             if tool_name == "shell.run":

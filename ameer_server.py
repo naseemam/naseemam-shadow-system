@@ -19,6 +19,8 @@ _CODE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "06_Code")
 if _CODE_ROOT not in sys.path:
     sys.path.insert(0, _CODE_ROOT)
 
+from kernel.task_decomposer import normalize_arabic_for_match
+
 from ameer_runtime import (
     public_runtime_identity,
     print_runtime_banner,
@@ -142,8 +144,30 @@ RUNTIME_METADATA = runtime_metadata(workspace_root=REPO_ROOT)
 KERNEL_ACTIONABLE_INTENTS = {
     "build_homepage", "build_generic", "file_read", "run_test",
     "repository_review", "code_edit", "build_website", "build_store",
-    "open_branch", "open_pull_request", "deploy_railway",
+    "open_branch", "open_pull_request", "deploy_railway", "worker_dispatch",
 }
+
+_WORKER_REQUEST_MARKERS = {
+    "engineering": ("عامل الهندسة", "عامل هندسة", "مهندس", "engineering worker"),
+    "design": ("عامل التصميم", "عامل تصميم", "المصمم", "design worker", "ui ux"),
+    "business": ("عامل الأعمال", "عامل اعمال", "عامل الأعمال", "business worker"),
+    "school": ("عامل المدرسة", "عامل مدرس", "school worker"),
+    "research": ("عامل البحث", "عامل بحث", "research worker"),
+    "communications": ("عامل الاتصالات", "عامل تواصل", "communications worker"),
+    "operations": ("عامل العمليات", "عامل عمليات", "operations worker"),
+    "store": ("عامل المتجر", "عامل حلم الندى", "store worker"),
+}
+
+
+def _requested_worker_id(query: str) -> str:
+    """Return an explicitly requested worker, never infer one from casual text."""
+    text = normalize_arabic_for_match(query or "")
+    if not any(token in text for token in ("عامل", "worker", "استدع", "شغل", "اختبر")):
+        return ""
+    for worker_id, markers in _WORKER_REQUEST_MARKERS.items():
+        if any(normalize_arabic_for_match(marker) in text for marker in markers):
+            return worker_id
+    return ""
 
 # ─── Executive Operating Kernel ───────────────────────────────────────────────
 
@@ -532,6 +556,79 @@ async def ask(request: Request):
     routing = orchestrator_result.get("routing") or {}
     project_manager = _manage_project_context(q)
 
+    # An explicit worker request is a real runtime operation, not a planning
+    # suggestion and not a replay of historical file tasks.  It creates a
+    # traceable WorkerRuntime run before any conversational response is built.
+    requested_worker = _requested_worker_id(q)
+    worker_execution_trace: dict | None = None
+    worker_execution_reply: str | None = None
+    if requested_worker and KERNEL and getattr(KERNEL, "worker_runtime", None):
+        if str((guardian or {}).get("status") or "").strip().lower() == "pass":
+            worker_result = KERNEL.worker_runtime.dispatch(
+                requested_worker,
+                q,
+                {
+                    "mode": "business_chat_worker_dispatch",
+                    "tools": [],
+                    "request_id": request_id,
+                    "room": "business",
+                },
+            )
+            worker_status = str(worker_result.get("status") or "failed")
+            worker_run_id = worker_result.get("run_id")
+            worker_execution_trace = {
+                "command": q,
+                "pipeline": [{
+                    "step": 1,
+                    "name": "WorkerRuntime",
+                    "status": worker_status,
+                    "output": worker_result,
+                }],
+                "final": {
+                    "accepted": worker_status == "completed",
+                    "intent": "worker_dispatch",
+                    "completed": 1 if worker_status == "completed" else 0,
+                    "failed": 0 if worker_status == "completed" else 1,
+                    "blocked": 0,
+                    "run_id": worker_run_id,
+                    "worker_id": requested_worker,
+                    "results": [{
+                        "task_id": worker_run_id or f"worker-{requested_worker}",
+                        "worker_id": requested_worker,
+                        "run_id": worker_run_id,
+                        "status": worker_status,
+                        "result": worker_result.get("result"),
+                        "reason": worker_result.get("reason"),
+                    }],
+                },
+            }
+            if worker_status == "completed":
+                worker_execution_reply = (
+                    f"✅ استدعى أمير عامل {requested_worker} فعليًا. "
+                    f"رقم التشغيل: {worker_run_id or 'مسجل'}."
+                )
+            else:
+                worker_execution_reply = (
+                    f"⚠️ بدأ استدعاء عامل {requested_worker} لكنه لم يكتمل. "
+                    f"السبب التقني: {worker_result.get('reason') or worker_result.get('error') or worker_status}."
+                )
+        else:
+            worker_execution_trace = {
+                "command": q,
+                "pipeline": [],
+                "final": {
+                    "accepted": False,
+                    "intent": "worker_dispatch",
+                    "reason": "guardian_not_pass",
+                    "technical_reason": "لم يمنح مسار الحوكمة تصريحًا صالحًا لاستدعاء العامل.",
+                    "completed": 0,
+                    "failed": 0,
+                    "blocked": 1,
+                    "worker_id": requested_worker,
+                },
+            }
+            worker_execution_reply = "⚠️ لم يُستدع العامل لأن تصريح الحوكمة الحالي غير صالح."
+
     # ── 3. Executive Brain think + execute ────────────────────────────────────
     plan = EXECUTIVE_BRAIN.think(
         q,
@@ -601,10 +698,10 @@ async def ask(request: Request):
     # Must run BEFORE compose_final_reply so the reply can confirm the outcome.
     # SECURITY: ExecutionBoundary is the mandatory gate before execute_command.
     # It enforces Guardian fail-closed + conversational guard + auth chain.
-    kernel_execution_trace: dict | None = None
-    kernel_execution_reply: str | None = None
-    kernel_detected_intent: str = "unknown"
-    if KERNEL:
+    kernel_execution_trace: dict | None = worker_execution_trace
+    kernel_execution_reply: str | None = worker_execution_reply
+    kernel_detected_intent: str = "worker_dispatch" if requested_worker else "unknown"
+    if KERNEL and not requested_worker:
         try:
             decomp = KERNEL.task_decomposer.decompose(q)
             kernel_detected_intent = str(decomp.get("intent", "unknown") or "unknown").strip().lower()
