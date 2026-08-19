@@ -410,6 +410,23 @@ def _friendly_room_blocked(query: str) -> bool:
     return any(marker.lower() in text for marker in FRIENDLY_EXECUTION_MARKERS + FRIENDLY_BUSINESS_MARKERS)
 
 
+def _friendly_personal_reply(query: str) -> str:
+    """Return a direct personal-room reply without invoking executive planning."""
+    text = (query or "").strip()
+    normalized = text.lower().replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+    normalized = " ".join(normalized.replace("؟", " ").replace("!", " ").replace("،", " ").split())
+    name_calls = {"امير", "اميري", "يا امير", "يا اميري", "امير يا امير"}
+    if normalized in name_calls:
+        return "نعم، أنا معك. ماذا تحتاج؟"
+    if any(phrase in normalized for phrase in ("ايش تكمل", "وش تكمل", "ماذا تكمل", "انا اناديك", "أنا اناديك")):
+        return "معك حق، أنا أستمع لك الآن. ناديتني فقط؛ كيف تحب أن أساعدك أو نتحدث؟"
+    if any(phrase in normalized for phrase in ("كيف حالك", "كيفك", "شلونك")):
+        return "أنا بخير ما دمت معك. كيف حالك أنت؟"
+    if any(phrase in normalized for phrase in ("شكرا", "شكر")):
+        return "العفو، أنا معك دائمًا."
+    return "أنا معك في المحادثة الودية. تحدث معي براحتك؛ ماذا يدور في بالك؟"
+
+
 @app.post('/friendly-chat')
 async def friendly_chat(request: Request):
     """Conversation-only room: no worker dispatch, file work, or external effect."""
@@ -430,22 +447,10 @@ async def friendly_chat(request: Request):
             "execution": {"started": False, "external_effect": False},
             "request_id": request_id,
         }, status_code=200)
-    if not EXECUTIVE_BRAIN or not EXECUTIVE_CONVERSATION_ENGINE:
-        raise HTTPException(status_code=503, detail="Conversation engine unavailable")
-    orchestrator_result = ORCHESTRATOR.answer(q, req.max_results)
-    guardian = orchestrator_result.get("guardian", {})
-    routing = orchestrator_result.get("routing") or {}
-    plan = EXECUTIVE_BRAIN.think(q, DOCUMENTS, guardian_result=guardian, routing_hint=routing)
-    reasoning_output = EXECUTIVE_BRAIN.get_reasoning_output(q, DOCUMENTS, guardian_result=guardian, routing_hint=routing, existing_plan=plan)
-    conversation_result = EXECUTIVE_CONVERSATION_ENGINE.execute(
-        query=q,
-        planner_state=EXECUTIVE_CONVERSATION_ENGINE.memory.plan(q, active_projects=[], running_tasks=[], pending_approvals=[], workspace_summary="", executive_assessment=""),
-        conversation_context="غرفة ودية مستقلة؛ لا توجد مهمة تنفيذية في هذا الدور.",
-        persistent_memory_block="",
-        pending_approvals=[], running_tasks=[], active_projects=[], is_first_turn=False,
-        dry_run=True, reasoning_output=reasoning_output,
-    )
-    reply = conversation_result.get("reply") or "أنا معك. كيف يمكنني مساعدتك اليوم؟"
+    # The personal room intentionally bypasses executive planning, task state,
+    # and provider orchestration.  It must answer a personal call as a person,
+    # not surface an operational recommendation such as "أكمل على هذا".
+    reply = _friendly_personal_reply(q)
     return utf8_json_response({
         "status": "completed", "room": "friendly", "reply": reply, "message": reply,
         "execution": {"started": False, "external_effect": False, "worker_dispatch": False},
