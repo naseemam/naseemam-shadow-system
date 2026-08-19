@@ -186,6 +186,32 @@ async def agent_approvals(request: Request):
     )
 
 
+@app.get("/chat/approvals/pending")
+async def pending_chat_approvals(request: Request):
+    """Return authenticated, display-safe cards for pending business-chat decisions.
+
+    The browser receives only the identifier and the human-readable decision
+    context. The saved command and metadata remain server-side and are replayed
+    exclusively by ``resolve_chat_approval`` after an explicit decision.
+    """
+    _require_agent_access(request)
+    cards = [
+        {
+            "approval_id": item.get("approval_id"),
+            "action": item.get("action"),
+            "summary": item.get("summary") or "موافقة نهائية مطلوبة.",
+            "created_at": item.get("created_at"),
+            "status": "pending",
+        }
+        for item in ameer_server.KERNEL.final_gate.pending()
+        if item.get("approval_id")
+    ]
+    return ameer_server.utf8_json_response(
+        {"pending": cards, "count": len(cards)},
+        headers=ameer_server.runtime_headers(workspace_root=ameer_server.REPO_ROOT),
+    )
+
+
 @app.post("/chat/approvals/{approval_id}")
 async def resolve_chat_approval(approval_id: str, request: Request):
     """Resolve one founder-only delete/deploy approval from the business chat.
