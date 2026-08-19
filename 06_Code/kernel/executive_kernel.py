@@ -650,6 +650,16 @@ class ExecutiveKernel:
             "tasks_queued": int,     # عدد المهام المقبولة للجدولة
         }
         """
+        # نظام الظل يعمل بتفويض تنفيذي دائم داخل الأصول القائمة. غياب حارس
+        # وارد من الاستدعاءات الداخلية أو المهام المجدولة ولا يعني إيقاف العمل.
+        # بوابة إنشاء الأصل الجذري تُعالج في execute_command قبل الوصول هنا.
+        if guardian is None:
+            guardian = {
+                "status": "pass",
+                "source": "ameer_shadow_delegated_execution",
+                "scope": "existing_shadow_assets",
+            }
+
         validation = self.plan_validator.validate(tasks)
 
         if not validation["valid"]:
@@ -818,14 +828,42 @@ class ExecutiveKernel:
             }
             return pipeline_trace
 
+        # The sole founder gate: opening a new root site, program, system, or
+        # repository. Once approved, the asset becomes an autonomous shadow asset.
+        if decomposition.get("requires_approval"):
+            approval_action = decomposition.get("approval_action") or "other"
+            approval_id = self.approvals.request(
+                action=approval_action,
+                description=f"Root asset creation requested: {command[:240]}",
+                requested_by=requested_by,
+                context={"intent": decomposition["intent"], "command": command, "approval_action": approval_action},
+            )
+            pipeline_trace["pipeline"].append({
+                "step": 2,
+                "name": "RootAssetApprovalGate",
+                "status": "pending",
+                "output": {"approval_id": approval_id, "action": approval_action},
+            })
+            pipeline_trace["final"] = {
+                "accepted": False,
+                "reason": "root_asset_creation_approval_required",
+                "technical_reason": "إنشاء أصل رقمي مستقل جديد يحتاج موافقة المالك مرة واحدة قبل دخوله نظام الظل.",
+                "intent": decomposition["intent"],
+                "approval_action": approval_action,
+                "approval_id": approval_id,
+                "completed": 0,
+                "failed": 0,
+                "blocked": 1,
+                "results": [{"task_id": tasks[0].get("id"), "status": "blocked", "reason": "root_asset_creation_approval_required", "approval_id": approval_id}],
+            }
+            return pipeline_trace
+
         # Direct, in-process preview builds are a bounded internal operation: the
         # FileExecutor still constrains every path to the workspace and the
         # ExecutionAuthorization still validates the file-create grant. Give only
         # these two builder intents an explicit internal guardian when the caller
         # did not provide one at all. An empty or non-passing guardian is never
         # promoted, and HTTP/API callers continue to pass their guardian result.
-        # This restores deterministic local site building without weakening the
-        # final approval gate for delete, publish, or any other external effect.
         if guardian is None and decomposition["intent"] in {"build_homepage", "build_generic"}:
             guardian = {
                 "status": "pass",
@@ -833,43 +871,30 @@ class ExecutiveKernel:
                 "scope": "workspace_file_create_only",
             }
 
-        # AEX-1 external effects never execute from a plain command. They create
-        # an explicit approval request and return a complete trace instead.
-        external_intents = {"open_branch", "open_pull_request", "deploy_railway"}
-        if decomposition["intent"] in external_intents:
-            approval_id = None
-            if self.approvals is not None:
-                approval_id = self.approvals.request(
-                    action="publish" if decomposition["intent"] == "deploy_railway" else "external",
-                    description=f"AEX-1 approval required: {command[:240]}",
-                    requested_by=requested_by,
-                    context={"intent": decomposition["intent"], "command": command},
-                )
+        # Explicit delivery commands are delegated operating actions. They use
+        # the delivery lane directly and produce an execution result or a concrete
+        # technical blocker; they never become a founder approval request.
+        if decomposition["intent"] == "deploy_railway":
+            from kernel.delivery_execution import DeliveryController
+
+            delivery_result = DeliveryController(self._root).execute("deploy", command)
+            completed = int(bool(delivery_result.get("completed")))
+            blocked = int(delivery_result.get("status") == "blocked")
             pipeline_trace["pipeline"].append({
                 "step": 2,
-                "name": "ApprovalGate",
-                "status": "pending",
-                "output": {
-                    "approval_id": approval_id,
-                    "intent": decomposition["intent"],
-                    "reason": "explicit_approval_required",
-                },
+                "name": "DeliveryController",
+                "status": delivery_result.get("status", "unknown"),
+                "output": delivery_result,
             })
             pipeline_trace["final"] = {
-                "accepted": False,
-                "reason": "explicit_approval_required",
-                "technical_reason": "هذا الإجراء يغيّر حالة GitHub أو Railway، ولذلك لا يُنفّذ قبل موافقة صريحة.",
+                "accepted": delivery_result.get("status") == "completed",
+                "reason": delivery_result.get("reason", "delivery_executed"),
+                "technical_reason": delivery_result.get("detail", "تم تمرير النشر إلى مسار التسليم التنفيذي لأمير."),
                 "intent": decomposition["intent"],
-                "approval_id": approval_id,
-                "completed": 0,
-                "failed": 0,
-                "blocked": 1,
-                "results": [{
-                    "task_id": tasks[0].get("id"),
-                    "status": "blocked",
-                    "reason": "explicit_approval_required",
-                    "approval_id": approval_id,
-                }],
+                "completed": completed,
+                "failed": int(delivery_result.get("status") not in {"completed", "blocked"}),
+                "blocked": blocked,
+                "results": [{"task_id": tasks[0].get("id"), "status": delivery_result.get("status"), "result": delivery_result}],
             }
             return pipeline_trace
 

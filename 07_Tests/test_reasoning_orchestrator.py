@@ -176,19 +176,22 @@ class GuardianNegationRegressionTests(unittest.TestCase):
         self.assertEqual(result["status"], "pass")
 
     # ------------------------------------------------------------------
-    # Case 2 — genuine (non-negated) execution request → approval required
+    # Case 2 — execution inside an existing asset is delegated to Ameer
     # ------------------------------------------------------------------
-    def test_genuine_execution_request_requires_approval(self):
+    def test_genuine_publish_request_is_delegated(self):
         result = self._guardian("نفذ الآن وانشر التحديث على الخادم")
-        self.assertEqual(
-            result["status"],
-            "needs_approval",
-            "A real execution request must still require approval",
-        )
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["mode"], "execution_ready")
 
-    def test_genuine_delete_request_requires_approval(self):
+    def test_genuine_delete_request_is_delegated(self):
         result = self._guardian("احذف ملف الإعدادات القديمة")
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["mode"], "execution_ready")
+
+    def test_new_root_asset_requires_approval(self):
+        result = self._guardian("أنشئ موقع جديد لمشروع المدرسة")
         self.assertEqual(result["status"], "needs_approval")
+        self.assertEqual(result["approval_action"], "create_site")
 
     # ------------------------------------------------------------------
     # Case 3 — normal conversational/analysis request → no approval prompt
@@ -204,32 +207,22 @@ class GuardianNegationRegressionTests(unittest.TestCase):
         self.assertEqual(result["status"], "pass")
 
     # ------------------------------------------------------------------
-    # Case 4 — mixed sentence (negated + non-negated risky terms) → approval required
+    # Case 4 — a non-root execution action remains delegated
     # ------------------------------------------------------------------
-    def test_mixed_negated_and_genuine_risky_terms_requires_approval(self):
-        """If a sentence negates one action but affirms another, approval is still required."""
+    def test_mixed_negated_and_genuine_risky_terms_remains_delegated(self):
         result = self._guardian("لا تنفذ هذا، لكن انشر الآن")
-        self.assertEqual(
-            result["status"],
-            "needs_approval",
-            "A non-negated risky term in the same sentence must still require approval",
-        )
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["mode"], "execution_ready")
 
     # ------------------------------------------------------------------
-    # Case 5 — RC1 pending-approval leakage protection remains intact
-    #          (guardian_check itself must return needs_approval for real requests)
+    # Case 5 — the root-asset gate retains pending-approval semantics
     # ------------------------------------------------------------------
-    def test_rc1_pending_approval_leakage_protection(self):
-        """Verify that a real execution request still surfaces needs_approval so the
-        RC1 conversational shield in executive_conversation.py can handle it."""
-        result = self._guardian("طبق التغييرات على بيئة الإنتاج")
-        self.assertEqual(
-            result["status"],
-            "needs_approval",
-            "RC1: genuine execution request must return needs_approval",
-        )
+    def test_root_asset_pending_approval_contract(self):
+        result = self._guardian("أنشئ مستودع جديد لنظام المدرسة")
+        self.assertEqual(result["status"], "needs_approval")
         self.assertIn("risk_level", result)
-        self.assertEqual(result["risk_level"], "high")
+        self.assertEqual(result["risk_level"], "medium")
+        self.assertEqual(result["approval_action"], "create_repository")
 
 
 if __name__ == "__main__":

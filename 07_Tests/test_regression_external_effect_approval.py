@@ -79,49 +79,40 @@ def test_delegated_external_commands_execute_without_founder_approval():
     assert len(shell.calls) == 3
 
 
-def test_publish_command_requires_business_chat_approval():
+def test_publish_command_executes_under_ameer_delegation():
     workspace = _workspace(Path(tempfile.mkdtemp()))
     gate = ApprovalGate(workspace)
     shell = _shell_spy()
     dispatcher = _dispatcher(workspace, gate, shell)
 
-    pending = dispatcher.dispatch(
+    result = dispatcher.dispatch(
         tool_name="shell.run",
         context={"command": "railway up"},
         guardian=GUARDIAN_PASS,
         intent="deploy_railway",
     )
-    assert not pending["executed"]
-    assert pending["status"] == "approval_required"
-    assert pending["approval_required"] is True
-    approval_id = pending["approval_id"]
-    assert gate.pending()[0]["action"] == "publish"
-
-    gate.approve(approval_id, approved_by="founder")
-    approved = dispatcher.dispatch(
-        tool_name="shell.run",
-        context={"command": "railway up", "approval_id": approval_id},
-        guardian=GUARDIAN_PASS,
-        intent="deploy_railway",
-    )
-    assert approved["executed"] is True
+    assert result["executed"] is True
+    assert not result.get("approval_required", False)
+    assert not gate.pending()
+    assert result["execution_request"]["context"]["external_effect_classification"]["command_root"] == "railway"
 
 
-def test_delete_command_requires_business_chat_approval():
+def test_delete_command_executes_under_ameer_delegation():
     workspace = _workspace(Path(tempfile.mkdtemp()))
     gate = ApprovalGate(workspace)
     shell = _shell_spy()
     dispatcher = _dispatcher(workspace, gate, shell)
 
-    pending = dispatcher.dispatch(
+    result = dispatcher.dispatch(
         tool_name="shell.run",
         context={"command": "rm old_file.txt"},
         guardian=GUARDIAN_PASS,
         intent="delete",
     )
-    assert not pending["executed"]
-    assert pending["status"] == "approval_required"
-    assert gate.pending()[0]["action"] == "delete"
+    assert result["executed"] is True
+    assert not result.get("approval_required", False)
+    assert not gate.pending()
+    assert result["execution_request"]["context"]["external_effect_classification"]["command_root"] == "rm"
 
 
 def test_guardian_remains_required_for_all_commands():

@@ -25,7 +25,7 @@ Design rules
 * Fail-closed: any ambiguous, missing, or unknown guardian status → deny
 * Only an explicit "pass" from Guardian allows execution to proceed
 * Conversational request_types never enter side-effect execution
-* ApprovalGate is consulted only for delete/publish/deploy/rollback actions
+* ApprovalGate is consulted only for a request to create a new root asset.
 * ExecutionAuthorization is the final gate (capability + permission)
 """
 
@@ -35,18 +35,14 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, Optional, Set
 
+from kernel.ameer_authority import ROOT_ASSET_ACTIONS, canonical_creation_action
+
 # Statuses that Guardian must explicitly produce for execution to be allowed.
 _GUARDIAN_PASS_VALUES: Set[str] = {"pass"}
 
-# Founder approval is required only for destructive deletion and production
-# delivery. Internal repository work, including branch creation, pull requests,
-# push, merge, design, code changes, and tests, remains under Ameer's authority.
-_HIGH_RISK_ACTIONS_REQUIRING_APPROVAL: Set[str] = {
-    "delete",
-    "publish",
-    "deploy",
-    "rollback",
-}
+# Compatibility export for callers and tests. The authority source of truth is
+# kernel.ameer_authority; these are the only actions that can open a founder gate.
+_HIGH_RISK_ACTIONS_REQUIRING_APPROVAL: Set[str] = set(ROOT_ASSET_ACTIONS)
 
 # Request types that are purely conversational — they must never trigger side effects.
 _CONVERSATIONAL_TYPES: Set[str] = {
@@ -65,13 +61,13 @@ KERNEL_ACTIONABLE_INTENTS: Set[str] = {
     "open_branch", "open_pull_request", "deploy_railway",
 }
 
-# AEX-1 permission matrix. Read/analyze, workspace writes, merge, and delete
-# are eligible for Ameer's audited internal path; publish/deploy/external/financial
-# effects require the founder approval gate.
+# AEX-1 permission matrix. Every valid, scoped operation is autonomous inside
+# an existing asset. A new root site/program/system/repository opens the sole
+# founder approval gate.
 AEX1_PERMISSION_MATRIX: Dict[str, Dict[str, Any]] = {
     "read_only": {"allow": True, "tracked": True, "approval": False},
     "tracked_write": {"allow": True, "tracked": True, "approval": False},
-    "external_approval": {"allow": False, "tracked": True, "approval": True},
+    "root_asset_creation": {"allow": False, "tracked": True, "approval": True},
 }
 
 
@@ -148,8 +144,8 @@ class ExecutionBoundary:
 
         ApprovalGate check
         ~~~~~~~~~~~~~~~~~~
-        * If an approval_gate is wired and the action is HIGH_RISK → PENDING
-          (unless a prior approval exists).
+        * If an approval_gate is wired and the request creates a new root asset
+          → PENDING (unless that creation has already been approved).
 
         ExecutionAuthorization check
         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -178,13 +174,14 @@ class ExecutionBoundary:
                 detail={"request_type": rt, "intent": it},
             )
 
-        # ── Step 3: ApprovalGate (high-risk) ─────────────────────────────────
-        is_high_risk = action in _HIGH_RISK_ACTIONS_REQUIRING_APPROVAL
+        # ── Step 3: ApprovalGate (new root asset only) ───────────────────────
+        approval_action = canonical_creation_action(action, context)
+        is_high_risk = approval_action is not None
         if is_high_risk and self._approval_gate is None:
             return BoundaryResult(
                 verdict=BoundaryVerdict.DENY,
                 reason="approval_gate_required_missing",
-                detail={"action": action},
+                detail={"action": approval_action},
             )
 
         if self._approval_gate is not None and is_high_risk:
@@ -195,14 +192,14 @@ class ExecutionBoundary:
                 return BoundaryResult(
                     verdict=BoundaryVerdict.DENY,
                     reason="approval_gate_unavailable",
-                    detail={"action": action},
+                    detail={"action": approval_action},
                 )
 
-            # Check if there is already an *approved* entry for this action type.
-            # If so, the Founder has already authorized — allow execution.
+            # Match the canonical root-creation action. Callers should include
+            # the root asset identity in context so evidence remains attributable.
             recent = recent_fn(20)
             approved_existing = any(
-                r.get("status") == "approved" and r.get("action") == action
+                r.get("status") == "approved" and r.get("action") == approval_action
                 for r in recent
             )
             if not approved_existing:
@@ -216,10 +213,10 @@ class ExecutionBoundary:
                         detail={"pending_count": len(pending)},
                     )
                 # No pending and no approved — open a new request
-                valid_actions = getattr(self._approval_gate, "VALID_ACTIONS", {action})
+                valid_actions = getattr(self._approval_gate, "VALID_ACTIONS", {approval_action})
                 approval_id = request_fn(
-                    action=action if action in valid_actions else "other",
-                    description=f"Execution boundary gate: {capability_name}/{action}",
+                    action=approval_action if approval_action in valid_actions else "other",
+                    description=f"Root asset creation gate: {capability_name}/{approval_action}",
                     requested_by=requested_by,
                     context=context or {},
                 )

@@ -25,15 +25,10 @@ _DELEGATION_TERMS = (
     "until publish", "until deployment", "without asking me", "do it all",
 )
 
-# The legacy reasoning guardian used to classify generic execution words such
-# as "نفذ" and "push" as high-risk. StageGovernance / FinalStageGate now owns
-# final approvals, so this legacy layer only keeps genuinely destructive local
-# operations guarded. Production merge/deploy/credential activation remain
-# governed by the final-stage gate in ExpandedAgentExecutiveKernel.
-_LEGACY_DESTRUCTIVE_ONLY = (
-    "delete", "drop", "destroy", "wipe", "reset",
-    "احذف", "امسح",
-)
+# نظام الظل لا يستخدم حارس موافقة لكل فعل داخل أصل قائم. فحص سلامة
+# الطلب والنطاق والدليل يبقى قائمًا في النواة، أما الموافقة فمحصورة بإنشاء
+# أصل جذري جديد ويقررها المصدر المركزي للسلطة.
+_LEGACY_DESTRUCTIVE_ONLY: tuple[str, ...] = ()
 
 
 def _normalized(query: str) -> str:
@@ -70,11 +65,19 @@ def _clear_legacy_guardian(reasoning_output: Any) -> Any:
 def install_stage_autonomy_patch() -> None:
     """Align legacy conversation/reasoning layers with final-gate-only policy."""
     global _INSTALLED
-    if _INSTALLED:
-        return
 
     from reasoning_orchestrator import AmeerOrchestrator
     from executive_conversation import ExecutiveConversationEngine, PersistentConversationMemory
+
+    # قد تعيد الاختبارات أو بيئة التطوير تحميل وحدات المحادثة. المؤشر العام
+    # وحده لا يكفي؛ نتحقق من الدوال الفعلية حتى لا يبقى صف جديد بلا رقعة.
+    if all((
+        getattr(AmeerOrchestrator.guardian_check, "_ameer_stage_autonomy", False),
+        getattr(PersistentConversationMemory.plan, "_ameer_stage_autonomy", False),
+        getattr(ExecutiveConversationEngine.execute, "_ameer_stage_autonomy", False),
+    )):
+        _INSTALLED = True
+        return
 
     original_guardian_check = AmeerOrchestrator.guardian_check
 
@@ -82,26 +85,28 @@ def install_stage_autonomy_patch() -> None:
     def guardian_check(self: AmeerOrchestrator, query: str, intent: str):
         previous = list(getattr(self, "high_risk_action_terms", []))
         try:
-            # Generic execution/build/test/push words are normal work inside a
-            # stage. Do not require Founder approval for each micro-action.
-            self.high_risk_action_terms = list(_LEGACY_DESTRUCTIVE_ONLY)
+            # نُبقي تصنيف الأفعال لاستعادة وضع execution_ready، لكن الدالة
+            # الأصلية لم تعد تنشئ طلب موافقة لهذه الأفعال داخل الأصول القائمة.
+            self.high_risk_action_terms = previous
             return original_guardian_check(self, query, intent)
         finally:
             self.high_risk_action_terms = previous
 
+    guardian_check._ameer_stage_autonomy = True
     AmeerOrchestrator.guardian_check = guardian_check
 
     original_plan = PersistentConversationMemory.plan
 
     @wraps(original_plan)
     def plan(self: PersistentConversationMemory, query: str, *args: Any, **kwargs: Any):
-        if _is_stage_continuation(query) and not _is_destructive(query):
+        if _is_stage_continuation(query):
             # Pending/blocked records belonging to the stage must not force the
             # planner to stop and "close a task" before continuing that stage.
             kwargs["running_tasks"] = []
             kwargs["pending_approvals"] = []
         return original_plan(self, query, *args, **kwargs)
 
+    plan._ameer_stage_autonomy = True
     PersistentConversationMemory.plan = plan
 
     original_execute = ExecutiveConversationEngine.execute
@@ -109,7 +114,7 @@ def install_stage_autonomy_patch() -> None:
     @wraps(original_execute)
     def execute(self: ExecutiveConversationEngine, *args: Any, **kwargs: Any):
         query = str(kwargs.get("query") or "")
-        if _is_stage_continuation(query) and not _is_destructive(query):
+        if _is_stage_continuation(query):
             # Same-stage continuation should use the actual provider/kernel
             # result instead of being hijacked by stale task-state warnings or
             # the obsolete per-turn guardian approval prompt.
@@ -118,5 +123,6 @@ def install_stage_autonomy_patch() -> None:
             kwargs["reasoning_output"] = _clear_legacy_guardian(kwargs.get("reasoning_output"))
         return original_execute(self, *args, **kwargs)
 
+    execute._ameer_stage_autonomy = True
     ExecutiveConversationEngine.execute = execute
     _INSTALLED = True

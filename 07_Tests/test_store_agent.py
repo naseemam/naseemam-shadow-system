@@ -31,4 +31,6 @@ def test_store_agent_has_separate_center_scope():
     assert policy["worker_id"] == "store"
     assert "04_Memory/dream_al_nada" in policy["read"]["allowed_paths"]
     assert policy["cross_worker_access"] is False
-    assert policy["external_effect"]["approval"] == "founder_final"
+    assert policy["external_effect"]["enabled"] is True
+    assert policy["external_effect"]["authority"] == "ameer"
+    assert policy["external_effect"]["approval"] == "ameer_orchestrated_root_asset_creation_gate"

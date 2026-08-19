@@ -44,9 +44,11 @@ class TestAEX1IntentAcceptance(unittest.TestCase):
         self.assertEqual(result["permission_mode"], "read_only")
         self.assertFalse(result["requires_approval"])
 
-    def test_ameer_build_new_website(self):
+    def test_ameer_build_new_website_requires_root_asset_creation_approval(self):
         result = self.assert_execution_intent("أمير ابن موقع جديد عن منصة أمير", "build_website")
-        self.assertEqual(result["permission_mode"], "tracked_write")
+        self.assertEqual(result["permission_mode"], "root_asset_creation")
+        self.assertTrue(result["requires_approval"])
+        self.assertEqual(result["approval_action"], "create_site")
         self.assertTrue(all(task["action"] == "write" for task in result["tasks"]))
 
     def test_ameer_improve_user_interface(self):
@@ -60,11 +62,12 @@ class TestAEX1IntentAcceptance(unittest.TestCase):
         self.assertEqual(result["permission_mode"], "read_only")
         self.assertEqual(result["tasks"][0]["command"][:3], ["python3", "-m", "pytest"])
 
-    def test_ameer_deploy_railway_requires_approval(self):
+    def test_ameer_deploy_railway_is_delegated_delivery(self):
         result = self.assert_execution_intent("أمير انشر على Railway", "deploy_railway")
-        self.assertEqual(result["permission_mode"], "external_approval")
-        self.assertTrue(result["requires_approval"])
+        self.assertEqual(result["permission_mode"], "tracked_delivery")
+        self.assertFalse(result["requires_approval"])
         self.assertEqual(result["tasks"][0]["target"], "railway/deploy")
+        self.assertEqual(result["tasks"][0]["action"], "execute")
 
     def test_additional_aex1_intents_are_mapped(self):
         expected = {
@@ -79,7 +82,7 @@ class TestAEX1IntentAcceptance(unittest.TestCase):
 
 
 class TestAEX1KernelTrace(unittest.TestCase):
-    def test_deploy_railway_returns_trace_and_pending_approval(self):
+    def test_deploy_railway_returns_delegated_delivery_trace(self):
         code_root = str(ROOT / "06_Code")
         if code_root not in sys.path:
             sys.path.insert(0, code_root)
@@ -95,14 +98,14 @@ class TestAEX1KernelTrace(unittest.TestCase):
             )
             self.assertTrue(trace.get("trace_id"))
             self.assertEqual(trace["final"]["intent"], "deploy_railway")
-            self.assertFalse(trace["final"]["accepted"])
-            self.assertEqual(trace["final"]["reason"], "explicit_approval_required")
-            self.assertTrue(trace["final"].get("approval_id"))
-            self.assertEqual(trace["pipeline"][-1]["name"], "ApprovalGate")
+            self.assertFalse(trace["final"].get("approval_id"))
+            self.assertNotEqual(trace["final"]["reason"], "explicit_approval_required")
+            self.assertEqual(trace["pipeline"][-1]["name"], "DeliveryController")
+            self.assertIn(trace["pipeline"][-1]["status"], {"completed", "blocked"})
 
 
 class TestAEX1PermissionMatrix(unittest.TestCase):
-    def test_matrix_is_explicit_and_fail_closed_for_external_effects(self):
+    def test_matrix_allows_delegated_delivery_and_gates_root_creation_only(self):
         self.assertEqual(_boundary.KERNEL_ACTIONABLE_INTENTS.__class__, set)
         self.assertIn("repository_review", _boundary.KERNEL_ACTIONABLE_INTENTS)
         self.assertIn("build_website", _boundary.KERNEL_ACTIONABLE_INTENTS)
@@ -112,25 +115,26 @@ class TestAEX1PermissionMatrix(unittest.TestCase):
             def check(self, **kwargs):
                 return {"status": "approved", "request_id": "auth-1"}
 
-        class Approval:
-            VALID_ACTIONS = {"publish", "external"}
-            def recent(self, _limit):
-                return []
-            def pending(self):
-                return []
-            def request(self, **kwargs):
-                return "approval-1"
-
-        boundary = _boundary.ExecutionBoundary(approval_gate=Approval(), execution_auth=Auth())
+        boundary = _boundary.ExecutionBoundary(execution_auth=Auth())
         result = boundary.evaluate(
             guardian={"status": "pass"},
             request_type="execution",
             intent="deploy_railway",
             capability_name="engineering",
-            action="publish",
+            action="deploy",
         )
-        self.assertEqual(result.verdict, _boundary.BoundaryVerdict.PENDING)
-        self.assertEqual(result.reason, "approval_gate_created")
+        self.assertEqual(result.verdict, _boundary.BoundaryVerdict.ALLOW)
+
+        result = boundary.evaluate(
+            guardian={"status": "pass"},
+            request_type="execution",
+            intent="build_website",
+            capability_name="engineering",
+            action="create_site",
+            context={"asset_name": "موقع جديد"},
+        )
+        self.assertEqual(result.verdict, _boundary.BoundaryVerdict.DENY)
+        self.assertEqual(result.reason, "approval_gate_required_missing")
 
 
 if __name__ == "__main__":

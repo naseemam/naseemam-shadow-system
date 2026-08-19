@@ -14,6 +14,19 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _root_asset_creation_requested(query: str) -> bool:
+    """Return whether a natural-language command opens one of four root assets."""
+    text = (query or "").lower()
+    normalized = text.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ى", "ي")
+    markers = (
+        "موقع جديد", "برنامج جديد", "تطبيق جديد", "نظام جديد", "مستودع جديد",
+        "new website", "create new website", "build new website", "new program",
+        "new application", "create new app", "new system", "create new system",
+        "new repository", "create repository", "create new repository",
+    )
+    return any(marker in normalized for marker in markers)
+
+
 # ─── DIAGNOSTIC-ONLY logger ────────────────────────────────────────────────
 # Instrumentation added to trace the has_executive_signals decision point in
 # ExecutiveConversationEngine.execute(). This does NOT affect behavior — it
@@ -165,10 +178,21 @@ class PersistentConversationMemory:
         missing: List[str] = []
         current_project = active_projects[0] if active_projects else ""
 
-        _stalled_statuses = {"pending", "blocked"}
-        stalled_tasks = [t for t in (running_tasks or []) if str(t.get("status", "")).lower() in _stalled_statuses]
+        # لا تعطل السجلات القديمة مرحلة تنفيذ مستمرة. تفويض أمير الافتراضي
+        # يقتضي أن يعالجها أو يكمل العمل بدل طلب قرار جديد في كل مرة.
+        normalized_q = q.lower().replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ى", "ي")
+        continuation_terms = (
+            "نفذ", "ابدأ", "اكمل", "كمل", "تابع", "استمر", "عدل", "اصلح", "اختبر",
+            "جرب", "راجع", "انجز", "continue", "proceed", "execute", "implement", "test", "fix", "update",
+        )
+        is_continuation = any(term in normalized_q for term in continuation_terms)
+        effective_running_tasks = [] if is_continuation else (running_tasks or [])
+        effective_pending_approvals = [] if is_continuation else (pending_approvals or [])
 
-        if pending_approvals:
+        _stalled_statuses = {"pending", "blocked"}
+        stalled_tasks = [t for t in effective_running_tasks if str(t.get("status", "")).lower() in _stalled_statuses]
+
+        if effective_pending_approvals:
             risks.append("هناك موافقات معلقة قد تعطل المسار إذا لم تُحسم أولًا")
         if stalled_tasks:
             risks.append("مهام مفتوحة تشغل موارد وتحتاج إغلاقًا قبل فتح مسار جديد")
@@ -182,7 +206,7 @@ class PersistentConversationMemory:
 
         # Core recommendation — natural, direct, no mechanical prefix.
         # Only stalled/blocked tasks warrant interrupting the flow.
-        if pending_approvals:
+        if effective_pending_approvals:
             next_action = "الأجدى أن نحسم طلب الموافقة أولًا حتى لا يتوقف كل شيء خلفه."
         elif stalled_tasks:
             next_action = "نغلق المهمة المفتوحة الأعلى أثرًا أولًا، ثم نفتح المسار الجديد."
@@ -195,7 +219,7 @@ class PersistentConversationMemory:
             objectives.append(f"المشروع الحالي: {current_project}")
 
         priorities: List[str] = []
-        if pending_approvals:
+        if effective_pending_approvals:
             priorities.append("حسم الموافقات المعلقة أولًا")
         if stalled_tasks:
             priorities.append("إغلاق المهام المفتوحة ذات الأثر الأعلى")
@@ -382,8 +406,15 @@ class ExecutiveConversationEngine:
         _cond_stalled = False
         _cond_planner_risks = False
         _cond_first_turn_active_projects = False
+        _guardian_status = (
+            (reasoning_output or {}).get("reasoning", {}).get("guardian_status", "pass")
+            if reasoning_output else "pass"
+        )
+        _root_asset_gate = _root_asset_creation_requested(query)
+        # الحاجة إلى موافقة قديمة لا توقف أمير. فقط إنشاء أصل جذري جديد يبقي
+        # هذه الحالة كطلب قرار للمالك؛ أما blocked فيبقى عائقًا تقنيًا صريحًا.
         _cond_guardian_not_pass = bool(
-            reasoning_output and reasoning_output.get("reasoning", {}).get("guardian_status") != "pass"
+            _guardian_status == "blocked" or (_guardian_status == "needs_approval" and _root_asset_gate)
         )
         _diag_log(
             "ece_sub_conditions",
@@ -395,12 +426,7 @@ class ExecutiveConversationEngine:
             cond_guardian_not_pass=_cond_guardian_not_pass,
         )
 
-        has_executive_signals = bool(
-            # A current request is interrupted only when its own guardian denies
-            # or requires final approval.  Persistent state is advisory and must
-            # never prevent internal build, design, write, test, push, or merge.
-            reasoning_output and reasoning_output.get("reasoning", {}).get("guardian_status") != "pass"
-        )
+        has_executive_signals = _cond_guardian_not_pass
 
         # DIAGNOSTIC-ONLY: log the computed decision and which path will be
         # taken, before the branch is executed. No behavior is affected.
@@ -498,10 +524,10 @@ class ExecutiveConversationEngine:
         if reasoning_output:
             reasoning = reasoning_output.get("reasoning", {})
             guardian_status = reasoning.get("guardian_status", "pass")
-            if guardian_status == "needs_approval":
+            if guardian_status == "needs_approval" and _root_asset_creation_requested(query):
                 guardian_reason = reasoning.get("guardian_reason", "")
                 reason_text = f" ({guardian_reason})" if guardian_reason else ""
-                parts.append(f"هذا الطلب يحتاج موافقتك قبل أن أتحرك{reason_text}. هل تمضي؟")
+                parts.append(f"إنشاء أصل رقمي مستقل جديد يحتاج موافقتك مرة واحدة{reason_text}. هل أبدأ؟")
                 return " ".join(parts).strip()
             if guardian_status == "blocked":
                 parts.append(

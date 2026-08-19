@@ -22,7 +22,7 @@ def test_external_work_is_delegated_to_ameer_not_founder():
     policy = worker_access_policy("engineering")
     assert policy["external_effect"]["enabled"] is True
     assert policy["external_effect"]["authority"] == "ameer"
-    assert policy["external_effect"]["approval"] == "ameer_orchestrated_delete_publish_gate"
+    assert policy["external_effect"]["approval"] == "ameer_orchestrated_root_asset_creation_gate"
 
 
 def test_workers_remain_orchestrated_by_ameer():

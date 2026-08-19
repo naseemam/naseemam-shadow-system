@@ -3,10 +3,9 @@ authorization_framework.py
 ==========================
 Complete Authorization Framework for Ameer
 
-Operations categorized by approval requirement:
-- INTERNAL_OPERATIONS: Execute immediately (read/write workspace, shell, analysis, GitHub branch/PR/push/merge)
-- DEPLOYMENT_OPERATIONS: Requires founder approval (Railway publish/deploy/rollback)
-- DESTRUCTIVE_OPERATIONS: Requires founder approval (delete)
+Operations categorized by delegated authority:
+- Existing assets: execute immediately after capability and scope validation.
+- New root site/program/system/repository: requires founder approval before creation.
 """
 
 from __future__ import annotations
@@ -17,6 +16,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, List
+
+from kernel.ameer_authority import requires_founder_approval
 
 
 class OperationType(Enum):
@@ -60,13 +61,9 @@ AUTHORIZATION_MATRIX = {
     (ResourceType.GOOGLE, OperationType.EXTERNAL): ApprovalLevel.NONE,
     (ResourceType.SLACK, OperationType.EXTERNAL): ApprovalLevel.NONE,
     (ResourceType.API, OperationType.EXTERNAL): ApprovalLevel.NONE,
-    # Deployment Operations - Founder approval
-    (ResourceType.RAILWAY, OperationType.DEPLOYMENT): ApprovalLevel.FOUNDER,
-    # Destructive Operations - Founder approval
-    (ResourceType.FILES, OperationType.DESTRUCTIVE): ApprovalLevel.FOUNDER,
-    (ResourceType.GITHUB, OperationType.DESTRUCTIVE): ApprovalLevel.FOUNDER,
-    (ResourceType.DATABASE, OperationType.DESTRUCTIVE): ApprovalLevel.FOUNDER,
-    (ResourceType.RAILWAY, OperationType.DESTRUCTIVE): ApprovalLevel.FOUNDER,
+    # Deployment and destructive actions remain delegated when they operate
+    # inside an existing approved asset. Root-asset creation is evaluated from
+    # the action and context by the central authority policy.
 }
 
 
@@ -122,10 +119,13 @@ class AuthorizationFramework:
         self,
         resource_type: ResourceType,
         operation_type: OperationType,
+        action: str = "",
+        context: Optional[Dict[str, Any]] = None,
     ) -> ApprovalLevel:
-        """Check if operation needs founder approval."""
-        key = (resource_type, operation_type)
-        return AUTHORIZATION_MATRIX.get(key, ApprovalLevel.FOUNDER)
+        """Check the only founder gate: creation of a new root asset."""
+        if requires_founder_approval(action, context):
+            return ApprovalLevel.FOUNDER
+        return ApprovalLevel.NONE
     
     def propose_operation(
         self,
@@ -137,7 +137,12 @@ class AuthorizationFramework:
         details: Optional[Dict[str, Any]] = None,
     ) -> PendingOperation:
         """Propose an operation and check if approval needed."""
-        approval_needed = self.check_approval_needed(resource_type, operation_type)
+        approval_needed = self.check_approval_needed(
+            resource_type,
+            operation_type,
+            action=action,
+            context=details,
+        )
         
         op = PendingOperation(
             resource_type=resource_type,

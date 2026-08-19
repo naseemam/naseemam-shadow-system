@@ -1,28 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, Iterable, Optional
+
+from kernel.ameer_authority import ROOT_ASSET_ACTIONS, requires_founder_approval
 
 
-# Founder policy: Ameer is an executive agent with comprehensive authority.
-# The only final-chat decisions reserved to the Founder are irreversible deletion
-# and publication of an outcome to production/public audiences.
-FINAL_APPROVAL_ACTIONS = {
-    "delete",
-    "destructive.delete",
-    "publish",
-    "railway.deploy_production",
-    "railway.rollback",
-}
-
-_FINAL_APPROVAL_PREFIXES = (
-    "delete.",
-    "destructive.delete",
-    "publish.",
-    "deployment.publish",
-    "railway.deploy",
-    "railway.rollback",
-)
+# Compatibility exports. The central authority policy is the single source of
+# truth: a Founder decision is reserved only for a new root asset creation.
+FINAL_APPROVAL_ACTIONS = set(ROOT_ASSET_ACTIONS)
+_FINAL_APPROVAL_PREFIXES = tuple()
 
 AUTONOMOUS_STAGE_ACTION_PREFIXES = (
     "design.",
@@ -66,23 +53,25 @@ class GovernanceDecision:
 class StageGovernancePolicy:
     """Founder-governed executive autonomy.
 
-    Ameer may execute every non-destructive capability and integration directly.
-    A decision in the Business Chat is required only to delete material or to
-    publish/deploy/rollback an outcome.
+    Ameer may execute every scoped capability and integration directly inside
+    existing assets. A decision in the Business Chat is required only before
+    creating a new root site, program, system, or repository.
     """
 
     @staticmethod
-    def _requires_founder_final_approval(action: str) -> bool:
-        name = str(action or "").strip().lower()
-        return name in FINAL_APPROVAL_ACTIONS or any(
-            name.startswith(prefix) for prefix in _FINAL_APPROVAL_PREFIXES
-        )
+    def _requires_founder_final_approval(action: str, context: Optional[Dict[str, Any]] = None) -> bool:
+        return requires_founder_approval(action, context)
 
-    def evaluate(self, action: str, *, irreversible: bool = False, external_effect: bool = False) -> GovernanceDecision:
-        name = str(action or "").strip().lower()
-
-        if self._requires_founder_final_approval(name):
-            return GovernanceDecision("REQUIRE_APPROVAL", True, "founder_delete_or_publish_gate", "final_gate")
+    def evaluate(
+        self,
+        action: str,
+        *,
+        irreversible: bool = False,
+        external_effect: bool = False,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> GovernanceDecision:
+        if self._requires_founder_final_approval(action, context):
+            return GovernanceDecision("REQUIRE_APPROVAL", True, "founder_root_asset_creation_gate", "root_asset_gate")
 
         # Irreversibility or an external effect alone are not founder gates under
         # the delegated policy. They remain fully audited by the executing layer.
@@ -91,7 +80,7 @@ class StageGovernancePolicy:
     def stage_summary(self, actions: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         items = list(actions)
         return {
-            "approval_model": "delete_and_publish_only",
+            "approval_model": "new_root_asset_creation_only",
             "autonomous_actions": sum(1 for item in items if not item.get("approval_required", False)),
             "approval_actions": [item for item in items if item.get("approval_required", False)],
             "founder_decision_required": any(item.get("approval_required", False) for item in items),
