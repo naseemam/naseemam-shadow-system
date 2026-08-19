@@ -184,6 +184,11 @@ class ExecutiveBrain:
     def __init__(self, normalize_fn=None):
         self._normalize = normalize_fn or (lambda x: x)
         self._openai_client = None
+        # Tracks the request_type of the last turn we answered, so that
+        # _build_provider_prompt() can detect an intent shift and avoid
+        # carrying forward stale conversation_context that would otherwise
+        # condition the provider toward repeating an outdated reply pattern.
+        self._last_request_type: Optional[str] = None
         self._single_brain_mode = os.getenv("AMEER_SINGLE_BRAIN", "1").lower() in {"1", "true", "yes", "on"}
         self._model_name = os.getenv("AMEER_MODEL", "gpt-4o-mini")
         self._ollama_host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
@@ -268,8 +273,34 @@ class ExecutiveBrain:
             "Never mention internal architecture, agents, or reasoning chains."
         )
 
+        # ── Current-Request Priority Block ──────────────────────────────────
+        # CRITICAL: the current message must always take absolute priority over
+        # any historical conversation pattern. Without this explicit signal the
+        # provider tends to be conditioned by the dominant historical block and
+        # repeats stale patterns instead of responding to the new intent.
+        current_request_block = (
+            "[ CRITICAL — الأولوية المطلقة للرسالة الحالية:\n"
+            f"الطلب الحالي هو: \"{prompt}\"\n"
+            "أجب على هذه الرسالة فقط. لا تكرر نمط الردود السابقة في سياق المحادثة أدناه — "
+            "هذا السياق تاريخي وللخلفية فقط، وليس القالب الذي يجب اتباعه.\n"
+            "إن تغيّر قصد المستخدم عن الرسالة السابقة، تجاهل النمط القديم تمامًا وابدأ من الطلب الحالي. ]"
+        )
+
+        # ── Intent-change safety check ───────────────────────────────────────
+        # If the newly perceived request type differs from the last one we
+        # answered, the historical conversation_context is likely to condition
+        # the model toward a stale pattern. In that case we drop the rolling
+        # history block entirely and let the current-request block dominate.
+        current_request_type = getattr(plan, "request_type", None) if plan else None
+        skip_history = (
+            current_request_type is not None
+            and self._last_request_type is not None
+            and current_request_type != self._last_request_type
+        )
+
         # ── Inject live context blocks ──────────────────────────────────────
-        context_parts: List[str] = []
+        # Order: current request (highest priority) > founder > active > history.
+        context_parts: List[str] = [current_request_block]
 
         if founder_context:
             context_parts.append(founder_context)
@@ -304,8 +335,16 @@ class ExecutiveBrain:
         if context_summary and context_summary != "لم يُكتشف ارتباط مباشر بمشاريع أخرى.":
             context_parts.append(f"[ ارتباطات المشروع: {context_summary} ]")
 
-        if conversation_context:
+        # History is only injected when the current intent has NOT shifted
+        # away from the last one we handled. On an intent change we deliberately
+        # drop the rolling conversation_context so the model cannot be
+        # conditioned by a no-longer-relevant pattern.
+        if conversation_context and not skip_history:
             context_parts.append(conversation_context)
+
+        # Remember this turn's request type so the NEXT call can detect a shift.
+        if current_request_type is not None:
+            self._last_request_type = current_request_type
 
         # ── Build user prompt ───────────────────────────────────────────────
         prefix = "\n\n".join(context_parts)
