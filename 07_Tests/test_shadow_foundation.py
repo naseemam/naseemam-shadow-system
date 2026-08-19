@@ -43,3 +43,12 @@ def test_customer_is_limited_to_public_store_scope(tmp_path: Path):
     assert public_read["allowed"] is True
     assert admin_read["allowed"] is False
     assert admin_read["reason"] == "no_project_assignment"
+
+
+def test_publish_execution_is_delegated_to_ameer_inside_existing_asset(tmp_path: Path):
+    foundation = ShadowFoundation(tmp_path)
+
+    decision = foundation.can("ameer", "ameer", "dream_al_nada_store", "publish.external", "external_effect")
+
+    assert decision["allowed"] is True
+    assert decision["approval"] == "ameer_policy"
