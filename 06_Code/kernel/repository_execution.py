@@ -131,6 +131,12 @@ class RepositoryPlanValidator(PlanValidator):
 
 
 class RepositoryExecutionAuthorization(ExecutionAuthorization):
+    # Lets ToolDispatcher defer path-level enforcement to this authorization
+    # layer when the live controlled-repository kernel is active.  The policy
+    # below still permits only the explicit repository surface and rejects
+    # secrets, CI, backups, traversal, and every unlisted path.
+    controlled_repository_scope = True
+
     def _file_read_scope_denial_reason(
         self,
         *,

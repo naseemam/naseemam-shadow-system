@@ -534,14 +534,21 @@ class ToolDispatcher:
             return Path(executor_root).resolve()
         return None
 
-    @staticmethod
-    def _resolve_scope_root(tool_def: Any, workspace_root: Optional[Path]) -> Optional[Path]:
+    def _resolve_scope_root(self, tool_def: Any, workspace_root: Optional[Path]) -> Optional[Path]:
         if workspace_root is None:
             return None
         input_policy = getattr(tool_def, "input_policy", {})
         scope_root = input_policy.get("scope_root")
         if not isinstance(scope_root, str) or not scope_root.strip():
             return None
+
+        # The delivery bootstrap installs RepositoryExecutionAuthorization for
+        # changes to the live, controlled repository surface.  In that mode the
+        # authorization layer performs the stricter allow-list check; limiting
+        # the dispatcher to the preview workspace first incorrectly blocks
+        # valid UI edits such as 09_Assets/web/index.html.
+        if getattr(self._execution_authorization, "controlled_repository_scope", False):
+            return workspace_root.resolve()
         return (workspace_root / scope_root).resolve()
 
     @staticmethod
