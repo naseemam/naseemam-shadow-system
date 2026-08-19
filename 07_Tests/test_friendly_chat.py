@@ -20,3 +20,23 @@ def test_friendly_chat_is_separate_and_non_executing(tmp_path):
     blocked_payload = blocked.json()
     assert blocked_payload["status"] == "room_switch_required"
     assert blocked_payload["execution"]["started"] is False
+
+
+def test_friendly_personal_calls_do_not_return_execution_follow_up(tmp_path):
+    os.environ["AMEER_DATA_DIR"] = str(tmp_path)
+    from fastapi.testclient import TestClient
+    from ameer_server import app
+
+    client = TestClient(app)
+    for query, expected in (
+        ("أمير", "نعم، أنا معك"),
+        ("أميري", "نعم، أنا معك"),
+        ("ايش تكمل انا هنا اناديك", "معك حق"),
+    ):
+        response = client.post("/friendly-chat", json={"query": query, "room": "friendly"})
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["status"] == "completed"
+        assert expected in payload["reply"]
+        assert "أكمل على هذا" not in payload["reply"]
+        assert payload["execution"]["started"] is False
