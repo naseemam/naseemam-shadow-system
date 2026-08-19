@@ -27,6 +27,22 @@ def test_business_chat_worker_marker_resolves_design_worker():
     assert ameer_server._requested_worker_id("صمم واجهة جميلة") == ""
 
 
+def test_business_chat_auto_routes_specialist_analysis():
+    import ameer_server
+
+    assert ameer_server._select_worker_id("حلل واجهة محادثة الأعمال") == ("design", "automatic")
+    assert ameer_server._select_worker_id("راجع بيانات المخزون والحجوزات") == ("store", "automatic")
+    assert ameer_server._select_worker_id("ابحث عن مقارنة بين حلول الواجهة") == ("research", "automatic")
+    assert ameer_server._select_worker_id("حلل متطلبات امتثال تخصصية للمشروع") == ("specialist", "automatic")
+
+
+def test_business_chat_auto_routing_does_not_replace_kernel_execution():
+    import ameer_server
+
+    assert ameer_server._select_worker_id("أنشئ موقعًا لحلم الندى") == ("", "")
+    assert ameer_server._select_worker_id("اختبر كود الواجهة") == ("", "")
+
+
 def test_worker_runtime_dispatch_creates_traceable_run(tmp_path: Path):
     runtime = WorkerRuntimeRegistry(tmp_path)
     runtime.register_runtime("design", provider="test", model="test-model", adapter="test-adapter", status="ready")

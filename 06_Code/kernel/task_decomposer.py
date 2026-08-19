@@ -138,6 +138,8 @@ AEX1_INTENT_SPECS = {
 
 _REPOSITORY_REVIEW_MARKERS = [
     "راجع المستودع", "مراجعة المستودع", "راجع الكود", "حلل المستودع",
+    "راجع حالة النظام", "راجع وضع النظام", "راجع حالة المشروع", "راجع وضع المشروع",
+    "افحص حالة المشروع", "افحص حالة النظام", "تحقق من حالة المشروع", "تحقق من حالة النظام",
     "repository review", "review repository", "review the repo", "audit repository",
 ]
 _CODE_EDIT_MARKERS = [
