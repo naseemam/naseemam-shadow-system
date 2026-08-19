@@ -58,3 +58,19 @@ def test_shadow_ui_uses_live_operational_data_and_separate_local_history():
         "localStorage",
     ):
         assert required in html
+
+
+def test_admin_exposes_delegated_authority_and_delivery_evidence():
+    html = _html()
+    for required in (
+        "صلاحيات تنفيذية شاملة",
+        "الحذف النهائي",
+        "النشر/التراجع عن النشر",
+        "سياسة الصلاحيات #82",
+        "تشغيل العمال #83",
+        "https://github.com/naseemam/naseemam-shadow-system/pull/82",
+        "https://github.com/naseemam/naseemam-shadow-system/pull/83",
+        "https://railway.com/project/741a4d8c-47ca-4d34-9efa-084a686d3465/service/f6286e23-63b0-48a3-8c33-28d8696f4968",
+        "railwayBuild",
+    ):
+        assert required in html
