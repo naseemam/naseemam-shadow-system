@@ -22,9 +22,9 @@ __pycache__/
 *.py[cod]
 *.log
 *.md
-# Keep requirements.txt so Nixpacks can detect and build the Python service.
-!requirements.txt
 *.txt
+# This exception must follow *.txt so Nixpacks receives the Python dependencies.
+!requirements.txt
 *.png
 *.webp
 
