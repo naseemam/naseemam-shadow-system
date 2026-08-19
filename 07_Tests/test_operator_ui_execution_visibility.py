@@ -120,3 +120,10 @@ def test_admin_exposes_delegated_authority_and_delivery_evidence():
         "railwayBuild",
     ):
         assert required in html
+
+
+def test_business_chat_states_root_asset_gates_without_legacy_delete_or_publish_copy():
+    html = _html()
+
+    assert "تظهر بطاقة القرار فقط عند طلب إنشاء موقع أو برنامج أو نظام أو مستودع مستقل جديد." in html
+    assert "الحذف والنشر يظهران كبطاقة قرار هنا." not in html
