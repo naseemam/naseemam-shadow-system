@@ -1,7 +1,7 @@
-import tempfile
 from pathlib import Path
 
 import sys
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "06_Code"))
@@ -14,10 +14,6 @@ def _stage(trace):
     return trace["pipeline"][0]["stage"]
 
 
-def _result_data(trace):
-    return trace["final"]["results"][0]["data"]
-
-
 def test_design_website_phrase_is_internal_execution_intent():
     result = TaskDecomposer(ROOT).decompose("صمم موقعاً حديثاً للمركز")
     assert result["intent"] == "build_website"
@@ -25,7 +21,7 @@ def test_design_website_phrase_is_internal_execution_intent():
     assert result["requires_approval"] is False
 
 
-def test_delete_requires_chat_final_approval_then_deletes_exact_saved_file():
+def test_delete_inside_existing_asset_executes_without_chat_final_approval():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         target = root / "09_Assets" / "web" / "removable.txt"
@@ -33,18 +29,14 @@ def test_delete_requires_chat_final_approval_then_deletes_exact_saved_file():
         target.write_text("delete me", encoding="utf-8")
         agent = ExpandedAgentExecutiveKernel(root)
 
-        pending = agent.execute_command("احذف ملف 09_Assets/web/removable.txt")
-        assert _stage(pending) == "final_approval"
-        approval = _result_data(pending)["approval"]
-        assert target.exists()
+        trace = agent.execute_command("احذف ملف 09_Assets/web/removable.txt")
 
-        completed = agent.resolve_chat_approval(approval["approval_id"], decision="approve")
-        assert _stage(completed) == "final_approval_execute"
-        assert completed["final"]["accepted"] is True
+        assert _stage(trace) == "delete"
+        assert trace["final"]["accepted"] is True
         assert not target.exists()
 
 
-def test_deploy_requires_chat_final_approval_and_replays_saved_command():
+def test_deploy_inside_existing_asset_executes_without_chat_final_approval():
     with tempfile.TemporaryDirectory() as tmp:
         agent = ExpandedAgentExecutiveKernel(tmp)
         calls = []
@@ -52,13 +44,10 @@ def test_deploy_requires_chat_final_approval_and_replays_saved_command():
             "status": "completed", "action": action, "deployment_id": "dep-1", "completed": 1
         }
 
-        pending = agent.execute_command("انشر على Railway")
-        assert _stage(pending) == "final_approval"
-        approval = _result_data(pending)["approval"]
-        assert calls == []
+        trace = agent.execute_command("انشر على Railway")
 
-        completed = agent.resolve_chat_approval(approval["approval_id"], decision="approve")
-        assert _stage(completed) == "final_approval_execute"
+        assert _stage(trace) == "delivery_action"
+        assert trace["final"]["accepted"] is True
         assert calls == [("deploy", "انشر على Railway")]
 
 

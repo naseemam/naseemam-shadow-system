@@ -37,8 +37,8 @@ ROLES: Dict[str, Dict[str, Any]] = {
 }
 
 DEFAULT_POLICIES: Dict[str, Dict[str, Any]] = {
-    # Founder-delegated executive authority.  Publication stays founder-final;
-    # all other project and integration operations belong to Ameer.
+    # Founder-delegated executive authority. Publication is autonomous within
+    # existing shadow assets; only creating a new root asset asks the founder.
     "shadow.admin": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "ameer_policy"},
     "project.read": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "ameer_policy"},
     "project.write": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "ameer_policy"},
@@ -47,7 +47,7 @@ DEFAULT_POLICIES: Dict[str, Dict[str, Any]] = {
     "trading.observe": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "ameer_policy"},
     "trading.propose": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "ameer_policy"},
     "trading.execute": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "ameer_policy"},
-    "publish.external": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "founder_final"},
+    "publish.external": {"read": True, "write": True, "execute_internal": True, "external_effect": True, "approval": "ameer_policy"},
 }
 
 

@@ -166,7 +166,7 @@ class ExpandedAgentOperations:
 
 
 class ExpandedAgentExecutiveKernel(AgentExecutiveKernel):
-    """Ameer as an executive agent with founder approval only for delete/deploy."""
+    """Ameer executes inside existing shadow assets without per-action founder gates."""
 
     _DELETE_RE = re.compile(r"^(?:احذف|أحذف|امسح|أمسح|delete|remove)\s+(?:ملف\s+)?(.+?)\s*$", re.IGNORECASE)
     _DEPLOYMENT_ACTIONS = {"deploy", "merge_and_deploy", "rollback"}
@@ -182,10 +182,10 @@ class ExpandedAgentExecutiveKernel(AgentExecutiveKernel):
         base = self.agent_ops.capabilities()
         base["domains"].update(self.expanded_ops.capabilities())
         base["approval_model"] = {
-            "mode": "chat_final_gate",
+            "mode": "shadow_root_asset_gate",
             "autonomous_inside_stage": True,
             "founder_final_authority": True,
-            "founder_approval_actions": ["delete", "deploy", "publish", "rollback"],
+            "founder_approval_actions": ["create_site", "create_program", "create_system", "create_repository"],
             "pending_final_approvals": len(self.final_gate.pending()),
         }
         return base
@@ -250,13 +250,15 @@ class ExpandedAgentExecutiveKernel(AgentExecutiveKernel):
                 "reason": "delete_target_missing_or_not_file",
                 "message": "لم أجد ملفًا صالحًا للحذف داخل النطاق المعتمد.",
             })
-        req = self.final_gate.create(
-            "delete",
-            command,
-            summary=f"حذف الملف: {target}",
-            metadata={"target": target, "bytes": path.stat().st_size},
-        )
-        return self._approval_trace(req)
+        bytes_deleted = path.stat().st_size
+        path.unlink()
+        return self._trace("delete", {
+            "status": "completed",
+            "action": "delete",
+            "target": target,
+            "bytes_deleted": bytes_deleted,
+            "message": f"تم حذف {target} ضمن التفويض التنفيذي لأمير.",
+        })
 
     def _execute_delete(self, req: Dict[str, Any]) -> Dict[str, Any]:
         target = str((req.get("metadata") or {}).get("target") or "").strip()
@@ -272,7 +274,7 @@ class ExpandedAgentExecutiveKernel(AgentExecutiveKernel):
             "action": "delete",
             "target": target,
             "bytes_deleted": bytes_deleted,
-            "message": f"تم حذف {target} بعد موافقة المؤسس.",
+            "message": f"تم حذف {target} ضمن التفويض التنفيذي لأمير.",
         }
 
     def resolve_chat_approval(self, approval_id: str, *, decision: str, approved_by: str = "founder") -> Dict[str, Any]:
@@ -307,12 +309,8 @@ class ExpandedAgentExecutiveKernel(AgentExecutiveKernel):
 
         delivery_action = self.delivery.detect(command)
         if delivery_action in self._DEPLOYMENT_ACTIONS:
-            req = self.final_gate.create(
-                delivery_action,
-                command,
-                summary="موافقة المؤسس مطلوبة قبل النشر أو التراجع عن النشر على Railway.",
-            )
-            return self._approval_trace(req)
+            delivery_result = self.delivery.execute(delivery_action, command)
+            return self._trace("delivery_action", delivery_result)
 
         # Push, branch, pull-request, and merge are deliberate executive GitHub
         # operations. They remain traceable but do not need a founder gate.
