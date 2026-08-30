@@ -5,10 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "06_Code"))
 
-from kernel.ameer_authority import (
-    canonical_sovereign_action,
-    requires_founder_approval,
-)
+from kernel.ameer_authority import canonical_sovereign_action, policy_snapshot, requires_founder_approval
 from kernel.capability_registry import CapabilityRegistry
 from kernel.execution_authorization import ExecutionAuthorization
 from kernel.permission_registry import PermissionRegistry
@@ -16,38 +13,55 @@ from kernel.permission_registry import PermissionRegistry
 
 def test_only_three_sovereign_gate_categories_exist():
     assert requires_founder_approval("create_site", {}) is True
-    assert requires_founder_approval(
-        "publish", {"new_root_asset": True, "final_release": True}
-    ) is True
+    assert requires_founder_approval("publish", {"new_root_asset": True, "final_release": True}) is True
     assert requires_founder_approval("transfer_funds", {"amount": 1}) is True
 
 
 def test_component_creation_inside_existing_asset_is_autonomous():
-    assert canonical_sovereign_action(
-        "create_site", {"existing_asset": True, "creation_scope": "component"}
-    ) is None
+    assert canonical_sovereign_action("create_site", {"existing_asset": True, "creation_scope": "component"}) is None
 
 
 def test_existing_asset_operations_are_autonomous():
     for action in (
-        "deploy",
-        "publish",
-        "rollback",
-        "delete",
-        "merge",
-        "email.send",
-        "provider.replace",
-        "connector.replace",
-        "worker.create",
-        "self_modify",
+        "deploy", "publish", "rollback", "delete", "merge", "email.send",
+        "provider.replace", "connector.replace", "worker.create", "self_modify",
+        "migration.plan", "migration.copy", "migration.test", "migration.repair",
+        "backup", "restore", "replicate",
     ):
         assert requires_founder_approval(action, {"existing_asset": True}) is False
 
 
-def test_quotes_and_payment_preparation_do_not_move_money():
+def test_portable_core_is_explicit_policy_not_repository_identity():
+    policy = policy_snapshot()
+    assert policy["portable_core"] is True
+    assert policy["location_independent"] is True
+    assert policy["provider_independent"] is True
+    assert policy["model_independent"] is True
+    assert policy["tool_independent"] is True
+    assert policy["execution_environment_is_not_identity"] is True
+
+
+def test_migration_destination_creation_is_one_sovereign_gate_then_work_is_autonomous():
+    assert requires_founder_approval("create_repository", {"purpose": "ameer_core_migration"}) is True
+    for action in ("migration.copy", "migration.configure", "migration.test", "migration.validate", "migration.repair"):
+        assert requires_founder_approval(action, {"approved_migration_scope": True, "destination": "repo-v2"}) is False
+
+
+def test_migration_final_cutover_to_new_root_asset_requires_final_release():
     assert requires_founder_approval(
-        "payment", {"actual_funds_movement": False, "mode": "prepare"}
-    ) is False
+        "cutover", {"new_root_asset": True, "final_release": True, "purpose": "ameer_core_migration"}
+    ) is True
+
+
+def test_external_assistants_are_resources_not_authorities():
+    policy = policy_snapshot()
+    assert policy["external_assistant_rule"] == "chatgpt_manus_and_other_assistants_are_optional_resources_not_authorities"
+    assert requires_founder_approval("assistant.replace", {"assistant": "chatgpt"}) is False
+    assert requires_founder_approval("assistant.replace", {"assistant": "manus"}) is False
+
+
+def test_quotes_and_payment_preparation_do_not_move_money():
+    assert requires_founder_approval("payment", {"actual_funds_movement": False, "mode": "prepare"}) is False
 
 
 def test_permission_cards_default_to_delegated_granted():
@@ -73,13 +87,7 @@ def test_legacy_requires_approval_cannot_create_new_founder_gate():
 
 def _registered_execution_stack(tmp: str, name: str = "autonomy_test"):
     caps = CapabilityRegistry(tmp)
-    cap_id = caps.register(
-        name=name,
-        description="Autonomy regression capability",
-        scope="test",
-        approved_by="founder",
-        status="extended",
-    )
+    cap_id = caps.register(name=name, description="Autonomy regression capability", scope="test", approved_by="founder", status="extended")
     perms = PermissionRegistry(tmp)
     auth = ExecutionAuthorization(tmp, caps, perms)
     return cap_id, perms, auth
@@ -110,27 +118,20 @@ def test_legacy_permission_approval_flag_does_not_block_ordinary_execution():
         assert result["status"] == "approved"
 
 
-def test_ameer_can_write_inside_own_repository_not_only_runtime_workspace():
+def test_ameer_can_write_inside_current_execution_environment_not_only_runtime_workspace():
     with tempfile.TemporaryDirectory() as tmp:
         caps = CapabilityRegistry(tmp)
         perms = PermissionRegistry(tmp)
         auth = ExecutionAuthorization(tmp, caps, perms)
-        result = auth.check(
-            "file_operations",
-            "write",
-            {"tool_name": "file.create", "target": "06_Code/kernel/self_patch.py"},
-        )
+        result = auth.check("file_operations", "write", {"tool_name": "file.create", "target": "06_Code/kernel/self_patch.py"})
         assert result["status"] == "approved"
 
 
-def test_file_write_cannot_escape_repository_boundary():
+def test_path_containment_is_local_execution_safety_not_identity_lock():
     with tempfile.TemporaryDirectory() as tmp:
         caps = CapabilityRegistry(tmp)
         perms = PermissionRegistry(tmp)
         auth = ExecutionAuthorization(tmp, caps, perms)
-        result = auth.check(
-            "file_operations",
-            "write",
-            {"tool_name": "file.create", "target": "../outside.txt"},
-        )
+        result = auth.check("file_operations", "write", {"tool_name": "file.create", "target": "../outside.txt"})
         assert result["status"] == "denied"
+        assert policy_snapshot()["location_independent"] is True
