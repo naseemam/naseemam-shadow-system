@@ -74,8 +74,6 @@ def classify_interaction_mode(text: str, *, previous_goal: str = "") -> Interact
     continuation = _contains_any(q, _CONTINUATION)
     correction = _contains_any(q, _CORRECTION)
 
-    # Explicit requests for a plan or suggestion remain non-executing unless the
-    # same turn also explicitly asks Ameer to carry the work out.
     planning = _contains_any(q, _PLANNING)
     suggestion = _contains_any(q, _SUGGESTION)
     decision = _contains_any(q, _DECISION)
@@ -100,8 +98,6 @@ def classify_interaction_mode(text: str, *, previous_goal: str = "") -> Interact
             reason="founder_requests_result_correction",
         )
 
-    # Planning/suggestion wording has priority only when the Founder did not also
-    # issue an explicit execution verb such as نفذ/طبق/سوي.
     if planning and not execution:
         return InteractionMode("planning", 0.95, False, reason="explicit_planning_request")
     if suggestion and not execution:
@@ -139,8 +135,6 @@ def reconcile_classifier(
     overridden = founder_mode.mode in protected_modes and proposed in non_execution_modes
     effective = founder_mode.mode if overridden or not proposed else proposed
 
-    # A classifier is never allowed to manufacture execution where the Founder
-    # explicitly requested only planning/suggestion.
     if founder_mode.mode in {"planning", "suggestion"} and proposed in protected_modes:
         effective = founder_mode.mode
         overridden = True
@@ -153,4 +147,6 @@ def reconcile_classifier(
         "classifier_overridden": overridden,
         "semantic_authority": "founder_directive",
         "reason": founder_mode.reason,
+        "speech_style_restricted": False,
+        "friendly_conversation_may_remain_free_form": True,
     }
