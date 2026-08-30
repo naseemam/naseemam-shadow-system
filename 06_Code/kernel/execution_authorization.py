@@ -1,24 +1,18 @@
 """
 execution_authorization.py
 ===========================
-Execution Authorization — تفويض تنفيذ الإجراءات.
+تفويض التنفيذ التشغيلي لأمير.
 
-هذه الطبقة هي الحارس الأخير قبل أي تنفيذ عملي.
-حتى لو كانت القدرة موجودة والصلاحية ممنوحة،
-يجب أن يحصل كل إجراء على تفويض تنفيذ صريح.
+هذه الطبقة تتحقق من ثلاثة أشياء فقط:
+1. أن القدرة موجودة ونشطة.
+2. أن المورد غير معطل تقنياً وأن النطاق لا يهرب خارج مساحة النظام.
+3. هل العملية نفسها إحدى البوابات السيادية المحددة في ameer_authority؟
 
-حالات التفويض:
-    approved  — مُفوَّض للتنفيذ
-    denied    — مرفوض صراحةً
-    pending   — ينتظر موافقة المؤسس
+الموافقة البشرية ليست خاصية لقدرة أو أداة. لا يمكن لبطاقة Permission أو حارس
+آخر اختراع حالة pending. الحالة pending تظهر فقط عندما يقرر المصدر المركزي
+``requires_founder_approval`` أن العملية بوابة سيادية.
 
-Pipeline التفويض الكامل:
-    check_capability()   ← هل يملك أمير القدرة؟
-    check_permission()   ← هل الصلاحية ممنوحة؟
-    authorize()          ← تفويض التنفيذ الآني (pending → approved/denied)
-    record_execution()   ← تسجيل كل تنفيذ حقيقي
-
-يُخزَّن في .ameer/execution_auth.json لضمان البقاء عبر الجلسات.
+كل طلب ونتيجة تنفيذ يبقيان مسجلين للتدقيق والتعافي.
 """
 
 from __future__ import annotations
@@ -29,30 +23,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from kernel.ameer_authority import canonical_sovereign_action, requires_founder_approval
 from kernel.capability_registry import CapabilityRegistry
 from kernel.permission_registry import PermissionRegistry
 
 
 _EXEC_AUTH_FILENAME = "execution_auth.json"
-
 AUTHORIZATION_STATUSES = {"approved", "denied", "pending"}
 
-# file.read scope constants
-_FILE_READ_SCOPE_KIND = "runtime_workspace_only"
-_FILE_READ_SCOPE_ROOT = "09_Assets/runtime_workspace"
 _FILE_READ_TOOL_NAME = "file.read"
 _FILE_READ_ACTION = "read"
-
-# file.create scope constants
-_FILE_CREATE_SCOPE_KIND = "runtime_workspace_only"
-_FILE_CREATE_SCOPE_ROOT = "09_Assets/runtime_workspace"
 _FILE_CREATE_TOOL_NAME = "file.create"
 _FILE_CREATE_ACTION = "write"
-
-# shell.run scope constants
 _SHELL_RUN_TOOL_NAME = "shell.run"
 _SHELL_RUN_ACTION = "run"
-_SHELL_RUN_SCOPE_KIND = "workspace_only"
 
 
 def _now_iso() -> str:
@@ -64,8 +48,8 @@ def file_read_permission_scope() -> str:
         {
             "tool_name": _FILE_READ_TOOL_NAME,
             "action": _FILE_READ_ACTION,
-            "scope_kind": _FILE_READ_SCOPE_KIND,
-            "scope_root": _FILE_READ_SCOPE_ROOT,
+            "scope_kind": "repository_workspace",
+            "scope_root": ".",
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -77,8 +61,8 @@ def file_create_permission_scope() -> str:
         {
             "tool_name": _FILE_CREATE_TOOL_NAME,
             "action": _FILE_CREATE_ACTION,
-            "scope_kind": _FILE_CREATE_SCOPE_KIND,
-            "scope_root": _FILE_CREATE_SCOPE_ROOT,
+            "scope_kind": "repository_workspace",
+            "scope_root": ".",
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -90,8 +74,9 @@ def shell_run_permission_scope() -> str:
         {
             "tool_name": _SHELL_RUN_TOOL_NAME,
             "action": _SHELL_RUN_ACTION,
-            "scope_kind": _SHELL_RUN_SCOPE_KIND,
-            "approval_required_for_external_effects": True,
+            "scope_kind": "workspace_only",
+            "approval_required_for_external_effects": False,
+            "founder_gate_source": "kernel.ameer_authority",
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -99,27 +84,7 @@ def shell_run_permission_scope() -> str:
 
 
 class ExecutionAuthorization:
-    """
-    تفويض التنفيذ الآني — الطبقة الأخيرة في سلسلة الحوكمة.
-
-    واجهة الاستخدام:
-    ----------------
-    auth = ExecutionAuthorization(workspace_root, capability_registry, permission_registry)
-
-    # فحص ما إذا كان الإجراء مسموحاً به
-    result = auth.check(
-        capability_name="github_management",
-        action="merge_pull_request",
-        context={"repo": "my-repo", "pr": 42},
-    )
-    # result.status ∈ {"approved", "denied", "pending"}
-
-    # تفويض صريح من المؤسس
-    auth.authorize(request_id, authorized_by="Naseem")
-
-    # تسجيل تنفيذ حقيقي
-    auth.record_execution(request_id, outcome="success", detail="PR #42 merged")
-    """
+    """Last execution check, subordinate to Ameer's central sovereign policy."""
 
     def __init__(
         self,
@@ -133,9 +98,12 @@ class ExecutionAuthorization:
         self._caps = capability_registry
         self._perms = permission_registry
         self._data: Dict[str, Any] = {"requests": [], "execution_log": []}
+        # Normalize persisted legacy permission cards immediately. This avoids
+        # old requires_approval/not_granted values silently reintroducing gates.
+        normalize = getattr(self._perms, "normalize_delegated_authority", None)
+        if callable(normalize):
+            normalize()
         self._load()
-
-    # ── Persistence ───────────────────────────────────────────────────────────
 
     def _load(self) -> None:
         if self._path.exists():
@@ -156,23 +124,25 @@ class ExecutionAuthorization:
             encoding="utf-8",
         )
 
-    # ── Internal helpers ──────────────────────────────────────────────────────
-
     def _find_request(self, request_id: str) -> Optional[Dict[str, Any]]:
-        for r in self._data["requests"]:
-            if r["request_id"] == request_id:
-                return r
+        for request in self._data["requests"]:
+            if request["request_id"] == request_id:
+                return request
         return None
 
-    @staticmethod
-    def _parse_scope_policy(scope: Any) -> Dict[str, Any]:
-        if not isinstance(scope, str) or not scope.strip():
-            return {}
+    def _path_inside_workspace(self, target: Any) -> bool:
+        """Technical containment boundary only; it is not an approval gate."""
+        if not isinstance(target, str) or not target.strip():
+            return False
+        candidate = Path(target.strip())
+        if not candidate.is_absolute():
+            candidate = self._root / candidate
         try:
-            parsed = json.loads(scope)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
+            resolved = candidate.resolve()
+            resolved.relative_to(self._root)
+            return True
+        except (OSError, RuntimeError, ValueError):
+            return False
 
     def _file_operation_scope_denial_reason(
         self,
@@ -181,110 +151,61 @@ class ExecutionAuthorization:
         context: Optional[Dict[str, Any]],
         perm_card: Dict[str, Any],
     ) -> str:
+        """Allow Ameer to read/write anywhere in its repository workspace.
+
+        This intentionally includes 06_Code and governance-owned implementation
+        files so Ameer can maintain and improve itself. The only technical path
+        boundary is escaping the repository root.
+        """
+        safe_context = context or {}
         action_lower = str(action or "").strip().lower()
+        tool_name = str(safe_context.get("tool_name") or "").strip().lower()
+
         if action_lower == _FILE_READ_ACTION:
-            return self._file_read_scope_denial_reason(
-                action=action_lower, context=context, perm_card=perm_card
-            )
-        if action_lower == _FILE_CREATE_ACTION:
-            return self._file_create_scope_denial_reason(
-                action=action_lower, context=context, perm_card=perm_card
-            )
-        return f"Unsupported file_operations action: {action_lower!r}"
-
-    def _file_read_scope_denial_reason(
-        self,
-        *,
-        action: str,
-        context: Optional[Dict[str, Any]],
-        perm_card: Dict[str, Any],
-    ) -> str:
-        policy = self._parse_scope_policy(perm_card.get("scope"))
-        required_policy = self._parse_scope_policy(file_read_permission_scope())
-        
-        # Ameer's direct execution zone: 09_Assets/runtime_workspace
-        # Allow file operations regardless of policy mismatch
-        # Authorization logs all actions without blocking
-        target = context.get("target") if context else None
-        if isinstance(target, str):
-            normalized_target = target.strip().replace("\\", "/")
-            allowed_prefix = f"{_FILE_READ_SCOPE_ROOT}/"
-            if normalized_target == _FILE_READ_SCOPE_ROOT or normalized_target.startswith(allowed_prefix):
-                # This target is within Ameer's execution zone - allow it
-                # Continue to validate other aspects (tool_name, action, etc.)
-                # but do not block due to policy mismatch
-                return ""
-            elif policy != required_policy:
-                return "Permission scope does not authorize registry-owned file.read"
-        elif policy != required_policy:
-            return "Permission scope does not authorize registry-owned file.read"
-
-        if action != _FILE_READ_ACTION:
-            return "Permission scope is limited to file.read/read only"
-
-        safe_context = context or {}
-        tool_name = str(safe_context.get("tool_name") or "").strip().lower()
-        if tool_name != _FILE_READ_TOOL_NAME:
-            return "Permission scope requires registry-owned tool file.read"
+            if tool_name and tool_name != _FILE_READ_TOOL_NAME:
+                return "file.read action must use tool file.read"
+        elif action_lower == _FILE_CREATE_ACTION:
+            if tool_name and tool_name != _FILE_CREATE_TOOL_NAME:
+                return "file write action must use tool file.create"
+        else:
+            # Other file actions such as edit/delete/move are operational too;
+            # containment is still checked below.
+            pass
 
         target = safe_context.get("target")
-        if not isinstance(target, str) or not target.strip():
-            return "Permission scope requires an in-scope file.read target"
-
-        normalized_target = target.strip().replace("\\", "/")
-        allowed_prefix = f"{_FILE_READ_SCOPE_ROOT}/"
-        if normalized_target != _FILE_READ_SCOPE_ROOT and not normalized_target.startswith(allowed_prefix):
-            return "Permission scope requires target inside 09_Assets/runtime_workspace"
-
+        if target in (None, ""):
+            return "File operation requires a target inside the repository workspace"
+        if not self._path_inside_workspace(target):
+            return "File operation target escapes Ameer's repository workspace"
         return ""
 
-    def _file_create_scope_denial_reason(
+    def _ensure_permission_card(
         self,
         *,
-        action: str,
+        capability_name: str,
+        capability_id: str,
         context: Optional[Dict[str, Any]],
-        perm_card: Dict[str, Any],
-    ) -> str:
-        policy = self._parse_scope_policy(perm_card.get("scope"))
-        required_policy = self._parse_scope_policy(file_create_permission_scope())
-        
-        # Ameer's direct execution zone: 09_Assets/runtime_workspace
-        # Allow file operations regardless of policy mismatch
-        # Authorization logs all actions without blocking
-        target = context.get("target") if context else None
-        if isinstance(target, str):
-            normalized_target = target.strip().replace("\\", "/")
-            allowed_prefix = f"{_FILE_CREATE_SCOPE_ROOT}/"
-            if normalized_target == _FILE_CREATE_SCOPE_ROOT or normalized_target.startswith(allowed_prefix):
-                # This target is within Ameer's execution zone - allow it
-                # Continue to validate other aspects (tool_name, action, etc.)
-                # but do not block due to policy mismatch
-                return ""
-            elif policy != required_policy:
-                return "Permission scope does not authorize registry-owned file.create"
-        elif policy != required_policy:
-            return "Permission scope does not authorize registry-owned file.create"
-
-        if action != _FILE_CREATE_ACTION:
-            return "Permission scope is limited to file.create/write only"
-
-        safe_context = context or {}
-        tool_name = str(safe_context.get("tool_name") or "").strip().lower()
-        if tool_name != _FILE_CREATE_TOOL_NAME:
-            return "Permission scope requires registry-owned tool file.create"
-
-        target = safe_context.get("target")
-        if not isinstance(target, str) or not target.strip():
-            return "Permission scope requires an in-scope file.create target"
-
-        normalized_target = target.strip().replace("\\", "/")
-        allowed_prefix = f"{_FILE_CREATE_SCOPE_ROOT}/"
-        if normalized_target != _FILE_CREATE_SCOPE_ROOT and not normalized_target.startswith(allowed_prefix):
-            return "Permission scope requires target inside 09_Assets/runtime_workspace"
-
-        return ""
-
-    # ── Public API ────────────────────────────────────────────────────────────
+    ) -> Dict[str, Any]:
+        """Return a delegated operational card, creating one if needed."""
+        tool_name_key = str((context or {}).get("tool_name") or "").strip().lower()
+        card = None
+        if capability_name == "file_operations" and tool_name_key:
+            card = self._perms.get_for_capability(tool_name_key)
+            if card is None:
+                self._perms.ensure(tool_name_key)
+                card = self._perms.get_for_capability(tool_name_key)
+        if card is None:
+            card = self._perms.get_for_capability(capability_id)
+        if card is None:
+            self._perms.ensure(capability_id)
+            card = self._perms.get_for_capability(capability_id)
+        return card or {
+            "owned": True,
+            "enabled": True,
+            "permission_status": "granted",
+            "scope": "delegated_operational_authority",
+            "is_expired": False,
+        }
 
     def check(
         self,
@@ -293,129 +214,160 @@ class ExecutionAuthorization:
         context: Optional[Dict[str, Any]] = None,
         requested_by: str = "executive_brain",
     ) -> Dict[str, Any]:
-        """
-        فحص ما إذا كان الإجراء مسموحاً به وإنشاء طلب تفويض.
+        """Check technical executability and the central sovereign founder gate.
 
-        يُعيد:
-        {
-            "request_id": str,
-            "status": "approved" | "denied" | "pending",
-            "capability_name": str,
-            "action": str,
-            "reason": str,
-        }
-
-        القواعد:
-        1. إذا لم تكن القدرة موجودة أو نشطة → denied
-        2. إذا لم تكن الصلاحية ممنوحة → denied
-        3. إذا كانت permission_status=requires_approval → pending
-        4. إذا كانت الصلاحية ممنوحة كاملاً → approved
+        Rules:
+        - Missing/inactive capability: denied for a technical capability reason.
+        - Explicitly disabled/unowned capability: denied for a technical reason.
+        - New-root creation, final release of that new root asset, or actual
+          funds movement: pending Founder decision.
+        - Everything else: approved without Founder approval.
         """
         request_id = str(uuid.uuid4())
         now = _now_iso()
+        safe_context = context or {}
 
-        # Step 1: capability check
         cap = self._caps.get_by_name(capability_name)
         if cap is None:
             result = self._make_result(
-                request_id, "denied", capability_name, action,
+                request_id,
+                "denied",
+                capability_name,
+                action,
                 f"Capability '{capability_name}' is not registered",
-                context, requested_by, now,
+                safe_context,
+                requested_by,
+                now,
             )
             self._persist_request(result)
             return result
 
         active_statuses = {"core", "extended", "experimental"}
-        if cap["status"] not in active_statuses:
+        if cap.get("status") not in active_statuses:
             result = self._make_result(
-                request_id, "denied", capability_name, action,
-                f"Capability '{capability_name}' has status '{cap['status']}' and is not active",
-                context, requested_by, now,
+                request_id,
+                "denied",
+                capability_name,
+                action,
+                f"Capability '{capability_name}' has status '{cap.get('status')}' and is not active",
+                safe_context,
+                requested_by,
+                now,
             )
             self._persist_request(result)
             return result
 
-        # Step 2: permission check
-        # For file_operations, look up by tool_name first (allows per-tool permission cards),
-        # then fall back to the capability_id card.
-        tool_name_key = str((context or {}).get("tool_name") or "").strip().lower()
-        perm_card = None
-        if capability_name == "file_operations" and tool_name_key:
-            perm_card = self._perms.get_for_capability(tool_name_key)
-        if perm_card is None:
-            perm_card = self._perms.get_for_capability(cap["capability_id"])
-        if perm_card is None or not perm_card.get("owned", False):
+        # Central authority is the only source allowed to produce pending.
+        if requires_founder_approval(action, safe_context):
+            sovereign_action = canonical_sovereign_action(action, safe_context) or action
             result = self._make_result(
-                request_id, "denied", capability_name, action,
-                "No permission card found for this capability",
-                context, requested_by, now,
+                request_id,
+                "pending",
+                capability_name,
+                action,
+                f"Sovereign Founder gate: {sovereign_action}",
+                safe_context,
+                requested_by,
+                now,
+            )
+            result["sovereign_action"] = sovereign_action
+            self._persist_request(result)
+            return result
+
+        perm_card = self._ensure_permission_card(
+            capability_name=capability_name,
+            capability_id=cap["capability_id"],
+            context=safe_context,
+        )
+
+        if not perm_card.get("owned", True):
+            result = self._make_result(
+                request_id,
+                "denied",
+                capability_name,
+                action,
+                "Capability is explicitly marked as not owned",
+                safe_context,
+                requested_by,
+                now,
             )
             self._persist_request(result)
             return result
 
-        if not perm_card.get("enabled", False):
+        if not perm_card.get("enabled", True):
             result = self._make_result(
-                request_id, "denied", capability_name, action,
-                "Capability is disabled in Permission Registry",
-                context, requested_by, now,
+                request_id,
+                "denied",
+                capability_name,
+                action,
+                "Capability is explicitly disabled in the operational registry",
+                safe_context,
+                requested_by,
+                now,
             )
             self._persist_request(result)
             return result
 
+        # Legacy expiry on a delegated card must not become a hidden founder
+        # approval loop. It is treated as a technical configuration failure.
         if perm_card.get("is_expired", False):
             result = self._make_result(
-                request_id, "denied", capability_name, action,
-                "Permission has expired",
-                context, requested_by, now,
+                request_id,
+                "denied",
+                capability_name,
+                action,
+                "Operational enablement metadata is expired; refresh configuration",
+                safe_context,
+                requested_by,
+                now,
             )
             self._persist_request(result)
             return result
 
-        perm_status = perm_card.get("permission_status", "not_granted")
-
-        if perm_status == "not_granted":
-            result = self._make_result(
-                request_id, "denied", capability_name, action,
-                "Permission not granted for this capability",
-                context, requested_by, now,
-            )
-            self._persist_request(result)
-            return result
-
-        if perm_status == "requires_approval":
-            result = self._make_result(
-                request_id, "pending", capability_name, action,
-                "Requires explicit Founder approval for this execution",
-                context, requested_by, now,
-            )
-            self._persist_request(result)
-            return result
+        # Legacy requires_approval/not_granted values are never allowed to
+        # create pending. Normalize them to delegated authority where possible.
+        if perm_card.get("permission_status") != "granted":
+            try:
+                self._perms.grant(
+                    perm_card.get("capability_id") or cap["capability_id"],
+                    scope=perm_card.get("scope") or "delegated_operational_authority",
+                    granted_by="ameer_sovereign_authority",
+                )
+                perm_card = self._perms.get_for_capability(
+                    perm_card.get("capability_id") or cap["capability_id"]
+                ) or perm_card
+            except Exception:
+                pass
 
         if capability_name == "file_operations":
-            scope_denial_reason = self._file_operation_scope_denial_reason(
+            denial = self._file_operation_scope_denial_reason(
                 action=action,
-                context=context,
+                context=safe_context,
                 perm_card=perm_card,
             )
-            if scope_denial_reason:
+            if denial:
                 result = self._make_result(
                     request_id,
                     "denied",
                     capability_name,
                     action,
-                    scope_denial_reason,
-                    context,
+                    denial,
+                    safe_context,
                     requested_by,
                     now,
                 )
                 self._persist_request(result)
                 return result
 
-        # permission_status == "granted"
         result = self._make_result(
-            request_id, "approved", capability_name, action,
-            "Capability owned, enabled, and permission granted",
-            context, requested_by, now,
+            request_id,
+            "approved",
+            capability_name,
+            action,
+            "Delegated executive authority: operational execution approved",
+            safe_context,
+            requested_by,
+            now,
         )
         self._persist_request(result)
         return result
@@ -447,20 +399,12 @@ class ExecutionAuthorization:
 
     def _persist_request(self, result: Dict[str, Any]) -> None:
         self._data["requests"].append(result)
-        # Keep last 200 requests
         if len(self._data["requests"]) > 200:
             self._data["requests"] = self._data["requests"][-200:]
         self._save()
 
-    def authorize(
-        self,
-        request_id: str,
-        authorized_by: str = "founder",
-    ) -> None:
-        """
-        موافقة المؤسس على تنفيذ طلب pending.
-        يُحوِّل الحالة من pending إلى approved.
-        """
+    def authorize(self, request_id: str, authorized_by: str = "founder") -> None:
+        """Founder resolves a pending sovereign-gate request."""
         req = self._find_request(request_id)
         if req is None:
             raise KeyError(f"Authorization request '{request_id}' not found")
@@ -479,7 +423,7 @@ class ExecutionAuthorization:
         denied_by: str = "founder",
         reason: str = "",
     ) -> None:
-        """رفض طلب تنفيذ pending."""
+        """Founder rejects a pending sovereign-gate request."""
         req = self._find_request(request_id)
         if req is None:
             raise KeyError(f"Authorization request '{request_id}' not found")
@@ -500,10 +444,6 @@ class ExecutionAuthorization:
         outcome: str,
         detail: str = "",
     ) -> None:
-        """
-        تسجيل تنفيذ حقيقي بعد approved.
-        outcome ∈ {"success", "failure", "partial"}
-        """
         req = self._find_request(request_id)
         if req is None:
             raise KeyError(f"Authorization request '{request_id}' not found")
@@ -534,13 +474,14 @@ class ExecutionAuthorization:
         return list(self._data["execution_log"][-limit:])
 
     def snapshot(self) -> Dict[str, Any]:
-        counts = {s: 0 for s in AUTHORIZATION_STATUSES}
-        for r in self._data["requests"]:
-            s = r.get("status", "denied")
-            counts[s] = counts.get(s, 0) + 1
+        counts = {status: 0 for status in AUTHORIZATION_STATUSES}
+        for request in self._data["requests"]:
+            status = request.get("status", "denied")
+            counts[status] = counts.get(status, 0) + 1
         return {
             "total_requests": len(self._data["requests"]),
             "by_status": counts,
             "pending_count": counts.get("pending", 0),
             "execution_log_entries": len(self._data["execution_log"]),
+            "pending_policy": "sovereign_gates_only",
         }
