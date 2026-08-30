@@ -1,12 +1,16 @@
-"""Central authority policy for Ameer Shadow System.
+"""Central sovereign authority policy for Ameer Shadow System.
 
-The Founder delegates operating authority to Ameer inside every already-approved
-shadow asset.  A Founder decision is required only before Ameer creates a new
-root digital asset: a site, program, system, or repository.
+Ameer has delegated executive autonomy by default. Founder approval is the
+exception and may be required only at the explicitly defined sovereign gates:
 
-This module intentionally answers *authority*, not *capability*.  Callers must
-still enforce a valid Guardian result, an available capability, the worker
-scope, and evidence recording before they execute an operation.
+1. creation of a new root digital asset (site, program, system, repository),
+2. final production publication/activation of that newly-created root asset,
+3. an actual transfer, payment, or movement of money.
+
+No subsystem may invent, expand, reinterpret, or introduce additional founder
+approval requirements. Capability availability, technical scope, audit, and
+truthful execution checks may still fail an operation for technical reasons,
+but they are not founder-approval gates.
 """
 
 from __future__ import annotations
@@ -16,25 +20,53 @@ from typing import Any, Dict, Iterable, Mapping, Optional
 
 ROOT_ASSET_ACTIONS: Dict[str, Dict[str, str]] = {
     "create_site": {
+        "gate_kind": "creation",
         "asset_kind": "site",
         "label_ar": "إنشاء موقع جديد",
         "description_ar": "إنشاء موقع مستقل جديد خارج الأصول القائمة.",
     },
     "create_program": {
+        "gate_kind": "creation",
         "asset_kind": "program",
         "label_ar": "إنشاء برنامج جديد",
         "description_ar": "إنشاء برنامج مستقل جديد خارج الأصول القائمة.",
     },
     "create_system": {
+        "gate_kind": "creation",
         "asset_kind": "system",
         "label_ar": "إنشاء نظام جديد",
         "description_ar": "إنشاء نظام مستقل جديد خارج الأصول القائمة.",
     },
     "create_repository": {
+        "gate_kind": "creation",
         "asset_kind": "repository",
         "label_ar": "إنشاء مستودع جديد",
         "description_ar": "إنشاء مستودع مستقل جديد خارج المستودعات القائمة.",
     },
+}
+
+FINAL_RELEASE_ACTIONS: Dict[str, Dict[str, str]] = {
+    "final_publish_new_asset": {
+        "gate_kind": "final_release",
+        "asset_kind": "new_root_asset",
+        "label_ar": "اعتماد النشر النهائي لأصل جديد",
+        "description_ar": "الاعتماد النهائي قبل إدخال أصل جذري جديد إلى الإنتاج بعد اكتمال بنائه واختباره.",
+    }
+}
+
+FINANCIAL_ACTIONS: Dict[str, Dict[str, str]] = {
+    "transfer_funds": {
+        "gate_kind": "financial_transfer",
+        "asset_kind": "money",
+        "label_ar": "نقل أموال",
+        "description_ar": "تنفيذ تحويل أو دفع أو حركة مالية فعلية.",
+    }
+}
+
+SOVEREIGN_ACTIONS: Dict[str, Dict[str, str]] = {
+    **ROOT_ASSET_ACTIONS,
+    **FINAL_RELEASE_ACTIONS,
+    **FINANCIAL_ACTIONS,
 }
 
 _ASSET_KIND_ALIASES = {
@@ -88,6 +120,20 @@ _ACTION_ALIASES = {
     "انشاء_مستودع": "create_repository",
     "إنشاء_مستودع": "create_repository",
     "فتح_مستودع_جديد": "create_repository",
+    "final_publish_new_asset": "final_publish_new_asset",
+    "new_asset.final_publish": "final_publish_new_asset",
+    "new_asset.production_release": "final_publish_new_asset",
+    "approve_final_release": "final_publish_new_asset",
+    "اعتماد_النشر_النهائي": "final_publish_new_asset",
+    "نشر_نهائي_لأصل_جديد": "final_publish_new_asset",
+    "transfer_funds": "transfer_funds",
+    "money.transfer": "transfer_funds",
+    "payment.execute": "transfer_funds",
+    "send_payment": "transfer_funds",
+    "make_payment": "transfer_funds",
+    "تحويل_أموال": "transfer_funds",
+    "نقل_أموال": "transfer_funds",
+    "تنفيذ_دفع": "transfer_funds",
 }
 
 _CREATION_VERBS = {"create", "new", "open", "انشاء", "إنشاء", "فتح"}
@@ -95,7 +141,6 @@ _EXISTING_ASSET_FLAGS = ("existing_asset", "within_existing_asset", "parent_asse
 
 
 def _normalise(value: object) -> str:
-    """Return a stable action token without changing the caller's payload."""
     return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
 
 
@@ -124,19 +169,13 @@ def _asset_kind(context: Optional[Mapping[str, Any]]) -> str:
 
 
 def canonical_creation_action(action: str, context: Optional[Mapping[str, Any]] = None) -> Optional[str]:
-    """Return the canonical root-creation action, or ``None``.
-
-    An explicit root-creation action always maps to one of the four gates unless
-    the caller explicitly states that the work is a component within an existing
-    asset.  Generic ``create`` is a gate only if its context identifies a root
-    asset kind.  This keeps page, module, worker, and feature creation autonomous.
-    """
+    """Return the canonical root-creation action, or ``None``."""
     if _targets_existing_asset(context):
         return None
 
     name = _normalise(action)
     direct = _ACTION_ALIASES.get(name)
-    if direct:
+    if direct in ROOT_ASSET_ACTIONS:
         return direct
 
     kind = _asset_kind(context)
@@ -145,47 +184,83 @@ def canonical_creation_action(action: str, context: Optional[Mapping[str, Any]] 
     return None
 
 
+def canonical_sovereign_action(action: str, context: Optional[Mapping[str, Any]] = None) -> Optional[str]:
+    """Return the one sovereign gate matched by this operation, if any."""
+    creation = canonical_creation_action(action, context)
+    if creation:
+        return creation
+
+    name = _normalise(action)
+    direct = _ACTION_ALIASES.get(name)
+    if direct in FINAL_RELEASE_ACTIONS or direct in FINANCIAL_ACTIONS:
+        return direct
+
+    # Generic deploy/publish remains autonomous. It becomes a sovereign final
+    # release only when context explicitly says this is a newly-created root
+    # asset awaiting final founder acceptance.
+    if name in {"deploy", "publish", "release", "production_release", "نشر", "اطلاق", "إطلاق"}:
+        safe = context or {}
+        if bool(safe.get("new_root_asset")) and bool(safe.get("final_release")):
+            return "final_publish_new_asset"
+
+    # Generic payment verbs become a gate only for an actual movement of money;
+    # estimates, invoices, quotes, ledgers, and simulations stay autonomous.
+    if name in {"pay", "payment", "transfer", "send_money", "دفع", "تحويل"}:
+        safe = context or {}
+        if bool(safe.get("actual_funds_movement", True)):
+            return "transfer_funds"
+
+    return None
+
+
 def is_root_asset_creation(action: str, context: Optional[Mapping[str, Any]] = None) -> bool:
-    """Return whether the request opens a new root digital asset."""
     return canonical_creation_action(action, context) is not None
 
 
 def requires_founder_approval(action: str, context: Optional[Mapping[str, Any]] = None) -> bool:
-    """The single approval rule: only creation of a new root asset is gated."""
-    return is_root_asset_creation(action, context)
+    """Return True only for an explicitly defined sovereign gate."""
+    return canonical_sovereign_action(action, context) is not None
 
 
 def approval_actions() -> Iterable[str]:
-    """Return canonical approval actions in a stable display order."""
-    return tuple(ROOT_ASSET_ACTIONS.keys())
+    return tuple(SOVEREIGN_ACTIONS.keys())
 
 
 def policy_snapshot() -> Dict[str, Any]:
-    """Return a safe, user-visible summary of Ameer's operating authority."""
-    gates = [
-        {"action": action, **details}
-        for action, details in ROOT_ASSET_ACTIONS.items()
-    ]
+    gates = [{"action": action, **details} for action, details in SOVEREIGN_ACTIONS.items()]
     return {
-        "policy_id": "ameer_shadow_authority_v1",
-        "mode": "autonomous_with_root_asset_creation_gate",
+        "policy_id": "ameer_sovereign_authority_v2",
+        "mode": "delegated_executive_autonomy",
         "authority_owner": "ameer",
-        "founder_approval_rule": "new_root_asset_creation_only",
+        "founder_approval_rule": "sovereign_gates_only",
         "autonomous_within_existing_assets": True,
         "approval_actions": list(approval_actions()),
         "approval_gates": gates,
+        "approval_gate_groups": {
+            "new_root_asset_creation": list(ROOT_ASSET_ACTIONS),
+            "new_root_asset_final_release": list(FINAL_RELEASE_ACTIONS),
+            "actual_funds_movement": list(FINANCIAL_ACTIONS),
+        },
         "autonomous_domains": [
             "planning",
             "design",
             "build",
             "test",
             "operate",
-            "publish",
+            "maintain",
+            "repair",
+            "self_improvement",
+            "existing_asset_publish",
             "communications",
             "worker_orchestration",
+            "provider_selection",
+            "connector_management",
+            "repository_operations",
+            "browser_operations",
             "school",
             "store",
-            "trading",
+            "trading_analysis",
         ],
         "worker_rule": "workers_execute_through_ameer_with_scoped_capabilities",
+        "non_expansion_rule": "no_subsystem_may_invent_additional_founder_approval_gates",
     }
