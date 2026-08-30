@@ -1,28 +1,20 @@
 """Home-visit pricing and cashier catalog synchronization for Hilm Alnada.
 
-The uploaded Hilm Alnada catalog remains the canonical base-price source. Home visits
-reuse eligible catalog services and add a configurable per-service surcharge. The
-cashier consumes the complete canonical service catalog and prices rather than
-maintaining a separate manually-entered price list.
+The uploaded Hilm Alnada catalog remains the canonical base-price source. Eligible
+home-visit services use a fixed 10% uplift that is folded into the customer-facing
+final price. The cashier consumes the complete canonical service catalog and prices
+rather than maintaining a separate manually-entered price list.
 """
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Tuple
 
 from .hilm_catalog_and_booking_rules import CATALOG_SECTIONS, SERVICE_CATALOG
 
 
 HOME_VISIT_SECTION = "home_visit"
-
-# Founder has specified that every home-visit service carries an additional charge,
-# but has not yet specified the amount for each service. Do not invent prices.
-# Keys should be canonical service names from SERVICE_CATALOG.
-HOME_VISIT_SURCHARGES: Dict[str, Optional[float]] = {
-    service["name"]: None
-    for section, services in SERVICE_CATALOG.items()
-    if section not in {"coffee_lounge", "relaxation_room", "celebration_room", "offers"}
-    for service in services
-}
+HOME_VISIT_UPLIFT_PERCENT = 10
+HOME_VISIT_UPLIFT_RATE = HOME_VISIT_UPLIFT_PERCENT / 100
 
 
 def catalog_service_rows() -> Tuple[dict, ...]:
@@ -37,23 +29,16 @@ def catalog_service_rows() -> Tuple[dict, ...]:
 CASHIER_SERVICE_CATALOG = catalog_service_rows()
 
 
-def home_visit_price(service_name: str, base_price: float, surcharge: Optional[float]) -> dict:
-    """Calculate a home-visit price without silently inventing a surcharge."""
-    if surcharge is None:
-        return {
-            "service_name": service_name,
-            "base_price": base_price,
-            "home_visit_surcharge": None,
-            "final_price": None,
-            "status": "surcharge_configuration_required",
-        }
-    if surcharge < 0:
-        raise ValueError("home visit surcharge cannot be negative")
+def home_visit_price(service_name: str, base_price: float) -> dict:
+    """Return the final customer-facing home-visit price with the 10% uplift included."""
+    if base_price < 0:
+        raise ValueError("base price cannot be negative")
+    final_price = round(base_price * (1 + HOME_VISIT_UPLIFT_RATE), 2)
     return {
         "service_name": service_name,
-        "base_price": base_price,
-        "home_visit_surcharge": surcharge,
-        "final_price": base_price + surcharge,
+        "final_price": final_price,
+        "customer_price_label": final_price,
+        "customer_sees_separate_home_visit_fee": False,
         "status": "priced",
     }
 
@@ -62,9 +47,9 @@ def home_visit_price(service_name: str, base_price: float, surcharge: Optional[f
 class HomeVisitAndCashierContract:
     home_visit_is_store_section: bool = True
     home_visit_reuses_canonical_services: bool = True
-    home_visit_has_per_service_surcharge: bool = True
-    home_visit_final_price_is_base_plus_surcharge: bool = True
-    founder_controls_surcharge_amounts: bool = True
+    home_visit_uplift_percent: int = 10
+    home_visit_final_price_includes_uplift: bool = True
+    customer_sees_separate_home_visit_fee: bool = False
     cashier_uses_entire_canonical_catalog: bool = True
     cashier_uses_catalog_prices: bool = True
     cashier_must_not_have_duplicate_manual_price_source: bool = True
