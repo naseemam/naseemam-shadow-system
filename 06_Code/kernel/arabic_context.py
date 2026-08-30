@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
+from kernel.founder_directive import FounderDirective, create_directive
+
 
 @dataclass(frozen=True)
 class ArabicUnderstanding:
@@ -13,11 +15,12 @@ class ArabicUnderstanding:
     continuation: bool
     correction: bool
     reference: Optional[str] = None
+    founder_directive: Optional[FounderDirective] = None
 
 
-# Saudi/Gulf conversational forms are intentionally normalized conservatively.
-# The goal is not to rewrite the founder's language; it is to let short natural
-# turns carry the same operational meaning as formal Arabic.
+# Saudi/Gulf conversational forms are normalized conservatively.
+# The original Founder wording remains the semantic authority. canonical_command
+# is only a derived execution aid and must never replace the original directive.
 PHRASES = {
     "ابدا": "ابدأ",
     "ابدأ": "ابدأ",
@@ -78,16 +81,27 @@ def understand_arabic(text: str, *, previous_goal: str = "") -> ArabicUnderstand
     continuation = lowered in CONTINUATION or any(lowered.startswith(x + " ") for x in CONTINUATION)
     correction = any(p in lowered for p in CORRECTION_PATTERNS)
 
-    # A short continuation turn inherits the active goal. Do not force the
-    # founder to restate a full prompt when the conversation already supplies it.
+    notes = []
+    # A short continuation turn may borrow operational context, but the inherited
+    # goal is evidence only. It never replaces the Founder's current wording.
     if continuation and previous_goal:
         canonical = f"{canonical}. استمر في الهدف الحالي: {previous_goal}"
+        notes.append("continuation_context_added")
     elif correction and previous_goal:
         canonical = f"{canonical}. راجع آخر نتيجة للهدف الحالي وأصلحها ذاتيًا: {previous_goal}"
+        notes.append("correction_context_added")
 
     reference = None
     if lowered in {"نفسه", "نفسها", "الثاني", "الاول", "الأول"}:
         reference = PHRASES.get(lowered)
+        notes.append("context_reference_resolved")
+
+    directive = create_directive(
+        raw,
+        derived_text=canonical,
+        previous_goal=previous_goal,
+        interpretation_notes=notes,
+    )
 
     return ArabicUnderstanding(
         raw=raw,
@@ -96,4 +110,5 @@ def understand_arabic(text: str, *, previous_goal: str = "") -> ArabicUnderstand
         continuation=continuation,
         correction=correction,
         reference=reference,
+        founder_directive=directive,
     )
