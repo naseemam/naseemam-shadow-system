@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from kernel.founder_directive import FounderDirective, create_directive
+from kernel.interaction_mode import InteractionMode, classify_interaction_mode
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,7 @@ class ArabicUnderstanding:
     correction: bool
     reference: Optional[str] = None
     founder_directive: Optional[FounderDirective] = None
+    interaction_mode: Optional[InteractionMode] = None
 
 
 # Saudi/Gulf conversational forms are normalized conservatively.
@@ -102,6 +104,7 @@ def understand_arabic(text: str, *, previous_goal: str = "") -> ArabicUnderstand
         previous_goal=previous_goal,
         interpretation_notes=notes,
     )
+    interaction_mode = classify_interaction_mode(raw, previous_goal=previous_goal)
 
     return ArabicUnderstanding(
         raw=raw,
@@ -111,4 +114,5 @@ def understand_arabic(text: str, *, previous_goal: str = "") -> ArabicUnderstand
         correction=correction,
         reference=reference,
         founder_directive=directive,
+        interaction_mode=interaction_mode,
     )
