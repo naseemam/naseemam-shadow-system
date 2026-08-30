@@ -21,22 +21,25 @@ def test_cashier_receives_all_catalog_services_and_prices():
     assert all("name" in row and "price" in row for row in module.CASHIER_SERVICE_CATALOG)
 
 
-def test_home_visit_uses_per_service_surcharge_without_inventing_amount():
-    result = module.home_visit_price("example", 100, None)
-    assert result["base_price"] == 100
-    assert result["final_price"] is None
-    assert result["status"] == "surcharge_configuration_required"
-
-
-def test_home_visit_final_price_is_base_plus_surcharge():
-    result = module.home_visit_price("example", 100, 35)
-    assert result["final_price"] == 135
+def test_home_visit_price_includes_ten_percent_uplift():
+    result = module.home_visit_price("example", 100)
+    assert result["final_price"] == 110
+    assert result["customer_price_label"] == 110
     assert result["status"] == "priced"
+
+
+def test_customer_does_not_see_separate_home_visit_fee():
+    result = module.home_visit_price("example", 250)
+    assert result["final_price"] == 275
+    assert result["customer_sees_separate_home_visit_fee"] is False
+    assert "home_visit_surcharge" not in result
 
 
 def test_contract_requires_shared_service_source_of_truth():
     contract = module.home_visit_and_cashier_contract()
-    assert contract.home_visit_has_per_service_surcharge is True
+    assert contract.home_visit_uplift_percent == 10
+    assert contract.home_visit_final_price_includes_uplift is True
+    assert contract.customer_sees_separate_home_visit_fee is False
     assert contract.cashier_uses_entire_canonical_catalog is True
     assert contract.cashier_must_not_have_duplicate_manual_price_source is True
     assert contract.storefront_cashier_management_share_service_ssot is True
