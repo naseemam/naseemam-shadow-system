@@ -13,7 +13,7 @@ def test_only_central_sovereign_actions_are_founder_gates():
     assert _HIGH_RISK_ACTIONS_REQUIRING_APPROVAL == set(approval_actions())
     assert "create_site" in _HIGH_RISK_ACTIONS_REQUIRING_APPROVAL
     assert "final_publish_new_asset" in _HIGH_RISK_ACTIONS_REQUIRING_APPROVAL
-    assert "transfer_funds" in _HIGH_RISK_ACTIONS_REQUIRING_APPROVAL
+    assert "financial_commitment" in _HIGH_RISK_ACTIONS_REQUIRING_APPROVAL
     for action in ("delete", "merge", "publish", "deploy", "rollback", "email.send", "trading.execute"):
         assert action not in _HIGH_RISK_ACTIONS_REQUIRING_APPROVAL
 
