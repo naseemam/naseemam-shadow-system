@@ -1,8 +1,12 @@
 """Checkout and payment architecture for Hilm Alnada.
 
-Supports the shared storefront payment gateway for service bookings, home visits,
-retail products, fabrics, online tailoring orders, packages and gifts. It also
-supports card/wallet methods plus buy-now-pay-later providers such as Tabby and
+All current and future customer-facing Hilm departments that sell a service,
+product, package, room, add-on or booking use the same shared cart and payment
+gateway. Service names/prices must resolve from the canonical Hilm catalog; retail
+products/fabrics resolve from the canonical retail product catalog. Department
+screens never become independent price sources.
+
+Supports card/wallet methods plus buy-now-pay-later providers such as Tabby and
 Tamara when merchant accounts and authenticated connectors are configured.
 
 An ordinary customer paying for the customer's own order or booking is commerce
@@ -27,18 +31,26 @@ PAYMENT_METHODS: Tuple[str, ...] = (
 
 PAYABLE_COMMERCE_TYPES: Tuple[str, ...] = (
     "service_booking",
+    "appointment",
+    "room_booking",
+    "celebration_booking",
+    "relaxation_or_vip_booking",
     "home_visit_booking",
     "retail_product_order",
     "fabric_order",
     "online_tailoring_order",
+    "coffee_or_food_order",
     "package_purchase",
     "gift_purchase",
+    "department_add_on",
+    "future_registered_sellable_department_item",
 )
 
 CHECKOUT_FLOW: Tuple[str, ...] = (
-    "require_authenticated_customer",
-    "load_cart_booking_or_tailoring_order",
-    "validate_prices_inventory_and_offer_eligibility",
+    "require_authenticated_customer_when_required",
+    "load_shared_cart_or_booking",
+    "resolve_current_item_names_and_prices_from_canonical_catalogs",
+    "validate_prices_inventory_capacity_and_offer_eligibility",
     "apply_loyalty_or_package_redemption_when_selected",
     "select_payment_method",
     "create_payment_attempt",
@@ -46,9 +58,10 @@ CHECKOUT_FLOW: Tuple[str, ...] = (
     "receive_provider_result",
     "verify_payment_server_side",
     "mark_order_or_booking_paid_only_after_verification",
-    "finalize_reserved_inventory_or_fabric_when_applicable",
+    "finalize_reserved_inventory_resources_or_fabric_when_applicable",
     "issue_invoice_or_receipt",
     "sync_status_to_pos_and_management",
+    "route_items_to_owning_departments",
     "send_customer_confirmation",
 )
 
@@ -66,8 +79,14 @@ PAYMENT_STATES: Tuple[str, ...] = (
 @dataclass(frozen=True)
 class CheckoutPaymentContract:
     shared_gateway_serves_all_storefront_commerce: bool = True
+    all_current_sellable_departments_use_shared_cart_and_gateway: bool = True
+    future_sellable_departments_inherit_shared_cart_and_gateway: bool = True
+    canonical_catalog_is_service_price_source_of_truth: bool = True
+    canonical_product_catalog_is_product_price_source_of_truth: bool = True
     tailoring_orders_use_shared_gateway: bool = True
     fabric_orders_use_shared_gateway: bool = True
+    room_and_vip_bookings_use_shared_gateway: bool = True
+    coffee_and_food_addons_use_shared_gateway: bool = True
     tabby_supported_when_configured: bool = True
     tamara_supported_when_configured: bool = True
     provider_callbacks_must_be_verified_server_side: bool = True
