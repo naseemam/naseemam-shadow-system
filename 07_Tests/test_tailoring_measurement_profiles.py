@@ -41,3 +41,47 @@ def test_tailoring_order_references_profile_and_snapshots_measurements():
     assert "measurements_snapshot" in mod.TAILORING_ORDER_FIELDS
     assert "select_or_create_measurement_profile" in mod.TAILORING_ORDER_FLOW
     assert "snapshot_selected_measurement_profile_for_order" in mod.TAILORING_ORDER_FLOW
+
+
+def test_cashier_can_print_complete_tailoring_work_order_for_tailor():
+    mod = _load("tailoring_online_order")
+    contract = mod.tailoring_online_order_contract()
+    assert contract.employee_can_print_complete_tailoring_work_order is True
+    assert contract.printed_work_order_includes_name_order_number_phone_and_measurements is True
+    assert contract.tailor_receives_operational_work_order_without_customer_reentry is True
+    required = {
+        "order_number",
+        "customer_name",
+        "customer_phone",
+        "measurements_snapshot",
+        "measurement_profile_label",
+        "garment_type",
+        "tailoring_service",
+    }
+    assert required.issubset(set(mod.PRINTABLE_TAILORING_WORK_ORDER_FIELDS))
+    assert "generate_printable_tailoring_work_order" in mod.TAILORING_ORDER_FLOW
+    assert "employee_prints_and_hands_work_order_to_tailor" in mod.TAILORING_ORDER_FLOW
+
+
+def test_tailoring_supports_customer_alterations_and_images_across_services():
+    mod = _load("tailoring_online_order")
+    contract = mod.tailoring_online_order_contract()
+    assert contract.alteration_requests_supported_across_tailoring_services is True
+    assert contract.alteration_images_supported is True
+    assert contract.printed_work_order_includes_alterations_and_image_references is True
+    assert "alteration_notes" in mod.PRINTABLE_TAILORING_WORK_ORDER_FIELDS
+    assert "reference_image_thumbnails_or_references" in mod.PRINTABLE_TAILORING_WORK_ORDER_FIELDS
+    assert "capture_alteration_requests_when_applicable" in mod.TAILORING_ORDER_FLOW
+    assert "attach_alteration_reference_images_when_available" in mod.TAILORING_ORDER_FLOW
+
+
+def test_hilm_follows_tailoring_customer_through_alterations_and_completion():
+    mod = _load("tailoring_online_order")
+    contract = mod.tailoring_online_order_contract()
+    assert contract.hilm_tracks_tailoring_customer_end_to_end is True
+    assert contract.hilm_tracks_alteration_and_fitting_status is True
+    assert "sent_to_tailor" in mod.HILM_TAILORING_FOLLOWUP_STATES
+    assert "alteration_requested" in mod.HILM_TAILORING_FOLLOWUP_STATES
+    assert "alteration_in_progress" in mod.HILM_TAILORING_FOLLOWUP_STATES
+    assert "ready_for_pickup_or_delivery" in mod.HILM_TAILORING_FOLLOWUP_STATES
+    assert "hilm_follows_customer_and_order_status" in mod.TAILORING_ORDER_FLOW
