@@ -8,6 +8,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, Request
 
 from kernel.hilm_alert_center_runtime import HilmAlertCenterRuntime
+from kernel.internal_auth_runtime import principal_from_headers
 
 router = APIRouter(prefix="/internal/hilm/alerts", tags=["hilm-alerts"])
 DATA_ROOT = Path(os.getenv("AMEER_DATA_DIR", ".ameer")).resolve()
@@ -16,22 +17,25 @@ if DATA_ROOT.name != ".ameer":
 ALERTS = HilmAlertCenterRuntime(DATA_ROOT / "hilm_alerts.json")
 
 
-def _require(request: Request, *roles: str) -> str:
-    role = (request.headers.get("x-ameer-role") or "").strip().lower()
-    if role not in set(roles):
-        raise HTTPException(status_code=403, detail="role_not_authorized")
-    return role
+def _require(request: Request, *roles: str, scope: str = "") -> str:
+    try:
+        principal = principal_from_headers(request.headers, required_roles=roles, required_scope=scope)
+        return principal.role
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
 
 
 @router.get("")
 def list_alerts(request: Request, category: str = "", severity: str = "", status: str = "", department_id: str = "", employee_id: str = "") -> Dict[str, Any]:
-    _require(request, "founder", "ameer", "admin", "nada")
+    _require(request, "founder", "ameer", "admin", "nada", scope="hilm:alerts:read")
     return {"alerts": ALERTS.list_alerts(category=category, severity=severity, status=status, department_id=department_id, employee_id=employee_id)}
 
 
 @router.post("")
 async def create_alert(request: Request) -> Dict[str, Any]:
-    _require(request, "founder", "ameer", "admin", "nada")
+    _require(request, "founder", "ameer", "admin", "nada", scope="hilm:alerts:write")
     p = await request.json()
     try:
         return ALERTS.create_alert(
@@ -47,7 +51,7 @@ async def create_alert(request: Request) -> Dict[str, Any]:
 
 @router.post("/{alert_id}/status")
 async def transition(alert_id: str, request: Request) -> Dict[str, Any]:
-    actor = _require(request, "founder", "ameer", "admin", "nada")
+    actor = _require(request, "founder", "ameer", "admin", "nada", scope="hilm:alerts:write")
     p = await request.json()
     try:
         return ALERTS.transition(alert_id, str(p["status"]), actor=actor, action=str(p.get("action") or ""))
@@ -59,18 +63,18 @@ async def transition(alert_id: str, request: Request) -> Dict[str, Any]:
 
 @router.post("/ameer-review")
 async def ameer_review(request: Request) -> Dict[str, Any]:
-    _require(request, "founder", "ameer")
+    _require(request, "founder", "ameer", scope="hilm:alerts:review")
     p = await request.json()
     return {"reviewed": ALERTS.ameer_review(p.get("alert_ids") or [], review_note=str(p.get("review_note") or ""))}
 
 
 @router.get("/report")
 def report(request: Request) -> Dict[str, Any]:
-    _require(request, "founder", "ameer", "admin", "nada")
+    _require(request, "founder", "ameer", "admin", "nada", scope="hilm:reports")
     return ALERTS.printable_report()
 
 
 @router.get("/purchase-digest-source")
 def purchase_digest_source(request: Request) -> Dict[str, Any]:
-    _require(request, "founder", "ameer")
+    _require(request, "founder", "ameer", scope="hilm:alerts:review")
     return ALERTS.purchase_digest_source()
