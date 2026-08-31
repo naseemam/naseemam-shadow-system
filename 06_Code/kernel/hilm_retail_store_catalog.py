@@ -3,7 +3,7 @@
 Retail products are separate from bookable beauty services while sharing the same
 customer account, cart, checkout, cashier, invoice and management platform. This
 module defines the canonical department taxonomy and the fields required for real
-inventory, variants, purchasing and storefront projection.
+inventory, variants, purchasing, fabrics and tailoring-linked storefront orders.
 """
 
 from dataclasses import dataclass
@@ -53,6 +53,17 @@ RETAIL_DEPARTMENTS: Dict[str, Tuple[str, ...]] = {
         "عناية الجسم",
         "مجموعات عناية",
     ),
+    "fabrics": (
+        "أقمشة عبايات",
+        "أقمشة فساتين",
+        "أقمشة دراعات",
+        "أقمشة مناسبات",
+        "أقمشة تخرج",
+        "أقمشة يونيفورم مدرسي",
+        "بطانات",
+        "دانتيل وتل وتطريزات",
+        "إكسسوارات وخامات خياطة",
+    ),
     "graduation_abayas": ("عبايات تخرج",),
     "school_uniforms": ("يونيفورم مدرسي",),
     "occasion_abayas": ("عبايات مناسبات",),
@@ -76,7 +87,13 @@ PRODUCT_FIELDS: Tuple[str, ...] = (
     "size",
     "color",
     "fabric",
+    "fabric_type",
+    "fabric_composition",
+    "fabric_width",
+    "fabric_unit",
+    "fabric_length_available",
     "measurements",
+    "tailoring_eligible",
     "cost_price",
     "selling_price",
     "offer_price",
@@ -118,6 +135,8 @@ INVENTORY_EVENTS: Tuple[str, ...] = (
     "purchase_received",
     "customer_order_reserved",
     "customer_order_released",
+    "fabric_length_reserved_for_tailoring_order",
+    "fabric_length_released",
     "sale_completed",
     "return_received",
     "manual_adjustment_with_audit",
@@ -134,6 +153,7 @@ PRODUCT_COMMERCE_FLOW: Tuple[str, ...] = (
     "validate_available_stock",
     "reserve_stock_for_order",
     "add_to_shared_cart",
+    "attach_to_tailoring_order_when_selected",
     "checkout",
     "verify_customer_payment",
     "complete_order",
@@ -151,6 +171,9 @@ class HilmRetailStoreContract:
     cashier_sees_retail_products: bool = True
     inventory_is_canonical: bool = True
     prices_are_canonical: bool = True
+    fabrics_are_first_class_store_department: bool = True
+    fabric_inventory_supports_length_units: bool = True
+    fabrics_can_attach_to_online_tailoring_orders: bool = True
     supports_variant_level_inventory: bool = True
     supports_variants_sizes_colors_fabrics_and_measurements: bool = True
     supports_barcode_and_sku: bool = True
