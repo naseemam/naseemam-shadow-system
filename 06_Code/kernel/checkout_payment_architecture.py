@@ -2,13 +2,15 @@
 
 Supports card/wallet gateway integration plus buy-now-pay-later providers such as
 Tabby and Tamara when merchant accounts and authenticated connectors are configured.
-Actual charging/financial commitment remains subject to the existing sovereign
-gate at the moment funds are committed.
+
+An ordinary customer paying for the customer's own order or booking is commerce
+fulfilment, not a Founder sovereign financial commitment. The Founder financial
+gate applies when Ameer or the business commits Founder/business funds, not when
+a customer independently completes checkout.
 """
 
 from dataclasses import dataclass
 from typing import Tuple
-
 
 PAYMENT_METHODS: Tuple[str, ...] = (
     "card_gateway",
@@ -48,7 +50,6 @@ PAYMENT_STATES: Tuple[str, ...] = (
     "partially_refunded",
 )
 
-
 @dataclass(frozen=True)
 class CheckoutPaymentContract:
     tabby_supported_when_configured: bool = True
@@ -57,7 +58,8 @@ class CheckoutPaymentContract:
     client_redirect_is_not_payment_proof: bool = True
     paid_state_requires_verified_provider_result: bool = True
     payment_status_syncs_to_booking_order_pos_and_management: bool = True
-    actual_financial_commitment_uses_existing_sovereign_gate: bool = True
+    ordinary_customer_payment_requires_founder_approval: bool = False
+    founder_financial_gate_applies_to_business_spend_not_customer_checkout: bool = True
     payment_provider_credentials_are_never_exposed_to_client: bool = True
 
 
