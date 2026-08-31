@@ -1,10 +1,10 @@
 """Online tailoring order contract for Hilm Alnada.
 
 Customers may order tailoring through the public storefront, choose a garment or
-custom tailoring service, optionally select fabric from the Hilm store, submit
-measurements, notes and reference images, then proceed through the shared checkout
-and payment gateway. Tailoring orders synchronize to management/cashier views
-without duplicate entry.
+custom tailoring service, optionally select fabric from the Hilm store, select one
+of multiple saved measurement profiles under the same customer account, then
+proceed through the shared checkout and payment gateway. Tailoring orders
+synchronize to management/cashier views without duplicate entry.
 """
 
 from dataclasses import dataclass
@@ -26,16 +26,41 @@ TAILORING_MEASUREMENT_FIELDS: Tuple[str, ...] = (
     "custom_measurement_notes",
 )
 
+MEASUREMENT_PROFILE_FIELDS: Tuple[str, ...] = (
+    "measurement_profile_id",
+    "customer_account_id",
+    "profile_label",
+    "person_name_optional",
+    "relationship_label",
+    "measurements",
+    "version",
+    "is_active",
+    "created_at",
+    "updated_at",
+)
+
+MEASUREMENT_PROFILE_RELATIONSHIP_EXAMPLES: Tuple[str, ...] = (
+    "أنا",
+    "ابنتي",
+    "أمي",
+    "أختي",
+    "ابنة أخي",
+    "ابنة أختي",
+    "أخرى",
+)
+
 TAILORING_ORDER_FIELDS: Tuple[str, ...] = (
     "tailoring_order_id",
     "customer_id",
+    "measurement_profile_id",
+    "measurement_profile_version",
     "garment_type",
     "tailoring_service_id",
     "selected_fabric_product_id",
     "selected_fabric_variant_id",
     "fabric_length_required",
     "customer_supplies_own_fabric",
-    "measurements",
+    "measurements_snapshot",
     "reference_images",
     "design_notes",
     "requested_completion_date",
@@ -51,11 +76,13 @@ TAILORING_ORDER_FIELDS: Tuple[str, ...] = (
 TAILORING_ORDER_FLOW: Tuple[str, ...] = (
     "authenticate_customer",
     "select_tailoring_service_or_garment",
+    "select_or_create_measurement_profile",
     "select_store_fabric_or_customer_owned_fabric",
-    "capture_required_measurements",
+    "capture_or_confirm_required_measurements",
     "upload_reference_images_when_available",
     "capture_design_notes",
     "validate_measurement_completeness",
+    "snapshot_selected_measurement_profile_for_order",
     "validate_and_reserve_fabric_when_store_fabric_selected",
     "calculate_tailoring_and_fabric_total",
     "confirm_completion_or_fitting_requirements",
@@ -71,6 +98,10 @@ TAILORING_ORDER_FLOW: Tuple[str, ...] = (
 class TailoringOnlineOrderContract:
     online_tailoring_supported: bool = True
     measurements_required_for_custom_tailoring: bool = True
+    customer_account_supports_multiple_measurement_profiles: bool = True
+    measurement_profiles_may_represent_self_or_other_people: bool = True
+    each_order_selects_one_measurement_profile: bool = True
+    order_keeps_measurement_snapshot_for_historical_accuracy: bool = True
     customer_may_choose_store_fabric: bool = True
     customer_may_supply_own_fabric: bool = True
     reference_images_supported: bool = True
