@@ -9,7 +9,10 @@ rather than maintaining a separate manually-entered price list.
 from dataclasses import dataclass
 from typing import Tuple
 
-from .hilm_catalog_and_booking_rules import CATALOG_SECTIONS, SERVICE_CATALOG
+try:
+    from .hilm_catalog_and_booking_rules import CATALOG_SECTIONS, SERVICE_CATALOG
+except ImportError:  # Supports direct module loading in tests/maintenance tools.
+    from hilm_catalog_and_booking_rules import CATALOG_SECTIONS, SERVICE_CATALOG
 
 
 HOME_VISIT_SECTION = "home_visit"
@@ -30,7 +33,7 @@ CASHIER_SERVICE_CATALOG = catalog_service_rows()
 
 
 def home_visit_price(service_name: str, base_price: float) -> dict:
-    """Return the final customer-facing home-visit price with the 10% uplift included."""
+    """Return only the final customer-facing home-visit price after the 10% uplift."""
     if base_price < 0:
         raise ValueError("base price cannot be negative")
     final_price = round(base_price * (1 + HOME_VISIT_UPLIFT_RATE), 2)
@@ -43,6 +46,19 @@ def home_visit_price(service_name: str, base_price: float) -> dict:
     }
 
 
+def internal_home_visit_pricing_record(service_name: str, base_price: float) -> dict:
+    """Preserve the internal pricing basis without exposing a surcharge line to customers."""
+    customer = home_visit_price(service_name, base_price)
+    return {
+        "service_name": service_name,
+        "base_price": base_price,
+        "pricing_rule": "base_price_x_1_10",
+        "uplift_percent": HOME_VISIT_UPLIFT_PERCENT,
+        "final_price": customer["final_price"],
+        "customer_disclosure_mode": "final_price_only",
+    }
+
+
 @dataclass(frozen=True)
 class HomeVisitAndCashierContract:
     home_visit_is_store_section: bool = True
@@ -50,6 +66,7 @@ class HomeVisitAndCashierContract:
     home_visit_uplift_percent: int = 10
     home_visit_final_price_includes_uplift: bool = True
     customer_sees_separate_home_visit_fee: bool = False
+    internal_pricing_basis_is_auditable: bool = True
     cashier_uses_entire_canonical_catalog: bool = True
     cashier_uses_catalog_prices: bool = True
     cashier_must_not_have_duplicate_manual_price_source: bool = True
