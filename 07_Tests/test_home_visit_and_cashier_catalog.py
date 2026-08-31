@@ -1,4 +1,5 @@
 import importlib.util
+import sys
 from pathlib import Path
 
 
@@ -7,6 +8,8 @@ def _load(name, relative_path):
     path = root / relative_path
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -33,6 +36,16 @@ def test_customer_does_not_see_separate_home_visit_fee():
     assert result["final_price"] == 275
     assert result["customer_sees_separate_home_visit_fee"] is False
     assert "home_visit_surcharge" not in result
+    assert "base_price" not in result
+    assert "uplift_percent" not in result
+
+
+def test_internal_pricing_record_preserves_auditable_basis_without_customer_surcharge_line():
+    result = module.internal_home_visit_pricing_record("example", 200)
+    assert result["base_price"] == 200
+    assert result["uplift_percent"] == 10
+    assert result["final_price"] == 220
+    assert result["customer_disclosure_mode"] == "final_price_only"
 
 
 def test_contract_requires_shared_service_source_of_truth():
@@ -40,6 +53,7 @@ def test_contract_requires_shared_service_source_of_truth():
     assert contract.home_visit_uplift_percent == 10
     assert contract.home_visit_final_price_includes_uplift is True
     assert contract.customer_sees_separate_home_visit_fee is False
+    assert contract.internal_pricing_basis_is_auditable is True
     assert contract.cashier_uses_entire_canonical_catalog is True
     assert contract.cashier_must_not_have_duplicate_manual_price_source is True
     assert contract.storefront_cashier_management_share_service_ssot is True
