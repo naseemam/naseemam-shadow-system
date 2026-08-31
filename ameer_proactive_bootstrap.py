@@ -9,10 +9,12 @@ from starlette.responses import HTMLResponse, JSONResponse
 
 from ameer_identity_bootstrap import app
 import ameer_server
+from hilm_operations_api import router as hilm_operations_router
 from kernel.proactive_events import ProactiveEventStore
 
 
 PROACTIVE = ProactiveEventStore(ameer_server.REPO_ROOT)
+app.include_router(hilm_operations_router)
 
 
 def _execution_summary(evidence: dict) -> str:
