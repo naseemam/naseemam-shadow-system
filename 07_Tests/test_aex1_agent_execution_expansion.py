@@ -134,7 +134,7 @@ class TestAEX1PermissionMatrix(unittest.TestCase):
             context={"asset_name": "موقع جديد"},
         )
         self.assertEqual(result.verdict, _boundary.BoundaryVerdict.DENY)
-        self.assertEqual(result.reason, "approval_gate_required_missing")
+        self.assertEqual(result.reason, "sovereign_approval_gate_missing")
 
 
 if __name__ == "__main__":
