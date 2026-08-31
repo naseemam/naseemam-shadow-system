@@ -80,3 +80,7 @@ def test_customer_checkout_is_not_founder_business_spend():
         "payment",
         {"business_spend": True, "actual_funds_movement": True},
     ) is True
+
+    checkout = _load("checkout_payment_architecture").checkout_payment_contract()
+    assert checkout.ordinary_customer_payment_requires_founder_approval is False
+    assert checkout.founder_financial_gate_applies_to_business_spend_not_customer_checkout is True
