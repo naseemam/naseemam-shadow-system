@@ -2,8 +2,8 @@
 
 Defines the customer-facing information architecture and shared customer account
 requirements. Customer activity writes to canonical service, product, customer,
-booking, order, payment and inventory sources and becomes available to authorized
-management/POS projections without duplicate re-entry.
+booking, order, tailoring, payment and inventory sources and becomes available to
+authorized management/POS projections without duplicate re-entry.
 """
 
 from dataclasses import dataclass
@@ -21,6 +21,8 @@ PUBLIC_SECTIONS: Tuple[str, ...] = (
     "home_visit_booking",
     "products",
     "product_departments",
+    "fabrics",
+    "online_tailoring",
     "product_search_and_filters",
     "loyalty",
     "gift_packages",
@@ -30,6 +32,7 @@ PUBLIC_SECTIONS: Tuple[str, ...] = (
     "contact_and_location",
     "cart",
     "checkout",
+    "payment_gateway",
     "customer_account",
 )
 
@@ -44,6 +47,8 @@ CUSTOMER_ACCOUNT_VIEWS: Tuple[str, ...] = (
     "profile",
     "bookings",
     "orders",
+    "tailoring_orders",
+    "saved_tailoring_measurements",
     "packages",
     "gift_packages",
     "loyalty_points",
@@ -81,6 +86,18 @@ PRODUCT_FLOW: Tuple[str, ...] = (
     "sync_order_to_cashier_and_management",
 )
 
+TAILORING_FLOW: Tuple[str, ...] = (
+    "select_tailoring_service_or_garment",
+    "select_store_fabric_or_customer_owned_fabric",
+    "capture_and_save_measurements",
+    "upload_reference_images_when_available",
+    "calculate_tailoring_and_fabric_total",
+    "checkout_through_shared_payment_gateway",
+    "verify_payment_server_side",
+    "create_tailoring_order",
+    "sync_tailoring_order_to_cashier_and_management",
+)
+
 PRODUCT_FIELDS: Tuple[str, ...] = (
     "product_id",
     "department",
@@ -111,6 +128,9 @@ CANONICAL_STORE_DOMAINS: Tuple[str, ...] = (
     "service_pricing",
     "product_catalog",
     "product_pricing",
+    "fabric_inventory",
+    "tailoring_order",
+    "tailoring_measurements",
     "inventory",
     "booking",
     "order",
@@ -132,10 +152,15 @@ class HilmPublicStorefrontContract:
     storefront_booking_requires_full_payment: bool = True
     service_booking_supported: bool = True
     product_sales_supported: bool = True
+    fabrics_supported: bool = True
+    online_tailoring_supported: bool = True
+    tailoring_measurements_saved_to_customer_account: bool = True
+    tailoring_may_use_store_fabric_or_customer_fabric: bool = True
     product_and_service_cart_is_shared: bool = True
     product_inventory_is_canonical: bool = True
     product_variants_supported: bool = True
     cashier_and_management_consume_same_product_ssot: bool = True
+    shared_payment_gateway_required_for_online_checkout: bool = True
     offers_supported: bool = True
     packages_supported: bool = True
     loyalty_supported: bool = True
