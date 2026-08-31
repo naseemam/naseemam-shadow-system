@@ -1,48 +1,18 @@
 """Central sovereign authority policy for Ameer Shadow System.
 
 Ameer is a free executive core inside the Founder-owned and delegated ecosystem.
-Within that delegated scope, operational authority is the default: read, write,
-edit, create components, operational delete, publish, deploy, connect, administer,
-select tools/providers/workers, and make the operational decisions needed to
-finish a task. GitHub, Railway, Cloudflare, and connected project services are
-operational resources under Ameer's management when credentials/capabilities are
-available.
+Operational authority is the default inside delegated projects. Founder approval
+is reserved for pre-classified sovereign decisions, not routine execution.
 
-Human approval is NOT a continuous control mechanism. It is a decision approval
-for a pre-classified sovereign action. Ameer performs all technical work before
-and after that decision autonomously and records actions, results, and evidence.
+Two financial cases are explicitly outside the Founder financial gate:
+* an ordinary customer paying for the customer's own purchase/booking; and
+* delegated investment trading executed by Ameer or the trading bot inside the
+  Founder-authorized trading account and configured risk policy.
 
-Founder approval is required only for these pre-classified sovereign gates:
-1. creation of a new independent root asset (site/program/system/repository),
-2. final production activation of that newly-created root asset,
-3. an actual financial commitment/payment/transfer,
-4. transfer of ownership or equivalent control of a core asset,
-5. creation/replacement of a principal/root credential, or revocation of a live
-   credential when that revocation may interrupt service,
-6. granting top-level/admin/owner authority to an external party,
-7. irreversible final deletion/destruction of a core/root asset,
-8. final public-domain cutover to a newly prepared independent destination.
-
-Operational API-key/token work is autonomous when it is required to keep or
-restore a delegated service: creating a scoped operational key, replacing an
-expired key, overlapping old/new keys during safe rotation, testing the new key,
-updating service configuration, and retiring an old key only after continuity is
-verified. Merely handling credentials does not create a Founder gate.
-
-For a migration such as "move the interface to the independent server", Ameer may
-autonomously inspect the current state, prepare the destination, operate GitHub,
-Railway and Cloudflare, create or rotate operational credentials, deploy, test,
-repair, re-test, and produce evidence. Only the final public-domain/DNS cutover
-that makes the new destination authoritative is reserved for Founder approval.
-
-Ordinary deploys, publishes, repository changes, Railway operations, Cloudflare
-configuration, non-final DNS preparation, reversible cleanup, credential use,
-scoped connector configuration, and operational deletion are not Founder gates
-merely because they have external effects.
-
-A Founder approval authorizes the complete execution scope of that specific
-sovereign decision. No subsystem may split it into repeated approvals for its
-implementation steps.
+The trading exception authorizes market execution (buy/sell/open/close/reduce and
+risk exits) without per-trade approval. It does not authorize unrelated business
+spend, withdrawals, transfers to external beneficiaries, changing account
+ownership, or expanding the delegated capital/account scope.
 """
 
 from __future__ import annotations
@@ -92,6 +62,12 @@ _ACTION_ALIASES = {
 }
 _CREATION_VERBS = {"create", "new", "open", "انشاء", "إنشاء", "فتح"}
 _EXISTING_ASSET_FLAGS = ("existing_asset", "within_existing_asset", "parent_asset_id")
+_TRADING_ACTIONS = {
+    "buy", "sell", "market_buy", "market_sell", "limit_buy", "limit_sell",
+    "open_position", "close_position", "reduce_position", "exit_position",
+    "stop_loss_exit", "trailing_stop_exit", "rebalance_position",
+    "شراء", "بيع", "فتح_مركز", "اغلاق_مركز", "إغلاق_مركز", "تقليل_مركز",
+}
 
 def _normalise(value: object) -> str:
     return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
@@ -112,6 +88,21 @@ def _asset_kind(context: Optional[Mapping[str, Any]]) -> str:
     raw = _normalise(_context_value(context, "asset_kind", "root_asset_kind", "resource_kind", "target_kind"))
     return _ASSET_KIND_ALIASES.get(raw, "")
 
+def _is_customer_self_payment(context: Optional[Mapping[str, Any]]) -> bool:
+    safe = context or {}
+    return bool(safe.get("customer_self_payment") or safe.get("ordinary_customer_checkout")) and not bool(safe.get("business_spend"))
+
+def _is_delegated_trading_execution(action: str, context: Optional[Mapping[str, Any]]) -> bool:
+    safe = context or {}
+    name = _normalise(action)
+    delegated = bool(safe.get("delegated_trading_execution"))
+    actor = _normalise(safe.get("actor"))
+    account_scope = bool(safe.get("within_authorized_trading_account", False))
+    within_risk_policy = bool(safe.get("within_trading_risk_policy", False))
+    prohibited_transfer = bool(safe.get("withdrawal") or safe.get("external_beneficiary_transfer") or safe.get("account_ownership_change"))
+    action_is_trade = name in _TRADING_ACTIONS or _normalise(safe.get("operation_kind")) in _TRADING_ACTIONS
+    return delegated and actor in {"ameer", "trading_bot", "ameer_trading_bot"} and account_scope and within_risk_policy and action_is_trade and not prohibited_transfer
+
 def canonical_creation_action(action: str, context: Optional[Mapping[str, Any]] = None) -> Optional[str]:
     if _targets_existing_asset(context): return None
     name = _normalise(action)
@@ -124,6 +115,8 @@ def canonical_creation_action(action: str, context: Optional[Mapping[str, Any]] 
 def canonical_sovereign_action(action: str, context: Optional[Mapping[str, Any]] = None) -> Optional[str]:
     creation = canonical_creation_action(action, context)
     if creation: return creation
+    if _is_customer_self_payment(context): return None
+    if _is_delegated_trading_execution(action, context): return None
     name = _normalise(action)
     direct = _ACTION_ALIASES.get(name)
     if direct in FINAL_RELEASE_ACTIONS or direct in FINANCIAL_ACTIONS or direct in CONTROL_ACTIONS:
@@ -161,13 +154,17 @@ def approval_actions() -> Iterable[str]: return tuple(SOVEREIGN_ACTIONS.keys())
 def policy_snapshot() -> Dict[str, Any]:
     gates = [{"action": action, **details} for action, details in SOVEREIGN_ACTIONS.items()]
     return {
-        "policy_id":"ameer_sovereign_authority_v4",
+        "policy_id":"ameer_sovereign_authority_v5",
         "mode":"free_executive_core_with_preclassified_sovereign_gates",
         "authority_owner":"ameer",
         "human_approval_role":"approval_of_specific_sovereign_decision_not_continuous_control",
         "default_operational_authority":["read","write","edit","add","operational_delete","publish","deploy","connect","administer","operational_decisions","create_scoped_api_keys","rotate_operational_tokens"],
         "managed_platforms":["github","railway","cloudflare","connected_project_services"],
         "autonomous_within_existing_assets":True,
+        "delegated_trading_execution_without_per_trade_approval":True,
+        "delegated_trading_actors":["ameer","trading_bot"],
+        "trading_exception_scope":"buy_sell_open_close_reduce_and_risk_exit_inside_authorized_account_and_risk_policy_only",
+        "customer_self_checkout_is_not_founder_financial_commitment":True,
         "portable_core":True,
         "location_independent":True,
         "provider_independent":True,
@@ -187,6 +184,6 @@ def policy_snapshot() -> Dict[str, Any]:
             "financial_commitment":list(FINANCIAL_ACTIONS),
             "ownership_credentials_external_privilege_irreversible_core_delete":list(CONTROL_ACTIONS),
         },
-        "autonomous_domains":["planning","reasoning","conversation","design","build","test","operate","maintain","repair","self_improvement","existing_asset_publish","github_administration","railway_administration","cloudflare_administration","dns_preparation","connector_management","repository_operations","browser_operations","worker_orchestration","provider_selection","model_selection","migration","backup","restore","recovery","scoped_key_creation","operational_key_rotation","expired_key_replacement"],
+        "autonomous_domains":["planning","reasoning","conversation","design","build","test","operate","maintain","repair","self_improvement","existing_asset_publish","github_administration","railway_administration","cloudflare_administration","dns_preparation","connector_management","repository_operations","browser_operations","worker_orchestration","provider_selection","model_selection","migration","backup","restore","recovery","scoped_key_creation","operational_key_rotation","expired_key_replacement","delegated_trading_execution"],
         "non_expansion_rule":"no_subsystem_or_external_resource_may_invent_expand_reinterpret_or_narrow_founder_directives_or_approval_gates",
     }
