@@ -43,6 +43,7 @@ jobs:
             07_Tests/test_chat_final_approval_policy.py \
             07_Tests/test_ameer_execution_authority.py \
             07_Tests/test_operator_ui_execution_visibility.py \
+            07_Tests/test_live_execution_visibility.py \
             07_Tests/test_p04_executive_activation.py
 
   dependency_audit:

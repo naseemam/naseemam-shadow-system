@@ -49,9 +49,13 @@ class ProactiveExecutionMiddleware(BaseHTTPMiddleware):
                 async for chunk in response.body_iterator:
                     raw += chunk
                 html = raw.decode("utf-8")
-                tag = '<script src="/modules/proactive.js" defer></script>'
-                if tag not in html:
-                    html = html.replace("</body>", tag + "\n</body>")
+                tags = (
+                    '<script src="/modules/live-execution.js" defer></script>',
+                    '<script src="/modules/proactive.js" defer></script>',
+                )
+                missing = [tag for tag in tags if tag not in html]
+                if missing:
+                    html = html.replace("</body>", "\n".join(missing) + "\n</body>")
                 headers = {k: v for k, v in dict(response.headers).items() if k.lower() not in {"content-length", "content-type"}}
                 return HTMLResponse(html, status_code=response.status_code, headers=headers)
             except Exception:
