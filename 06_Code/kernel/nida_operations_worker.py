@@ -1,9 +1,9 @@
-"""Nida operational worker contract for Hilm Alnada.
+"""Nada operational worker contract for Hilm Alnada.
 
-Nida is the scoped operational worker responsible for cashier/POS, invoicing,
+Nada is the scoped operational worker responsible for cashier/POS, invoicing,
 retail inventory, operational warehouses, stock receipts/issues/returns, document
 capture and reconciliation. Ameer remains the executive orchestrator and supervisor.
-Nida has no sovereign authority and cannot bypass Ameer governance or project
+Nada has no sovereign authority and cannot bypass Ameer governance or project
 permissions.
 """
 
@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Tuple
 
 
-NIDA_ID = "nida"
+NIDA_ID = "nada"
 NIDA_ARABIC_NAME = "ندى"
 NIDA_ROLE = "hilm_finance_inventory_operations"
 
