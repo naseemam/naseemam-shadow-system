@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from ameer_proactive_bootstrap import app
 import ameer_server
@@ -9,6 +10,8 @@ from hilm_alerts_api import ALERTS, router as hilm_alerts_router
 from hilm_operations_api import RUNTIME as HILM_OPERATIONS
 from kernel.friendly_room_patch import install_friendly_room_patch
 from kernel.hilm_operational_alert_bridge import sync_operations_to_alerts
+
+logger = logging.getLogger(__name__)
 
 app.include_router(hilm_alerts_router)
 install_friendly_room_patch(app, ameer_server)
@@ -19,7 +22,7 @@ async def _hilm_alert_monitor() -> None:
         try:
             sync_operations_to_alerts(HILM_OPERATIONS, ALERTS)
         except Exception:
-            pass
+            logger.exception("Hilm operational alert synchronization failed")
         await asyncio.sleep(30)
 
 
