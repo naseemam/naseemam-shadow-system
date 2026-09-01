@@ -2,6 +2,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+import asyncio
 import glob
 import json
 import html
@@ -23,6 +24,7 @@ if _CODE_ROOT not in sys.path:
 from kernel.task_decomposer import normalize_arabic_for_match
 from kernel.ameer_authority import policy_snapshot as authority_policy_snapshot
 from kernel.chat_media import ChatMediaStore, MAX_UPLOAD_BYTES
+from kernel.live_execution import LiveExecutionStore
 
 from ameer_runtime import (
     public_runtime_identity,
@@ -139,6 +141,7 @@ CHAT_MEDIA = ChatMediaStore(DATA_ROOT)
 
 # Load markdown documents from workspace (always from the repo checkout)
 ROOT = DATA_ROOT
+LIVE_EXECUTIONS = LiveExecutionStore(ROOT)
 MODULES_DIR = os.path.join(REPO_ROOT, "09_Assets", "web", "modules")
 app.mount("/modules", StaticFiles(directory=MODULES_DIR), name="modules")
 MD_GLOB = os.path.join(REPO_ROOT, "**", "*.md")
@@ -150,6 +153,38 @@ KERNEL_ACTIONABLE_INTENTS = {
     "repository_review", "code_edit", "build_website", "build_store",
     "open_branch", "open_pull_request", "deploy_railway", "worker_dispatch",
 }
+
+
+def _live_stage(
+    execution_id: str,
+    key: str,
+    title: str,
+    *,
+    status: str = "completed",
+    detail: str = "",
+    evidence: dict | None = None,
+) -> None:
+    if not execution_id:
+        return
+    try:
+        LIVE_EXECUTIONS.stage(
+            execution_id,
+            key,
+            title,
+            status=status,
+            detail=detail,
+            evidence=evidence,
+        )
+    except Exception:
+        _log("live_execution_stage_failed", level="warning", stage=key)
+
+
+def _live_reason(value: object) -> str:
+    """Expose a stable reason code, never raw exception or tool text."""
+    reason = str(value or "").strip()
+    if re.fullmatch(r"[A-Za-z0-9_.:-]{1,80}", reason):
+        return f"السبب التقني: {reason}"
+    return "توقف التنفيذ في هذه المرحلة؛ التفاصيل التقنية محفوظة في سجل التنفيذ."
 
 _WORKER_REQUEST_MARKERS = {
     "engineering": ("عامل الهندسة", "عامل هندسة", "مهندس", "engineering worker"),
@@ -632,6 +667,16 @@ async def download_business_attachment(attachment_id: str):
 @app.post('/ask')
 async def ask(request: Request):
     request_id = str(uuid.uuid4())
+    requested_execution_id = str(request.headers.get("x-ameer-execution-id") or "").strip()
+    execution_id = requested_execution_id if LIVE_EXECUTIONS.valid_execution_id(requested_execution_id) else request_id
+    LIVE_EXECUTIONS.begin(execution_id, request_id=request_id)
+    _live_stage(
+        execution_id,
+        "received",
+        "استلم أمير طلبك وبدأ العمل",
+        detail="تم فتح مسار تنفيذ مستقل لهذا الطلب.",
+    )
+    await asyncio.sleep(0)
     raw = await request.body()
     if not raw:
         raise HTTPException(status_code=400, detail="Empty body")
@@ -685,6 +730,8 @@ async def ask(request: Request):
     executive_assessment = ""
     persistent_memory_context = ""
     is_first_turn = False
+    _live_stage(execution_id, "context", "مراجعة سياق المشروع والحالة الحالية", status="running")
+    await asyncio.sleep(0)
     if KERNEL:
         try:
             ctx = KERNEL.before_request(q)
@@ -699,6 +746,13 @@ async def ask(request: Request):
             is_first_turn = ctx.get("is_first_turn", False)
         except Exception:
             pass
+    _live_stage(
+        execution_id,
+        "context",
+        "راجع أمير سياق المشروع والحالة الحالية",
+        detail="تمت قراءة الحالة والمهام والموافقات المرتبطة قبل اختيار المسار.",
+    )
+    await asyncio.sleep(0)
 
     autonomy_plan = None
     autonomy_keywords = ["plan", "planning", "memory", "autonom", "workspace", "document", "tool", "improve", "self", "reason"]
@@ -706,6 +760,8 @@ async def ask(request: Request):
         autonomy_plan = _record_autonomy_plan(q, "autonomy")
 
     # ── 2. Orchestrator (retrieval + guardian) ─────────────────────────────────
+    _live_stage(execution_id, "routing", "تحديد المسار والعامل المناسب", status="running")
+    await asyncio.sleep(0)
     orchestrator_result = ORCHESTRATOR.answer(q, req.max_results)
 
     if not EXECUTIVE_BRAIN:
@@ -719,10 +775,26 @@ async def ask(request: Request):
     # have both passed.  Explicit selection is honoured; otherwise the routing
     # rules choose a ready domain worker for an actionable task.
     requested_worker, worker_selection_mode = _select_worker_id(q)
+    _live_stage(
+        execution_id,
+        "routing",
+        "حدد أمير مسار التنفيذ",
+        detail=(f"سيعمل عامل {requested_worker} تحت إدارة أمير." if requested_worker else "سيتولى أمير المهمة عبر النواة التنفيذية."),
+        evidence={"worker_id": requested_worker} if requested_worker else None,
+    )
+    await asyncio.sleep(0)
     worker_execution_trace: dict | None = None
     worker_execution_reply: str | None = None
     if requested_worker and KERNEL and getattr(KERNEL, "worker_runtime", None):
         if str((guardian or {}).get("status") or "").strip().lower() == "pass":
+            _live_stage(
+                execution_id,
+                "worker",
+                f"عامل {requested_worker} ينفذ الجزء المتخصص",
+                status="running",
+                evidence={"worker_id": requested_worker},
+            )
+            await asyncio.sleep(0)
             worker_context = {
                 "mode": "business_chat_worker_dispatch",
                 "tools": [],
@@ -745,6 +817,15 @@ async def ask(request: Request):
                 worker_status = str(worker_result.get("status") or "failed")
                 worker_delegation_id = None
             worker_run_id = worker_result.get("run_id")
+            _live_stage(
+                execution_id,
+                "worker",
+                (f"أكمل عامل {requested_worker} مهمته" if worker_status == "completed" else f"توقف عامل {requested_worker}"),
+                status="completed" if worker_status == "completed" else "failed",
+                detail=("استلم أمير نتيجة العامل لمراجعتها." if worker_status == "completed" else str(worker_result.get("reason") or worker_result.get("error") or worker_status)),
+                evidence={"worker_id": requested_worker, "run_id": worker_run_id},
+            )
+            await asyncio.sleep(0)
             worker_execution_trace = {
                 "command": q,
                 "pipeline": [{
@@ -789,6 +870,15 @@ async def ask(request: Request):
                     f"السبب التقني: {worker_result.get('reason') or worker_result.get('error') or worker_status}."
                 )
         else:
+            _live_stage(
+                execution_id,
+                "worker",
+                "توقف استدعاء العامل عند بوابة الحوكمة",
+                status="blocked",
+                detail="لم يمنح مسار الحوكمة تصريحًا صالحًا لاستدعاء العامل.",
+                evidence={"worker_id": requested_worker},
+            )
+            await asyncio.sleep(0)
             worker_execution_trace = {
                 "command": q,
                 "pipeline": [],
@@ -807,6 +897,8 @@ async def ask(request: Request):
             worker_execution_reply = "⚠️ لم يُستدع العامل لأن تصريح الحوكمة الحالي غير صالح."
 
     # ── 3. Executive Brain think + execute ────────────────────────────────────
+    _live_stage(execution_id, "planning", "إعداد خطة العمل", status="running")
+    await asyncio.sleep(0)
     plan = EXECUTIVE_BRAIN.think(
         reasoning_query,
         DOCUMENTS,
@@ -822,6 +914,13 @@ async def ask(request: Request):
         existing_plan=plan,
     )
     reasoning_output["_plan"] = plan
+    _live_stage(
+        execution_id,
+        "planning",
+        "أعد أمير خطة العمل",
+        detail=f"خطة من {len(getattr(plan, 'steps', []) or [])} خطوة قبل التنفيذ.",
+    )
+    await asyncio.sleep(0)
 
     # ── P0.1 — Governance wiring: route plan outcomes into Kernel automatically ──
     # Every high-impact outcome is now recorded in DecisionEngine or ApprovalGate
@@ -866,6 +965,8 @@ async def ask(request: Request):
         "memory_note": plan.memory_note,
         "executive_message": plan.executive_message,
     }
+    _live_stage(execution_id, "execution", "تنفيذ الخطة", status="running")
+    await asyncio.sleep(0)
     execution_result = EXECUTIVE_BRAIN._execute_plan(
         q,
         plan,
@@ -894,6 +995,24 @@ async def ask(request: Request):
                 )
                 final_exec = kernel_execution_trace.get("final", {})
                 exec_results = final_exec.get("results") or []
+                live_files = list(final_exec.get("files_created") or final_exec.get("files") or [])
+                _live_stage(
+                    execution_id,
+                    "execution",
+                    "اكتمل مسار التنفيذ" if final_exec.get("accepted") else "توقف مسار التنفيذ",
+                    status="completed" if final_exec.get("accepted") else "blocked",
+                    detail=(
+                        f"أنجز أمير {int(final_exec.get('completed') or 0)} خطوة فعلية."
+                        if final_exec.get("accepted")
+                        else _live_reason(final_exec.get("technical_reason") or final_exec.get("reason"))
+                    ),
+                    evidence={
+                        "completed_units": int(final_exec.get("completed") or 0),
+                        "file_count": len(live_files),
+                        "files": live_files,
+                    },
+                )
+                await asyncio.sleep(0)
                 if final_exec.get("accepted"):
                     if kernel_detected_intent == "file_read":
                         read_result = next(
@@ -918,6 +1037,14 @@ async def ask(request: Request):
                     )
         except Exception as exc:
             if kernel_detected_intent != "unknown":
+                _live_stage(
+                    execution_id,
+                    "execution",
+                    "واجه مسار التنفيذ خطأ",
+                    status="failed",
+                    detail=_live_reason(type(exc).__name__),
+                )
+                await asyncio.sleep(0)
                 kernel_execution_trace = {
                     "command": q,
                     "pipeline": [],
@@ -932,6 +1059,14 @@ async def ask(request: Request):
                     "⚠️ تعذر تشغيل مسار التنفيذ. "
                     f"السبب التقني: {type(exc).__name__}: {exc}."
                 )
+    if kernel_detected_intent == "unknown" and not requested_worker:
+        _live_stage(
+            execution_id,
+            "execution",
+            "اكتملت معالجة الطلب",
+            detail="لم يحتج الطلب إلى تغيير ملفات أو تشغيل أداة تنفيذية.",
+        )
+        await asyncio.sleep(0)
     # ── 4. Compose fallback reply (used only if ECE is unavailable) ─────────────
     fallback_reply, reply_source = EXECUTIVE_BRAIN.compose_final_reply(
         reasoning_query,
@@ -1085,6 +1220,12 @@ async def ask(request: Request):
                 user_payload["preview_url"] = f"/preview/projects/{_slug}"
         elif _preview_path.startswith("09_Assets/runtime_workspace/home/"):
             user_payload["preview_url"] = "/preview"
+    _live_stage(
+        execution_id,
+        "response",
+        "أعد أمير النتيجة النهائية",
+        detail="ستظهر النتيجة في المحادثة مع دليل التنفيذ المتاح.",
+    )
     _log("ask_completed", request_id=request_id)
     return utf8_json_response(user_payload, headers=runtime_headers(workspace_root=REPO_ROOT))
 
