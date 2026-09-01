@@ -125,7 +125,7 @@ class ExpandedAgentOperations:
             "engineering": ["architecture", "backend", "frontend", "api_design", "database_design", "testing", "debugging", "refactoring"],
             "design": ["ui", "ux", "responsive_design", "dashboards", "forms", "workflows"],
             "management": ["projects", "stages", "business_operations", "school_tracking", "reporting"],
-            "school": ["students", "tasks", "grades", "attendance", "dashboard", "external_sync_when_approved"],
+            "school": ["students", "tasks", "weekly_plan", "grades", "attendance", "dashboard", "external_sync_when_approved"],
             "self_expansion": ["propose_skill", "prototype_skill", "test_skill", "request_external_activation"],
         }
 
@@ -138,9 +138,21 @@ class ExpandedAgentOperations:
         elif action == "school.students.list":
             result = self.school.list_students(status=p.get("status", "active"))
         elif action == "school.tasks.add":
-            result = self.school.add_task(p["title"], student_id=p.get("student_id"), due_at=p.get("due_at", ""), priority=p.get("priority", "normal"), notes=p.get("notes", ""))
+            result = self.school.add_task(
+                p["title"],
+                student_id=p.get("student_id"),
+                due_at=p.get("due_at", ""),
+                priority=p.get("priority", "normal"),
+                category=p.get("category", "general"),
+                missing_inputs=p.get("missing_inputs", ""),
+                notes=p.get("notes", ""),
+            )
+        elif action == "school.tasks.update":
+            result = self.school.update_task(int(p["task_id"]), p.get("changes") or {})
         elif action == "school.tasks.list":
             result = self.school.list_tasks(status=p.get("status", "open"))
+        elif action == "school.weekly_plan":
+            result = self.school.weekly_plan()
         elif action == "school.grades.record":
             result = self.school.record_grade(int(p["student_id"]), p["subject"], score=float(p["score"]), max_score=float(p.get("max_score", 100)), term=p.get("term", ""), notes=p.get("notes", ""))
         elif action == "school.attendance.record":

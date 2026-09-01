@@ -261,16 +261,20 @@ try:
     from kernel.agent_message_bus import AgentMessageBus
     from kernel.worker_runtime import DEFAULT_WORKERS
     from kernel.business_operations import BusinessOperations
+    from kernel.school_operations import SchoolOperations, SCHOOL_TASK_CATEGORIES
     from kernel.commerce_test_environment import CommerceTestEnvironment
     from kernel.tap_webhook_verifier import verify_tap_hashstring, tap_status_to_test_status
     MESSAGE_BUS = AgentMessageBus(ROOT)
     BUSINESS_OPERATIONS = BusinessOperations(ROOT)
+    SCHOOL_OPERATIONS = SchoolOperations(ROOT)
     COMMERCE_TEST = CommerceTestEnvironment(ROOT)
 except Exception:
     AgentMessageBus = None
     DEFAULT_WORKERS = {}
     MESSAGE_BUS = None
     BUSINESS_OPERATIONS = None
+    SCHOOL_OPERATIONS = None
+    SCHOOL_TASK_CATEGORIES = {}
     COMMERCE_TEST = None
     verify_tap_hashstring = None
     tap_status_to_test_status = None
@@ -1484,6 +1488,58 @@ async def costs_health():
     if not KERNEL or not getattr(KERNEL, "worker_runtime", None):
         return utf8_json_response({"status": "unavailable"}, status_code=503)
     return utf8_json_response(KERNEL.worker_runtime.cost_ledger.health())
+
+
+@app.get('/school/dashboard')
+async def school_dashboard():
+    """Return the private school project's live follow-up and weekly plan."""
+    if SCHOOL_OPERATIONS is None:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    return utf8_json_response({
+        "status": "ok",
+        "categories": SCHOOL_TASK_CATEGORIES,
+        **SCHOOL_OPERATIONS.dashboard(),
+    })
+
+
+@app.post('/school/tasks')
+async def create_school_task(request: Request):
+    if SCHOOL_OPERATIONS is None:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return utf8_json_response({"status": "invalid_request", "reason": "invalid_json"}, status_code=400)
+    try:
+        task = SCHOOL_OPERATIONS.add_task(
+            body.get("title", ""),
+            due_at=str(body.get("due_at") or ""),
+            priority=str(body.get("priority") or "normal"),
+            category=str(body.get("category") or "general"),
+            missing_inputs=str(body.get("missing_inputs") or ""),
+            notes=str(body.get("notes") or ""),
+        )
+    except ValueError as exc:
+        return utf8_json_response({"status": "invalid_request", "reason": str(exc)}, status_code=422)
+    return utf8_json_response({"status": "created", "task": task}, status_code=201)
+
+
+@app.patch('/school/tasks/{task_id}')
+async def update_school_task(task_id: int, request: Request):
+    if SCHOOL_OPERATIONS is None:
+        return utf8_json_response({"status": "unavailable"}, status_code=503)
+    try:
+        changes = await request.json()
+        if not isinstance(changes, dict):
+            raise ValueError("changes_must_be_an_object")
+        result = SCHOOL_OPERATIONS.update_task(task_id, changes)
+    except KeyError:
+        return utf8_json_response({"status": "not_found", "reason": "school_task_not_found"}, status_code=404)
+    except ValueError as exc:
+        return utf8_json_response({"status": "invalid_request", "reason": str(exc)}, status_code=422)
+    except Exception:
+        return utf8_json_response({"status": "invalid_request", "reason": "invalid_json"}, status_code=400)
+    return utf8_json_response(result)
 
 
 @app.get('/center/profile')
