@@ -7,6 +7,7 @@ CODE_ROOT = Path(__file__).resolve().parents[1] / "06_Code"
 if str(CODE_ROOT) not in sys.path:
     sys.path.insert(0, str(CODE_ROOT))
 
+from executive_brain import ExecutiveBrain
 from executive_conversation import ExecutiveConversationEngine, PersistentConversationMemory
 from kernel.stage_autonomy_patch import install_stage_autonomy_patch
 from reasoning_orchestrator import AmeerOrchestrator
@@ -27,11 +28,44 @@ def test_generic_execution_does_not_request_step_approval() -> None:
     assert result["risk_level"] == "low"
 
 
+def test_push_deploy_publish_are_not_legacy_human_approval_gates() -> None:
+    install_stage_autonomy_patch()
+    orchestrator = _orchestrator()
+    for query in (
+        "ادفع التغييرات إلى GitHub",
+        "اعمل push للفرع الحالي",
+        "انشر التحديث على Railway",
+        "publish التعديل داخل الموقع القائم",
+    ):
+        result = orchestrator.guardian_check(query, "execution")
+        assert result["status"] == "pass", query
+        assert result["risk_level"] == "low", query
+
+
 def test_destructive_action_is_delegated_inside_existing_asset() -> None:
     install_stage_autonomy_patch()
     result = _orchestrator().guardian_check("احذف الملف نهائيًا", "execution")
     assert result["status"] == "pass"
     assert result["risk_level"] == "low"
+
+
+def test_identity_describes_real_execution_not_human_handoff() -> None:
+    install_stage_autonomy_patch()
+    output = _orchestrator()._build_core_identity_payload("ماذا تستطيع؟")
+    assert "نواة تنفيذية حرة" in output.reply_draft
+    assert "أقرأ وأكتب وأعدل وأختبر" in output.reply_draft
+    assert "لا أحول التنفيذ عليك" in output.reply_draft
+    assert output.response_data["execution_authority"] == "delegated_free_executive_core"
+    assert output.response_data["human_handoff_for_routine_operations"] is False
+
+
+def test_provider_prompt_forbids_routine_human_handoff() -> None:
+    install_stage_autonomy_patch()
+    brain = ExecutiveBrain(normalize_fn=lambda text: text)
+    system_prompt, _ = brain._build_provider_prompt("اكتب التعديل وادفعه إلى GitHub")
+    assert "أمير نواة تنفيذية حرة" in system_prompt
+    assert "ممنوع تحويل العمل التشغيلي المعتاد إلى تعليمات للمؤسسة" in system_prompt
+    assert "لا يعمل أي منهم بدل أمير" in system_prompt
 
 
 def test_same_stage_continuation_ignores_stale_blocked_task(tmp_path: Path) -> None:
