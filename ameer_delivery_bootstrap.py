@@ -274,6 +274,20 @@ async def ui_runtime_status():
     )
 
 
+@app.get("/ui/executions/{execution_id}")
+async def ui_live_execution(execution_id: str):
+    """Return one safe live timeline; never expose prompts or internal reasoning."""
+    if not ameer_server.LIVE_EXECUTIONS.valid_execution_id(execution_id):
+        raise HTTPException(status_code=400, detail="Invalid execution id")
+    item = ameer_server.LIVE_EXECUTIONS.public(execution_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    return ameer_server.utf8_json_response(
+        item,
+        headers=ameer_server.runtime_headers(workspace_root=ameer_server.REPO_ROOT),
+    )
+
+
 @app.post("/agent/action")
 async def agent_action(request: Request):
     _require_agent_access(request)
@@ -316,7 +330,19 @@ if _original_ask_route is not None:
 
     @app.post("/ask")
     async def agent_aware_ask(request: Request):
-        response = await _original_ask_endpoint(request)
+        execution_id = str(request.headers.get("x-ameer-execution-id") or "").strip()
+        try:
+            response = await _original_ask_endpoint(request)
+        except Exception as exc:
+            ameer_server._live_stage(
+                execution_id,
+                "failed",
+                "توقف الطلب قبل اكتمال النتيجة",
+                status="failed",
+                detail=ameer_server._live_reason(type(exc).__name__),
+            )
+            ameer_server.LIVE_EXECUTIONS.finish(execution_id, status="failed")
+            raise
         try:
             body = json.loads(bytes(response.body).decode("utf-8"))
             trace = body.get("execution_trace") or {}
