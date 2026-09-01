@@ -1,4 +1,10 @@
-from 06_Code.kernel.managed_programs_reporting_contract import program_contract
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "06_Code"))
+
+from kernel.managed_programs_reporting_contract import program_contract
 
 
 def test_every_program_is_managed_printable_and_analytical():
