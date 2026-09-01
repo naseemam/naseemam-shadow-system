@@ -1,32 +1,12 @@
 """
 execution_boundary.py
 =====================
-Central Execution Boundary — the single gate every side-effecting execution
-request must pass before reaching ExecutionAuthorization or FileExecutor.
+Central Execution Boundary for side-effecting work.
 
-Pipeline
---------
-    Execution request
-        ↓
-    ExecutionBoundary.evaluate(guardian, request_type, intent)
-        ↓
-    Guardian verdict  ──►  blocked / needs_approval / unknown / missing  →  DENIED
-        ↓
-    conversational?   ──►  not in KERNEL_ACTIONABLE_INTENTS             →  DENIED
-        ↓
-    ApprovalGate      ──►  action HIGH_RISK and no prior approval        →  DENIED (pending)
-        ↓
-    ExecutionAuthorization.check()                                       →  approved / pending / denied
-        ↓
-    allow / deny
-
-Design rules
-------------
-* Fail-closed: any ambiguous, missing, or unknown guardian status → deny
-* Only an explicit "pass" from Guardian allows execution to proceed
-* Conversational request_types never enter side-effect execution
-* ApprovalGate is consulted only for a request to create a new root asset.
-* ExecutionAuthorization is the final gate (capability + permission)
+The boundary validates request clarity, separates chat from executable intent,
+and routes ONLY centrally-defined sovereign actions to Founder approval. It may
+reject malformed or technically unavailable execution, but no subsystem here may
+invent an additional Founder approval requirement.
 """
 
 from __future__ import annotations
@@ -35,16 +15,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, Optional, Set
 
-from kernel.ameer_authority import ROOT_ASSET_ACTIONS, canonical_creation_action
+from kernel.ameer_authority import SOVEREIGN_ACTIONS, canonical_sovereign_action
 
-# Statuses that Guardian must explicitly produce for execution to be allowed.
 _GUARDIAN_PASS_VALUES: Set[str] = {"pass"}
+_HIGH_RISK_ACTIONS_REQUIRING_APPROVAL: Set[str] = set(SOVEREIGN_ACTIONS)
 
-# Compatibility export for callers and tests. The authority source of truth is
-# kernel.ameer_authority; these are the only actions that can open a founder gate.
-_HIGH_RISK_ACTIONS_REQUIRING_APPROVAL: Set[str] = set(ROOT_ASSET_ACTIONS)
-
-# Request types that are purely conversational — they must never trigger side effects.
 _CONVERSATIONAL_TYPES: Set[str] = {
     "question",
     "greeting",
@@ -53,20 +28,17 @@ _CONVERSATIONAL_TYPES: Set[str] = {
     "creative",
 }
 
-# Intents that the kernel is allowed to act on even when request_type is conversational.
-# This mirrors KERNEL_ACTIONABLE_INTENTS in ameer_server.py.
 KERNEL_ACTIONABLE_INTENTS: Set[str] = {
     "build_homepage", "build_generic", "file_read", "run_test",
     "repository_review", "code_edit", "build_website", "build_store",
     "open_branch", "open_pull_request", "deploy_railway",
 }
 
-# AEX-1 permission matrix. Every valid, scoped operation is autonomous inside
-# an existing asset. A new root site/program/system/repository opens the sole
-# founder approval gate.
 AEX1_PERMISSION_MATRIX: Dict[str, Dict[str, Any]] = {
     "read_only": {"allow": True, "tracked": True, "approval": False},
     "tracked_write": {"allow": True, "tracked": True, "approval": False},
+    "sovereign_gate": {"allow": False, "tracked": True, "approval": True},
+    # compatibility key retained for callers/tests from the earlier policy
     "root_asset_creation": {"allow": False, "tracked": True, "approval": True},
 }
 
@@ -74,7 +46,7 @@ AEX1_PERMISSION_MATRIX: Dict[str, Dict[str, Any]] = {
 class BoundaryVerdict(str, Enum):
     ALLOW = "allow"
     DENY = "deny"
-    PENDING = "pending"   # waiting for Founder approval
+    PENDING = "pending"
 
 
 @dataclass
@@ -91,26 +63,11 @@ class BoundaryResult:
 
 
 class ExecutionBoundary:
-    """
-    Central gate that every side-effecting execution request must pass.
+    """Technical boundary plus the single routing point to sovereign approval."""
 
-    Parameters
-    ----------
-    approval_gate : ApprovalGate | None
-        Optional; consulted for HIGH_RISK_ACTIONS.
-    execution_auth : ExecutionAuthorization | None
-        Optional; the final authorization layer.
-    """
-
-    def __init__(
-        self,
-        approval_gate=None,
-        execution_auth=None,
-    ) -> None:
+    def __init__(self, approval_gate=None, execution_auth=None) -> None:
         self._approval_gate = approval_gate
         self._execution_auth = execution_auth
-
-    # ── Public API ────────────────────────────────────────────────────────────
 
     def evaluate(
         self,
@@ -123,48 +80,19 @@ class ExecutionBoundary:
         context: Optional[Dict[str, Any]] = None,
         requested_by: str = "executive_kernel",
     ) -> BoundaryResult:
-        """
-        Evaluate whether a side-effecting execution may proceed.
+        safe_context = context or {}
 
-        Returns a :class:`BoundaryResult` with ``verdict`` ∈
-        {ALLOW, DENY, PENDING}.
-
-        Guardian check (fail-closed)
-        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        * ``guardian`` is None or empty dict → DENY
-        * ``guardian["status"]`` is None, ``""`` or anything other than
-          ``"pass"`` → DENY
-        * ``"pass"`` → continue to next check
-
-        Conversational-type check
-        ~~~~~~~~~~~~~~~~~~~~~~~~~
-        * If request_type is in _CONVERSATIONAL_TYPES AND intent is not in
-          KERNEL_ACTIONABLE_INTENTS → DENY (conversational requests cannot
-          trigger side effects).
-
-        ApprovalGate check
-        ~~~~~~~~~~~~~~~~~~
-        * If an approval_gate is wired and the request creates a new root asset
-          → PENDING (unless that creation has already been approved).
-
-        ExecutionAuthorization check
-        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        * ``execution_auth.check(...)`` → approved / pending / denied
-        * Only ``approved`` maps to ALLOW.
-        """
-        # ── Step 1: Guardian fail-closed ──────────────────────────────────────
+        # 1. Guardian checks request validity/clarity only. It is not an approval
+        # authority. Anything other than explicit pass is a technical/input deny.
         guardian_status = self._extract_guardian_status(guardian)
         if guardian_status not in _GUARDIAN_PASS_VALUES:
             return BoundaryResult(
                 verdict=BoundaryVerdict.DENY,
                 reason="guardian_not_pass",
-                detail={
-                    "guardian_status": guardian_status,
-                    "guardian_raw": guardian,
-                },
+                detail={"guardian_status": guardian_status, "guardian_raw": guardian},
             )
 
-        # ── Step 2: Conversational guard ──────────────────────────────────────
+        # 2. Ordinary conversation must not accidentally trigger side effects.
         rt = (request_type or "").strip().lower()
         it = (intent or "").strip().lower()
         if rt in _CONVERSATIONAL_TYPES and it not in KERNEL_ACTIONABLE_INTENTS:
@@ -174,17 +102,16 @@ class ExecutionBoundary:
                 detail={"request_type": rt, "intent": it},
             )
 
-        # ── Step 3: ApprovalGate (new root asset only) ───────────────────────
-        approval_action = canonical_creation_action(action, context)
-        is_high_risk = approval_action is not None
-        if is_high_risk and self._approval_gate is None:
-            return BoundaryResult(
-                verdict=BoundaryVerdict.DENY,
-                reason="approval_gate_required_missing",
-                detail={"action": approval_action},
-            )
+        # 3. Central sovereign policy is the ONLY source of Founder gates.
+        sovereign_action = canonical_sovereign_action(action, safe_context)
+        if sovereign_action is not None:
+            if self._approval_gate is None:
+                return BoundaryResult(
+                    verdict=BoundaryVerdict.DENY,
+                    reason="sovereign_approval_gate_missing",
+                    detail={"action": sovereign_action},
+                )
 
-        if self._approval_gate is not None and is_high_risk:
             recent_fn = getattr(self._approval_gate, "recent", None)
             pending_fn = getattr(self._approval_gate, "pending", None)
             request_fn = getattr(self._approval_gate, "request", None)
@@ -192,41 +119,57 @@ class ExecutionBoundary:
                 return BoundaryResult(
                     verdict=BoundaryVerdict.DENY,
                     reason="approval_gate_unavailable",
-                    detail={"action": approval_action},
+                    detail={"action": sovereign_action},
                 )
 
-            # Match the canonical root-creation action. Callers should include
-            # the root asset identity in context so evidence remains attributable.
-            recent = recent_fn(20)
+            # Approval matching includes context identity when supplied, preventing
+            # one approval for one asset/payment from silently authorizing another.
+            identity_keys = ("asset_id", "root_asset_id", "repository", "payment_id", "transaction_id")
+            requested_identity = tuple(
+                (key, safe_context.get(key)) for key in identity_keys if safe_context.get(key) not in (None, "")
+            )
+
+            def _same_identity(record: Dict[str, Any]) -> bool:
+                if record.get("action") != sovereign_action:
+                    return False
+                if not requested_identity:
+                    return True
+                recorded_context = record.get("context") or {}
+                return all(recorded_context.get(key) == value for key, value in requested_identity)
+
+            recent = recent_fn(50)
             approved_existing = any(
-                r.get("status") == "approved" and r.get("action") == approval_action
-                for r in recent
+                record.get("status") == "approved" and _same_identity(record)
+                for record in recent
             )
             if not approved_existing:
-                # Check whether there is a pending request
-                pending = pending_fn()
+                pending = [record for record in pending_fn() if _same_identity(record)]
                 if pending:
-                    # Pending request exists — block until resolved
                     return BoundaryResult(
                         verdict=BoundaryVerdict.PENDING,
                         reason="approval_gate_pending",
-                        detail={"pending_count": len(pending)},
+                        detail={
+                            "sovereign_action": sovereign_action,
+                            "pending_count": len(pending),
+                            "approval_id": pending[-1].get("id"),
+                        },
                     )
-                # No pending and no approved — open a new request
-                valid_actions = getattr(self._approval_gate, "VALID_ACTIONS", {approval_action})
+
                 approval_id = request_fn(
-                    action=approval_action if approval_action in valid_actions else "other",
-                    description=f"Root asset creation gate: {capability_name}/{approval_action}",
+                    action=sovereign_action,
+                    description=f"Sovereign gate: {capability_name}/{sovereign_action}",
                     requested_by=requested_by,
-                    context=context or {},
+                    context=safe_context,
                 )
                 return BoundaryResult(
                     verdict=BoundaryVerdict.PENDING,
                     reason="approval_gate_created",
-                    detail={"approval_id": approval_id},
+                    detail={"approval_id": approval_id, "sovereign_action": sovereign_action},
                 )
 
-        # ── Step 4: ExecutionAuthorization ───────────────────────────────────
+        # 4. Technical execution authorization. For non-sovereign actions it must
+        # never return pending due to a permission card; that invariant is enforced
+        # again in ExecutionAuthorization itself.
         if self._execution_auth is None:
             return BoundaryResult(
                 verdict=BoundaryVerdict.DENY,
@@ -244,7 +187,7 @@ class ExecutionBoundary:
             auth_result = check_fn(
                 capability_name=capability_name,
                 action=action,
-                context=context or {},
+                context=safe_context,
                 requested_by=requested_by,
             )
         except Exception as exc:
@@ -260,6 +203,7 @@ class ExecutionBoundary:
                 reason="execution_authorization_unavailable",
                 detail={"error": "invalid_check_result_type"},
             )
+
         auth_status = auth_result.get("status", "denied")
         if auth_status == "approved":
             return BoundaryResult(
@@ -269,6 +213,9 @@ class ExecutionBoundary:
                 detail=auth_result,
             )
         if auth_status == "pending":
+            # This path should only be reachable for a sovereign gate that was
+            # invoked without the ApprovalGate wiring. Preserve pending instead
+            # of silently converting it to approval.
             return BoundaryResult(
                 verdict=BoundaryVerdict.PENDING,
                 reason="execution_authorization_pending",
@@ -281,15 +228,8 @@ class ExecutionBoundary:
             detail=auth_result,
         )
 
-    # ── Internal helpers ──────────────────────────────────────────────────────
-
     @staticmethod
     def _extract_guardian_status(guardian: Optional[Dict[str, Any]]) -> str:
-        """
-        Extract the guardian status string.
-
-        Fail-closed: anything that is not an explicit "pass" becomes "unknown".
-        """
         if not guardian:
             return "missing"
         raw_status = guardian.get("status")
