@@ -1,4 +1,10 @@
-from 06_Code.kernel.ameer_whatsapp_alert_digest import alert_digest_contract
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "06_Code"))
+
+from kernel.ameer_whatsapp_alert_digest import alert_digest_contract
 
 
 def test_purchase_alerts_are_consolidated_before_whatsapp():
