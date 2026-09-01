@@ -36,7 +36,7 @@ def test_consumption_standards_are_versioned_for_historical_costing():
 def test_nida_is_scoped_operations_worker_under_ameer():
     mod = _load("nida_operations_worker")
     contract = mod.nida_operations_worker_contract()
-    assert contract.worker_id == "nida"
+    assert contract.worker_id == "nada"
     assert contract.arabic_name == "ندى"
     assert contract.ameer_is_supervising_orchestrator is True
     assert contract.nida_has_no_sovereign_authority is True
