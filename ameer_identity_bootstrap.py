@@ -36,7 +36,18 @@ class TruthfulExecutionMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request, call_next):
         response = await call_next(request)
-        if request.url.path != "/ask" or response.status_code >= 400:
+        execution_id = str(request.headers.get("x-ameer-execution-id") or "").strip()
+        if request.url.path != "/ask":
+            return response
+        if response.status_code >= 400:
+            ameer_server._live_stage(
+                execution_id,
+                "verification",
+                "تعذر إكمال الطلب",
+                status="failed",
+                detail=f"أعاد الخادم حالة HTTP {response.status_code}.",
+            )
+            ameer_server.LIVE_EXECUTIONS.finish(execution_id, status="failed")
             return response
         try:
             raw = b""
@@ -58,6 +69,33 @@ class TruthfulExecutionMiddleware(BaseHTTPMiddleware):
         body["execution_evidence"] = evidence
         if evidence.get("verified"):
             ACTIVITY.record(evidence)
+            ameer_server._live_stage(
+                execution_id,
+                "verification",
+                "تحقق أمير من دليل التنفيذ",
+                detail="تم ربط النتيجة بتغيير أو أثر تنفيذي موثق.",
+                evidence={
+                    "completed_units": evidence.get("completed_units") or evidence.get("final_completed") or 0,
+                    "file_count": evidence.get("file_count") or 0,
+                    "files": list(evidence.get("files") or [])[:8],
+                },
+            )
+            ameer_server.LIVE_EXECUTIONS.finish(execution_id, status="completed")
+        else:
+            final = trace.get("final") or {}
+            blocked = bool(trace) and final.get("accepted") is False
+            ameer_server._live_stage(
+                execution_id,
+                "verification",
+                "توقف التنفيذ قبل إنتاج دليل" if blocked else "اكتملت المراجعة النهائية",
+                status="blocked" if blocked else "completed",
+                detail=(
+                    ameer_server._live_reason(final.get("technical_reason") or final.get("reason"))
+                    if blocked
+                    else "الطلب لم يحتج إلى تغيير ملفات أو أثر خارجي موثق."
+                ),
+            )
+            ameer_server.LIVE_EXECUTIONS.finish(execution_id, status="blocked" if blocked else "completed")
 
         headers = {
             k: v for k, v in dict(response.headers).items()

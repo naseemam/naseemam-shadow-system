@@ -2,8 +2,18 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+
+SCHOOL_TASK_CATEGORIES = {
+    "student_follow_up": "متابعة الطالبات",
+    "school_records": "السجلات والقوائم",
+    "achievement_portfolio": "ملف الإنجاز",
+    "general": "مهام المدرسة",
+}
+SCHOOL_TASK_PRIORITIES = {"high", "normal", "low"}
 
 
 class SchoolOperations:
@@ -45,7 +55,11 @@ class SchoolOperations:
                     due_at TEXT DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'open',
                     priority TEXT DEFAULT 'normal',
+                    category TEXT NOT NULL DEFAULT 'general',
+                    missing_inputs TEXT DEFAULT '',
                     notes TEXT DEFAULT '',
+                    created_at TEXT NOT NULL DEFAULT '',
+                    completed_at TEXT DEFAULT '',
                     FOREIGN KEY(student_id) REFERENCES students(id)
                 );
                 CREATE TABLE IF NOT EXISTS grades (
@@ -69,6 +83,16 @@ class SchoolOperations:
                 );
                 """
             )
+            columns = {row[1] for row in con.execute("PRAGMA table_info(school_tasks)")}
+            migrations = {
+                "category": "ALTER TABLE school_tasks ADD COLUMN category TEXT NOT NULL DEFAULT 'general'",
+                "missing_inputs": "ALTER TABLE school_tasks ADD COLUMN missing_inputs TEXT DEFAULT ''",
+                "created_at": "ALTER TABLE school_tasks ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
+                "completed_at": "ALTER TABLE school_tasks ADD COLUMN completed_at TEXT DEFAULT ''",
+            }
+            for column, statement in migrations.items():
+                if column not in columns:
+                    con.execute(statement)
 
     def add_student(self, name: str, *, student_ref: str = "", grade: str = "", section: str = "", notes: str = "") -> Dict[str, Any]:
         with self._conn() as con:
@@ -97,14 +121,59 @@ class SchoolOperations:
                 rows = con.execute("SELECT * FROM students ORDER BY name").fetchall()
         return [dict(r) for r in rows]
 
-    def add_task(self, title: str, *, student_id: Optional[int] = None, due_at: str = "", priority: str = "normal", notes: str = "") -> Dict[str, Any]:
+    def add_task(
+        self,
+        title: str,
+        *,
+        student_id: Optional[int] = None,
+        due_at: str = "",
+        priority: str = "normal",
+        category: str = "general",
+        missing_inputs: str = "",
+        notes: str = "",
+    ) -> Dict[str, Any]:
+        title = str(title or "").strip()
+        if not title:
+            raise ValueError("task_title_required")
+        priority = priority if priority in SCHOOL_TASK_PRIORITIES else "normal"
+        category = category if category in SCHOOL_TASK_CATEGORIES else "general"
+        created_at = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
         with self._conn() as con:
             cur = con.execute(
-                "INSERT INTO school_tasks(student_id,title,due_at,priority,notes) VALUES(?,?,?,?,?)",
-                (student_id, title, due_at, priority, notes),
+                "INSERT INTO school_tasks(student_id,title,due_at,priority,category,missing_inputs,notes,created_at) VALUES(?,?,?,?,?,?,?,?)",
+                (student_id, title, due_at, priority, category, missing_inputs, notes, created_at),
             )
             task_id = cur.lastrowid
-        return {"id": task_id, "title": title, "student_id": student_id, "due_at": due_at, "priority": priority}
+        return {
+            "id": task_id,
+            "title": title,
+            "student_id": student_id,
+            "due_at": due_at,
+            "priority": priority,
+            "category": category,
+            "missing_inputs": missing_inputs,
+        }
+
+    def update_task(self, task_id: int, changes: Dict[str, Any]) -> Dict[str, Any]:
+        allowed = {"title", "student_id", "due_at", "status", "priority", "category", "missing_inputs", "notes"}
+        clean = {key: value for key, value in (changes or {}).items() if key in allowed}
+        if "priority" in clean and clean["priority"] not in SCHOOL_TASK_PRIORITIES:
+            clean["priority"] = "normal"
+        if "category" in clean and clean["category"] not in SCHOOL_TASK_CATEGORIES:
+            clean["category"] = "general"
+        if clean.get("status") == "done":
+            clean["completed_at"] = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        elif "status" in clean:
+            clean["completed_at"] = ""
+        if not clean:
+            return {"status": "no_changes", "task_id": task_id}
+        fields = ", ".join(f"{key}=?" for key in clean)
+        with self._conn() as con:
+            exists = con.execute("SELECT 1 FROM school_tasks WHERE id=?", (task_id,)).fetchone()
+            if not exists:
+                raise KeyError("school_task_not_found")
+            con.execute(f"UPDATE school_tasks SET {fields} WHERE id=?", [*clean.values(), task_id])
+        return {"status": "updated", "task_id": task_id, "changes": clean}
 
     def list_tasks(self, status: Optional[str] = "open") -> List[Dict[str, Any]]:
         with self._conn() as con:
@@ -113,6 +182,64 @@ class SchoolOperations:
             else:
                 rows = con.execute("SELECT * FROM school_tasks ORDER BY due_at, id").fetchall()
         return [dict(r) for r in rows]
+
+    @staticmethod
+    def _due_date(value: str) -> Optional[date]:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        try:
+            return date.fromisoformat(raw[:10])
+        except ValueError:
+            return None
+
+    def weekly_plan(self, *, today: Optional[date] = None) -> Dict[str, Any]:
+        """Build a concise, deterministic weekly plan from persisted school work."""
+        current_day = today or date.today()
+        tasks = self.list_tasks(status="open")
+
+        def enrich(task: Dict[str, Any]) -> Dict[str, Any]:
+            item = dict(task)
+            due = self._due_date(item.get("due_at", ""))
+            days_until = (due - current_day).days if due else None
+            flags: List[str] = []
+            if days_until is not None and days_until < 0:
+                flags.append(f"متأخر {abs(days_until)} يوم")
+            elif days_until == 0:
+                flags.append("موعده اليوم")
+            elif days_until is not None and days_until <= 7:
+                flags.append(f"موعده خلال {days_until} يوم")
+            if str(item.get("missing_inputs") or "").strip():
+                flags.append("مدخلات ناقصة")
+            item["category_label"] = SCHOOL_TASK_CATEGORIES.get(item.get("category"), SCHOOL_TASK_CATEGORIES["general"])
+            item["days_until_due"] = days_until
+            item["attention_flags"] = flags
+            return item
+
+        enriched = [enrich(task) for task in tasks]
+        priority_rank = {"high": 0, "normal": 1, "low": 2}
+
+        def rank(item: Dict[str, Any]) -> tuple:
+            days = item.get("days_until_due")
+            deadline_rank = 0 if days is not None and days < 0 else 1 if days is not None and days <= 7 else 2
+            due_rank = days if days is not None else 10_000
+            return (deadline_rank, priority_rank.get(item.get("priority"), 1), due_rank, item.get("id", 0))
+
+        ordered = sorted(enriched, key=rank)
+        by_category = {
+            key: [item for item in ordered if item.get("category") == key]
+            for key in SCHOOL_TASK_CATEGORIES
+        }
+        deadlines = [item for item in ordered if item.get("days_until_due") is not None and item["days_until_due"] <= 7]
+        missing = [item for item in ordered if str(item.get("missing_inputs") or "").strip()]
+        return {
+            "generated_for": current_day.isoformat(),
+            "prioritized": ordered,
+            "categories": by_category,
+            "deadlines": deadlines,
+            "missing_inputs": missing,
+            "next_three": ordered[:3],
+        }
 
     def record_grade(self, student_id: int, subject: str, *, score: float, max_score: float = 100, term: str = "", notes: str = "") -> Dict[str, Any]:
         with self._conn() as con:
@@ -135,4 +262,17 @@ class SchoolOperations:
             students = con.execute("SELECT COUNT(*) FROM students WHERE status='active'").fetchone()[0]
             open_tasks = con.execute("SELECT COUNT(*) FROM school_tasks WHERE status='open'").fetchone()[0]
             grade_count = con.execute("SELECT COUNT(*) FROM grades").fetchone()[0]
-        return {"students": students, "open_tasks": open_tasks, "grade_records": grade_count}
+            completed_tasks = con.execute("SELECT COUNT(*) FROM school_tasks WHERE status='done'").fetchone()[0]
+            rows = con.execute(
+                "SELECT category, COUNT(*) AS count FROM school_tasks WHERE status='open' GROUP BY category"
+            ).fetchall()
+        breakdown = {key: 0 for key in SCHOOL_TASK_CATEGORIES}
+        breakdown.update({row["category"]: row["count"] for row in rows})
+        return {
+            "students": students,
+            "open_tasks": open_tasks,
+            "completed_tasks": completed_tasks,
+            "grade_records": grade_count,
+            "task_breakdown": breakdown,
+            "weekly_plan": self.weekly_plan(),
+        }
