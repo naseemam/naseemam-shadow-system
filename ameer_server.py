@@ -3,19 +3,18 @@ ameer_server.py
 ===============
 Server facade that preserves the established Shadow System application and adds
 private Extended Senses runtime endpoints.
-
-The original server is preserved in ameer_server_base.py. Existing routes and
-public imports remain available, while this file mounts the senses surface used
-by the owner-facing Shadow System UI.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import secrets
 from dataclasses import asdict
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
 from ameer_server_base import *  # noqa: F401,F403
 import ameer_server_base as _base
@@ -25,7 +24,6 @@ KERNEL = _base.KERNEL
 
 
 def __getattr__(name):
-    """Preserve access to names that are intentionally private in the base module."""
     return getattr(_base, name)
 
 
@@ -38,11 +36,6 @@ def _senses_runtime():
 
 
 def _require_senses_access(x_ameer_senses_token: str | None) -> None:
-    """Protect physical-sensor data and controls with a dedicated owner token.
-
-    The token is configured only through AMEER_SENSES_ACCESS_TOKEN and is never
-    embedded in source or returned by an endpoint.
-    """
     expected = os.getenv("AMEER_SENSES_ACCESS_TOKEN", "").strip()
     if not expected:
         raise HTTPException(status_code=503, detail="senses_access_token_not_configured")
@@ -66,18 +59,86 @@ def senses_sensors(x_ameer_senses_token: str | None = Header(default=None)):
 @app.get("/ui/senses/presentations")
 def senses_presentations(x_ameer_senses_token: str | None = Header(default=None)):
     _require_senses_access(x_ameer_senses_token)
-    return {
-        "presentations": _senses_runtime().presentations.list(),
-    }
+    runtime = _senses_runtime()
+    live = runtime.presentations.list()
+    return {"presentations": live or runtime.catalog.presentations()}
 
 
 @app.get("/ui/senses/sensors/{sensor_id}/frame")
 def senses_last_frame(sensor_id: str, x_ameer_senses_token: str | None = Header(default=None)):
     _require_senses_access(x_ameer_senses_token)
-    frame = _senses_runtime().last_frame(sensor_id)
-    if frame is None:
-        raise HTTPException(status_code=404, detail="sensor_frame_not_available")
-    return asdict(frame)
+    runtime = _senses_runtime()
+    frame = runtime.last_frame(sensor_id)
+    if frame is not None:
+        return asdict(frame)
+    persisted = runtime.persisted_last_frame(sensor_id)
+    if persisted is not None:
+        return persisted
+    raise HTTPException(status_code=404, detail="sensor_frame_not_available")
+
+
+@app.get("/ui/senses/events")
+def senses_events(after: int = 0, x_ameer_senses_token: str | None = Header(default=None)):
+    _require_senses_access(x_ameer_senses_token)
+    return {"events": _senses_runtime().events_since(max(after, 0))}
+
+
+@app.get("/ui/senses/events/stream")
+async def senses_event_stream(
+    request: Request,
+    after: int = 0,
+    x_ameer_senses_token: str | None = Header(default=None),
+):
+    """Owner-only Server-Sent Events feed with replay from the requested event id."""
+    _require_senses_access(x_ameer_senses_token)
+    runtime = _senses_runtime()
+
+    async def generate():
+        cursor = max(after, 0)
+        idle_ticks = 0
+        while not await request.is_disconnected():
+            events = runtime.events_since(cursor)
+            if events:
+                for event in events:
+                    cursor = max(cursor, int(event.get("event_id", 0)))
+                    payload = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
+                    yield f"id: {cursor}\nevent: {event.get('event_type', 'message')}\ndata: {payload}\n\n"
+                idle_ticks = 0
+            else:
+                idle_ticks += 1
+                if idle_ticks >= 30:
+                    yield ": keepalive\n\n"
+                    idle_ticks = 0
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(generate(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    })
+
+
+@app.get("/ui/senses/calibration")
+def senses_calibration_list(x_ameer_senses_token: str | None = Header(default=None)):
+    _require_senses_access(x_ameer_senses_token)
+    return {"calibrations": _senses_runtime().calibration.list()}
+
+
+@app.get("/ui/senses/calibration/{sensor_id}")
+def senses_calibration_get(sensor_id: str, x_ameer_senses_token: str | None = Header(default=None)):
+    _require_senses_access(x_ameer_senses_token)
+    item = _senses_runtime().get_calibration(sensor_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="sensor_calibration_not_available")
+    return item
+
+
+@app.put("/ui/senses/calibration/{sensor_id}")
+async def senses_calibration_set(sensor_id: str, request: Request, x_ameer_senses_token: str | None = Header(default=None)):
+    _require_senses_access(x_ameer_senses_token)
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="calibration_payload_must_be_object")
+    return _senses_runtime().set_calibration(sensor_id, payload)
 
 
 @app.post("/ui/senses/sensors/{sensor_id}/connect")
