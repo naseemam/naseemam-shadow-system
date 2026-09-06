@@ -6,8 +6,11 @@ Ameer Extended Senses — طبقة الحواس الممتدة لأمير.
 هذه الطبقة تتعامل فقط مع قياسات حساسات فعلية. لا تنسب أي إشارة إلى
 مصدر خارق أو غير مثبت. تفصل دائمًا بين الرصد، التحليل، والتفسير.
 
-الهدف الأول: دعم إشارات صوتية خارج نطاق السمع البشري، خصوصًا فوق الصوتية،
-مع إمكانية تحويل وصفها إلى نطاق مسموع عندما يوفر الحساس/المحوّل البيانات اللازمة.
+تدعم الطبقة حاليًا:
+- الإشارات الصوتية تحت/داخل/فوق نطاق السمع البشري.
+- الرؤية الحرارية وتحت الحمراء: LWIR / MWIR / NIR / SWIR.
+- القياسات الحرارية radiometric عند توفر درجات حرارة فعلية من الحساس.
+- دمج Thermal + RGB على مستوى metadata، مع إبقاء مصدر كل قياس واضحًا.
 """
 
 from __future__ import annotations
@@ -17,6 +20,13 @@ from typing import Any, Dict, Optional
 
 HUMAN_HEARING_MIN_HZ = 20.0
 HUMAN_HEARING_MAX_HZ = 20_000.0
+
+THERMAL_MODALITIES = {"lwir", "mwir", "radiometric"}
+REFLECTED_IR_MODALITIES = {"nir", "swir"}
+SUPPORTED_VISION_MODALITIES = THERMAL_MODALITIES | REFLECTED_IR_MODALITIES | {
+    "rgb",
+    "thermal_rgb_fusion",
+}
 
 
 @dataclass(frozen=True)
@@ -39,12 +49,56 @@ class AcousticObservation:
             raise ValueError("confidence must be between 0 and 1")
 
 
+@dataclass(frozen=True)
+class VisionObservation:
+    """ملخص موثق لقطة/إطار من حساس رؤية ممتدة."""
+
+    modality: str
+    sensor_id: Optional[str] = None
+    timestamp: Optional[str] = None
+    min_temperature_c: Optional[float] = None
+    max_temperature_c: Optional[float] = None
+    mean_temperature_c: Optional[float] = None
+    hotspot_temperature_c: Optional[float] = None
+    hotspot_x: Optional[float] = None
+    hotspot_y: Optional[float] = None
+    confidence: Optional[float] = None
+    fused_rgb: bool = False
+
+    def validate(self) -> None:
+        modality = self.modality.strip().lower()
+        if modality not in SUPPORTED_VISION_MODALITIES:
+            raise ValueError(f"unsupported vision modality: {self.modality}")
+        if self.confidence is not None and not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("confidence must be between 0 and 1")
+        for name, value in (("hotspot_x", self.hotspot_x), ("hotspot_y", self.hotspot_y)):
+            if value is not None and not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be normalized between 0 and 1")
+        temps = [
+            self.min_temperature_c,
+            self.max_temperature_c,
+            self.mean_temperature_c,
+            self.hotspot_temperature_c,
+        ]
+        if modality not in THERMAL_MODALITIES and any(v is not None for v in temps):
+            raise ValueError(
+                "temperature values require a thermal/radiometric modality; "
+                "NIR/SWIR are reflected-infrared modalities, not direct temperature measurements"
+            )
+        if (
+            self.min_temperature_c is not None
+            and self.max_temperature_c is not None
+            and self.min_temperature_c > self.max_temperature_c
+        ):
+            raise ValueError("min_temperature_c must be <= max_temperature_c")
+
+
 class ExtendedSenses:
     """
     تحليل محايد لقياسات الحساسات.
 
-    هذه الوحدة لا تدّعي أنها تسمع من دون عتاد. تحتاج Sensor Adapter فعليًا
-    يرسل القياسات أو التسجيلات إليها.
+    هذه الوحدة لا تدّعي أنها تسمع أو ترى أطيافًا غير بشرية من دون عتاد.
+    تحتاج Sensor Adapter فعليًا يرسل القياسات أو التسجيلات/الإطارات إليها.
     """
 
     capability_name = "extended_senses"
@@ -104,13 +158,61 @@ class ExtendedSenses:
             )
         return result
 
+    def analyze_vision_observation(self, observation: VisionObservation) -> Dict[str, Any]:
+        observation.validate()
+        modality = observation.modality.strip().lower()
+        is_thermal = modality in THERMAL_MODALITIES
+        result: Dict[str, Any] = {
+            "observation": asdict(observation),
+            "modality": modality,
+            "measured": True,
+            "thermal_measurement": is_thermal,
+            "source_attribution": "unknown",
+            "source_claim": None,
+            "interpretation_policy": (
+                "Report measured pixels/temperatures first. Do not infer identity, intent, "
+                "medical condition, supernatural origin, or hidden cause from an anomalous "
+                "thermal/infrared pattern without independent evidence."
+            ),
+        }
+        if is_thermal:
+            temps = [
+                value
+                for value in (
+                    observation.min_temperature_c,
+                    observation.max_temperature_c,
+                    observation.mean_temperature_c,
+                    observation.hotspot_temperature_c,
+                )
+                if value is not None
+            ]
+            if temps:
+                result["temperature_summary_c"] = {
+                    "min": min(temps),
+                    "max": max(temps),
+                    "span": round(max(temps) - min(temps), 3),
+                }
+            if observation.hotspot_temperature_c is not None:
+                result["hotspot"] = {
+                    "temperature_c": observation.hotspot_temperature_c,
+                    "x": observation.hotspot_x,
+                    "y": observation.hotspot_y,
+                }
+        else:
+            result["infrared_note"] = (
+                "NIR/SWIR primarily measure reflected infrared energy. Treat them as extended "
+                "vision, not as direct body/object temperature measurements."
+            )
+        if observation.fused_rgb or modality == "thermal_rgb_fusion":
+            result["fusion"] = {
+                "rgb_registered": True,
+                "note": "Keep RGB and extended-spectrum provenance separate when presenting overlays.",
+            }
+        return result
+
 
 def ensure_extended_senses_capability(capability_registry: Any) -> str:
-    """Register the founder-approved capability idempotently.
-
-    Returns the existing or newly created capability_id. Runtime startup code can
-    call this helper without duplicating the capability card.
-    """
+    """Register the founder-approved capability idempotently."""
     existing = capability_registry.get_by_name(ExtendedSenses.capability_name)
     if existing is not None:
         return existing["capability_id"]
@@ -119,17 +221,19 @@ def ensure_extended_senses_capability(capability_registry: Any) -> str:
         name=ExtendedSenses.capability_name,
         description=(
             "Ingest and analyze measurements from extended physical sensors, including "
-            "ultrasonic acoustic sensors, and present verified observations separately "
-            "from unverified source interpretations."
+            "ultrasonic/infrasonic audio and thermal/infrared vision (LWIR, MWIR, NIR, SWIR, "
+            "radiometric and RGB fusion), while separating verified observations from "
+            "unverified source interpretations."
         ),
         scope="sensing",
         approved_by="founder:Naseem",
         status="extended",
         dependencies=["analysis"],
         risk_level="medium",
-        version="1.0.0",
+        version="1.1.0",
         notes=(
-            "Founder-approved. Actual sensing requires a compatible hardware sensor/adapter. "
-            "Never label anomalous signals as supernatural without independent evidence."
+            "Founder-approved. Actual sensing requires compatible hardware sensor adapters. "
+            "Never label anomalous acoustic, thermal, or infrared signals as supernatural or "
+            "as proof of identity/intent without independent evidence."
         ),
     )
