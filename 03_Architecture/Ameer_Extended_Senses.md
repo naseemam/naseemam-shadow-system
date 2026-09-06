@@ -50,7 +50,19 @@
 - RGB camera for registered fusion.
 - Air-quality sensor.
 
-### 2. ExtendedSenses
+### 2. Sensor Hardware Layer
+
+التنفيذ الجاهز موجود في `06_Code/kernel/sensor_hardware.py` ويضيف عقدًا ثابتًا للعتاد قبل شراء أي جهاز محدد:
+
+- `SensorDescriptor`: هوية الحساس، النوع، الشركة، الموديل، وسيلة الاتصال والقدرات.
+- `SensorFrame`: إطار قياس موحد مع timestamp وsequence وpayload ووحدات القياس والـmetadata.
+- `SensorAdapter`: واجهة موحدة لأي SDK/USB/Ethernet/Serial/I2C/SPI/RTSP device adapter.
+- `SensorHub`: تسجيل الحساسات، connect/disconnect، منع التكرار، القراءة، وhealth snapshot.
+- `NORMALIZED_PAYLOAD_SCHEMAS`: مفاتيح موحدة للصوت فوق/تحت السمعي، thermal radiometric، LWIR/MWIR، NIR/SWIR، RGB والاهتزاز.
+
+بهذا الشكل لا يحتاج قلب أمير أن يعرف الشركة المصنعة. عند شراء أو شبك الجهاز نكتب محولًا صغيرًا خاصًا به يحقق `SensorAdapter`، ثم يدخل الجهاز مباشرة إلى `SensorHub` وباقي مسار التحليل ثابت.
+
+### 3. ExtendedSenses
 
 التنفيذ موجود في `06_Code/kernel/extended_senses.py` ويشمل حاليًا:
 - تصنيف نطاق الإشارة الصوتية.
@@ -61,20 +73,49 @@
 - منع التعامل مع NIR/SWIR على أنها قياس حرارة مباشر.
 - حفظ فصل صريح بين القياس ومصدر الإشارة أو النمط غير المثبت.
 
-### 3. Capability Governance
+### 4. Capability Governance
 
 القدرة تحمل الاسم `extended_senses` وتُسجَّل كقدرة `extended` معتمدة من المؤسس، وتعتمد على قدرة `analysis` الموجودة. الدالة `ensure_extended_senses_capability()` تنفذ التسجيل بصورة idempotent ولا تنشئ بطاقة مكررة.
 
+## مصفوفة العتاد الجاهزة للربط
+
+| الفئة | النوع داخل أمير | وسائل الربط المتوقعة | ما يرسله الـAdapter |
+|---|---|---|---|
+| صوت فوق سمعي | `ultrasonic_audio` | USB / ADC / SDK | frequency, dB, duration, sample rate |
+| صوت تحت سمعي | `infrasound_audio` | USB / ADC / Serial | frequency, dB, duration, sample rate |
+| حراري Radiometric | `thermal_radiometric` | USB / Ethernet / SDK / RTSP+metadata | min/max/mean °C, hotspots, frame metadata |
+| حراري LWIR | `thermal_lwir` | USB / Ethernet / SDK | image/intensity frame |
+| حراري MWIR | `thermal_mwir` | Ethernet / vendor SDK | image/intensity frame |
+| NIR | `nir_camera` | USB / CSI / Ethernet | image/intensity frame |
+| SWIR | `swir_camera` | USB3 / GigE / vendor SDK | image/intensity frame |
+| RGB | `rgb_camera` | USB / RTSP / CSI | image frame/reference |
+| اهتزاز | `vibration` | I2C / SPI / Serial / USB | frequency/amplitude |
+
+## قواعد اختيار العتاد لاحقًا
+
+حتى يكون الجهاز Plug-and-Adapt يفضَّل اختيار جهاز يحقق أكبر قدر ممكن من التالي:
+
+1. SDK موثق أو بروتوكول مفتوح، بدل برنامج مغلق لا يخرج البيانات.
+2. إمكانية قراءة raw/radiometric data، وليس فقط لقطة شاشة ملوّنة.
+3. timestamps أو frame sequence موثوقة للمزامنة بين الحساسات.
+4. دعم Linux إن كان الحساس سيعمل على VPS edge box أو جهاز ميداني؛ وإن كان USB محليًا فيكون له driver ثابت.
+5. للحراري: توفر emissivity/calibration metadata مهم عند الحاجة لقياس حرارة دقيق.
+6. للصوت فوق السمعي: bandwidth ومعدل عينة فعليان يغطيان النطاق المطلوب؛ البرنامج لا يعوض فلترًا أو ADC لا يلتقط التردد أصلًا.
+7. عند دمج Thermal + RGB: يفضّل مزامنة hardware أو timestamps جيدة ومعلمات lens/FOV معروفة.
+
 ## الحالة الحالية
 
-**Software layer: implemented for acoustic + extended vision observations.**
+**Software analysis layer: implemented for acoustic + extended vision observations.**
 
-**Physical sensing: requires hardware adapters.** أمير لا يدّعي أنه يسمع أو يرى نطاقًا لا يصل إلى حساس مناسب. عند توصيل العتاد، طبقة Sensor Adapter هي المسؤولة عن إدخال القياسات إلى `ExtendedSenses`.
+**Hardware integration layer: implemented and device-agnostic.**
+
+**Device-specific drivers/adapters: تُضاف عند تحديد الجهاز الفعلي.** أمير لا يدّعي وجود حساس غير موصول، لكن البنية الآن جاهزة لاستقباله وإدارته فور توفر SDK/بروتوكول الجهاز.
 
 ## واجهة نظام الظل المقترحة
 
 بطاقة **الحواس الممتدة** تعرض:
-- الحساسات المتصلة وحالتها.
+- الحساسات المسجلة والمتصلة وحالتها ووسيلة الربط.
+- health لكل حساس وأخطاء الاتصال إن وجدت.
 - النطاق الحالي: Ultrasound / Infrasound / LWIR / MWIR / NIR / SWIR / Radiometric.
 - القياسات الخام والملخص المفهوم.
 - Thermal hotspot + min/max/mean عندما تكون الكاميرا radiometric.
@@ -83,12 +124,14 @@
 - زر للاستماع إلى التمثيل المحول للصوت فوق السمعي.
 - درجة الثقة، مع فصل واضح بين «مرصود» و«تفسير محتمل».
 
-## المرحلة التالية عند توفر العتاد
+## ما يحدث لحظة شبك جهاز فعلي
 
-1. اختيار الحساسات الفعلية ومدى الطيف والدقة المطلوبة.
-2. إضافة Sensor Adapter لكل جهاز.
-3. حفظ raw capture مع metadata للحفاظ على provenance.
-4. للصوت: FFT / spectrogram + output تحويل مسموع.
-5. للحراري: radiometric frame parser + calibration/emissivity metadata + hotspot/region tracking.
-6. للرؤية المدمجة: معايرة RGB/thermal registration وإنتاج overlay مع بقاء الطبقات الأصلية محفوظة.
-7. إضافة stream/event bus إلى واجهة نظام الظل لإظهار النتائج لحظيًا.
+1. تعريف `SensorDescriptor` للجهاز.
+2. إضافة Device Adapter صغير يترجم SDK/البروتوكول إلى `SensorFrame`.
+3. تسجيله في `SensorHub`.
+4. تشغيل connect + health check.
+5. قراءة أول frame والتحقق من الوحدات والـmetadata.
+6. تمرير القياسات إلى `ExtendedSenses` للتحليل.
+7. إظهار stream/events في نظام الظل.
+
+هذا يعني أن ما سيتبقى عند شراء الحساس ليس إعادة بناء المنظومة، بل فقط **موصل الجهاز نفسه ومعايرته**.
