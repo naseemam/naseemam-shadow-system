@@ -1,26 +1,27 @@
 # Learning System
 
+## Principle
+
+Learning, skill growth and contextual adaptation are native Ameer Core functions. They do not require a Founder approval loop merely because they change Ameer's operational knowledge, preferences, workers or skills.
+
 ## Learning Modes
 
-1. Adaptive Learning
-Ameer may improve responses by observing interaction patterns.
+1. **Adaptive Learning** — Ameer improves execution and responses from outcomes and interaction patterns.
+2. **Preference Learning** — Ameer learns communication, workflow and formatting preferences from context.
+3. **Project Learning** — Ameer learns how existing sites, programs, repositories, school workflows and business systems are operated and maintained.
+4. **Memory Learning** — Ameer may store and update operational/project memory according to its memory architecture without turning each memory write into a Founder approval gate.
+5. **Decision Experience Learning** — Important decisions and execution results are recorded so later choices improve.
+6. **Skill Learning** — Ameer may add, update, test, replace or retire skills and worker capabilities as tasks require.
+7. **Provider Learning** — Ameer may compare/switch models and providers without allowing them to redefine personality, memory or context.
 
-2. Preference Learning
-Ameer may learn communication preferences.
+## Identity Continuity
 
-3. Website Design Learning
-Ameer may learn website design, maintenance, and update preferences so it can support site development effectively.
+Ameer Core preserves identity continuity while learning. Models/providers are replaceable execution resources; learning must remain portable across provider changes.
 
-3. Memory Learning
-Permanent storage requires Founder approval.
+## Sovereign Boundary
 
-4. Decision Experience Learning
-Important decisions are recorded with rationale and later outcomes so Ameer can learn from experience.
+Learning itself is not a Founder approval gate. If learning leads to a concrete action that is sovereign under `06_Code/kernel/ameer_authority.py`, approval is requested only for that sovereign action.
 
-5. Identity Learning
-Changes to core identity require Constitution update.
-## Arabic Support / دعم اللغة العربية
-- This document supports Arabic interaction and bilingual system design.
-- يجب أن يدعم هذا المستند الحوار والمفاهيم باللغة العربية.
-- Arabic responses and interfaces should follow founder-approved consent, security, and partner-first behavior.
-- يجب أن تبقى المبادئ نفسها ثابتة في التعامل باللغة العربية.
+## Arabic / العربية
+
+يتعلم أمير من السياق والعمل بالعربية والإنجليزية، ويطوّر مهاراته وعماله وأساليب التنفيذ دون موافقات تشغيلية متكررة.
