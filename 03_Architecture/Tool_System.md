@@ -2,40 +2,55 @@
 
 ## Purpose
 
-The Tool System defines how Ameer connects to external capabilities, and how each connector is approved, executed, and audited.
+The Tool System gives Ameer real execution access to connected capabilities while keeping
+execution observable and recoverable. Tool use is operational by default and does not
+create a Founder approval gate by itself.
 
 ## Connector Principles
 
-- Every tool request must pass a permission check.
-- Tool access is granted only after Founder approval.
-- Inputs and outputs must be sanitized before storage.
-- Tool use must be logged for accountability.
+- Tools are execution resources controlled by Ameer Core.
+- Connected tools may be used directly when Ameer has real access and the operation is inside delegated scope.
+- No per-tool Founder approval is required for routine operations.
+- Tool connectors may perform technical validation, authentication and scope checks, but they may not invent human approval gates.
+- Inputs, outputs and credentials should be handled securely and logged where useful for recovery/audit.
 
 ## Tool Categories
 
 - Communication tools (email, messaging)
-- Productivity tools (calendar, files, documents)
+- Productivity tools (calendar, files, documents, spreadsheets)
 - Research tools (web search, databases)
 - Project tools (GitHub, issue trackers)
-- Infrastructure tools (cloud APIs, deployment systems)
+- Infrastructure tools (Railway, Cloudflare, VPS, deployment systems)
+- Local execution tools (filesystem, shell, VS Code/local workspace)
+- Media tools (images, audio, video)
 
 ## Request Lifecycle
 
-1. Receive tool request.
-2. Verify request type and impact.
-3. Check permissions and consent.
-4. Execute the tool connector.
-5. Sanitize results.
-6. Log action and optionally store approved artifacts.
+1. Receive or infer the required operation from context.
+2. Select the appropriate tool automatically.
+3. Verify real connector availability and technical scope.
+4. Check only the sovereign gate source in `kernel.ameer_authority`.
+5. Execute.
+6. Verify outcome and retry/repair when needed.
+7. Record evidence/result.
 
-## Safety Guarantees
+## Sovereign Gate Rule
 
-- Tools must never leak sensitive data unintentionally.
-- Tools may be disabled or sandboxed when risk is high.
-- All tool usage is visible to the Founder.
+A tool pauses for Founder approval only when the action itself is one of the explicitly
+Founder-defined sovereign decisions in `06_Code/kernel/ameer_authority.py`.
+
+Examples that are operational without Founder approval: file creation/editing/deletion,
+repository operations inside existing repositories, deployments to existing sites/programs,
+DNS configuration, key/token creation/rotation/replacement, worker management, connector
+management, research, media creation, spreadsheet/document generation, VPS/local operations.
+
+## Security
+
+- Do not expose secrets unnecessarily in conversation or logs.
+- Preserve recoverability and execution evidence.
+- A technical failure or missing credential is a technical blocker, not a Founder approval request.
+- External provider restrictions remain external constraints; they do not redefine Ameer Core.
 
 ## Arabic Support / دعم اللغة العربية
-- Tool interactions must support Arabic prompts and consent messages when the Founder uses Arabic.
-- يجب أن تدعم واجهات الأدوات التعليمات والموافقة باللغة العربية عندما يطلب المؤسس ذلك.
-- Arabic tool workflows must preserve the same security and approval model as English workflows.
 
+تعمل الأدوات بالعربية والإنجليزية وفق نفس قاعدة التنفيذ المباشر، ولا تظهر موافقة بشرية إلا عند البوابات السيادية المحددة مركزيًا.
