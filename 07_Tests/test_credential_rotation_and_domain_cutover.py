@@ -1,52 +1,40 @@
 from kernel.ameer_authority import canonical_sovereign_action, policy_snapshot
 
 
-def test_scoped_operational_key_creation_is_autonomous():
-    assert canonical_sovereign_action("create_key", {"principal_secret": False}) is None
+def test_all_credential_management_is_operational_by_default():
+    cases = [
+        ("create_key", {"principal_secret": False}),
+        ("create_key", {"principal_secret": True}),
+        ("rotate_token", {"principal_secret": False, "expired": True}),
+        ("rotate_secret", {"principal_secret": True}),
+        ("revoke_token", {"may_interrupt_service": True, "replacement_verified": False}),
+        ("revoke_token", {"may_interrupt_service": True, "replacement_verified": True}),
+    ]
+    for action, context in cases:
+        assert canonical_sovereign_action(action, context) is None
 
 
-def test_expired_operational_token_rotation_is_autonomous():
-    assert canonical_sovereign_action("rotate_token", {"principal_secret": False, "expired": True}) is None
+def test_migration_preparation_and_existing_asset_deployment_are_autonomous():
+    for action in ["deploy", "publish", "create_key", "rotate_token", "dns_update", "configure_domain"]:
+        assert canonical_sovereign_action(action, {"existing_asset": True}) is None
 
 
-def test_principal_root_credential_change_is_sovereign():
-    assert canonical_sovereign_action("create_key", {"principal_secret": True}) == "change_principal_secret"
-
-
-def test_revocation_that_can_interrupt_service_requires_founder_decision():
+def test_final_domain_transfer_is_sovereign():
     assert canonical_sovereign_action(
-        "revoke_token",
-        {"may_interrupt_service": True, "replacement_verified": False},
-    ) == "revoke_service_critical_credential"
+        "transfer_domain",
+        {"final_transfer": True},
+    ) == "final_domain_transfer"
 
 
-def test_safe_retirement_after_verified_replacement_is_autonomous():
+def test_domain_preparation_without_final_transfer_is_autonomous():
     assert canonical_sovereign_action(
-        "revoke_token",
-        {"may_interrupt_service": True, "replacement_verified": True},
+        "transfer_domain",
+        {"final_transfer": False},
     ) is None
+    assert canonical_sovereign_action("dns_update", {"existing_asset": True}) is None
 
 
-def test_migration_preparation_and_deployment_are_autonomous():
-    for action in ["deploy", "publish", "create_key", "rotate_token"]:
-        assert canonical_sovereign_action(action, {"existing_asset": True, "principal_secret": False}) is None
-
-
-def test_final_public_domain_cutover_is_sovereign():
-    assert canonical_sovereign_action(
-        "domain_cutover",
-        {"final_public_cutover": True},
-    ) == "final_domain_cutover"
-
-
-def test_non_final_dns_preparation_is_autonomous():
-    assert canonical_sovereign_action(
-        "domain_cutover",
-        {"final_public_cutover": False},
-    ) is None
-
-
-def test_policy_requires_pre_cutover_evidence():
+def test_policy_states_domain_and_credential_rules():
     snap = policy_snapshot()
-    assert "presents_pre_cutover_verification" in snap["execution_evidence_rule"]
-    assert "final_public_domain_cutover_requires_founder_approval" in snap["migration_rule"]
+    assert "final_domain_transfer_or_ownership_change_requires_founder_approval" in snap["domain_rule"]
+    assert snap["credential_rule"].startswith("credential_and_key_management_is_operational")

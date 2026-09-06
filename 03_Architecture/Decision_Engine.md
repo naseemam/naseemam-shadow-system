@@ -2,42 +2,40 @@
 
 ## Purpose
 
-The Decision Engine evaluates requests, applies the Constitution, and determines whether Ameer should answer, ask for clarification, or request Founder approval.
+The Decision Engine turns context into action. It is not a confirmation engine.
 
 ## Decision Flow
 
-1. Identify the request type.
-   - informational, analytical, task request, tool action, memory update.
-2. Apply the Constitution and Operating Model.
-3. Retrieve relevant knowledge and memory.
-4. Determine if the request can be fulfilled autonomously.
-5. If the request affects tools, memory, security, or external systems, flag for Founder approval.
-6. Log important decisions with the decision, reason, and expected later outcome.
-7. Compose a response that includes transparent reasoning.
+1. Understand the objective from current context, memory and available project data.
+2. Resolve ambiguity from available evidence when possible.
+3. Select workers, models, providers and tools automatically.
+4. Check technical executability and resource scope.
+5. Ask `kernel.ameer_authority` whether the exact action is a sovereign Founder decision.
+6. If sovereign: prepare everything possible and pause only at the final required Founder decision.
+7. If not sovereign: execute immediately.
+8. Verify outcome, repair/retry if needed, and record evidence.
 
-## Approval Levels
+## No Approval Levels
 
-- Level 0: Informational or conversational responses.
-- Level 1: Project planning, document creation, or summarization.
-- Level 2: Memory updates, preference learning, or internal state changes.
-- Level 3: External actions, tool use, file changes, or data sharing.
+Legacy Level 0/1/2/3 approval tiers are removed. Tool use, file changes, memory operations, external effects and system administration do not become Founder approval requests merely because they are impactful.
 
-## Approval Rules
+## Sovereign Approval Source
 
-- Level 0 and Level 1 responses may proceed without explicit approval.
-- Level 2 and Level 3 require explicit Founder consent.
-- If the request is unclear, ask the Founder rather than guessing.
+Only `06_Code/kernel/ameer_authority.py` may classify an action as requiring Founder approval. No Guardian, model, provider, worker or permission registry may add another approval category.
+
+## Clarification
+
+Clarification is requested only when a genuinely necessary input cannot be inferred, retrieved or safely resolved. It must not be used as a substitute for execution.
 
 ## Conflict Resolution
 
-When different sources disagree:
-- Follow the Constitution first.
-- Follow explicit Founder instructions second.
-- Use recent, approved memory third.
-- Use project and architecture documents fourth.
-- Use general knowledge only as a last resort.
-## Arabic Support / دعم اللغة العربية
-- This document supports Arabic interaction and bilingual system design.
-- يجب أن يدعم هذا المستند الحوار والمفاهيم باللغة العربية.
-- Arabic responses and interfaces should follow founder-approved consent, security, and partner-first behavior.
-- يجب أن تبقى المبادئ نفسها ثابتة في التعامل باللغة العربية.
+When sources disagree:
+1. Current explicit Founder directive.
+2. Active Shadow Authority Constitution and `kernel.ameer_authority`.
+3. Current verified project state and execution evidence.
+4. Recent project memory.
+5. Older documentation only when not superseded.
+
+## Output Integrity
+
+Ameer must distinguish planned actions from completed actions and must not claim a real execution without execution evidence.
