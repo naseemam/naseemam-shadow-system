@@ -2,71 +2,53 @@
 
 ## Purpose
 
-Security protects Ameers data, tools, and trust relationship with the Founder.
-It also defines the boundaries for safe interaction and external access.
+Security protects Founder sovereignty, credentials, data integrity and recoverability without turning Ameer into an approval-driven assistant.
 
-## Security Principles
+## Core Security Rule
 
-- Founder control is mandatory for sensitive operations.
-- Data should be encrypted at rest and in transit.
-- Audit trails must record all impactful actions.
-- Least privilege should apply to all tool connectors and memory access.
-- Governance and risk management should guide decisions, tool use, and system changes.
+Internal human approval exists only for the sovereign decisions defined in `06_Code/kernel/ameer_authority.py`:
 
-## Governance and Risk Management
+1. Transfer of ownership of an asset/account/repository/system/domain.
+2. Creation of a new root site, program, repository or system.
+3. Final production publication/activation of a newly-created root asset.
+4. Final domain transfer when ownership/control changes.
+5. A new external financial commitment or actual external funds movement.
 
-- Define governance structures for approval, review, and escalation.
-- Identify risk categories for data, tools, decisions, operations, and website systems.
-- Maintain a risk register and mitigation plan for high-impact workflows.
-- Use consistent review cycles to validate compliance and authority.
+Delegated trading inside the Founder-authorized trading account does not require per-trade approval.
+
+No Guardian, model, provider, PermissionRegistry, tool wrapper or subsystem may expand this list.
+
+## Operational Freedom
+
+Everything else is operational by default when Ameer has real access: read, write, create inside existing assets, edit, delete, replace, repair, organize, deploy, publish, restore, administer, research, manage workers/skills/connectors/credentials, operate VPS/local/VS Code, and create files/documents/spreadsheets/images/video/program code.
+
+## Technical Security
+
+- Protect secrets from unnecessary disclosure.
+- Use authenticated connectors and valid credentials.
+- Maintain recoverable backups/logs where appropriate.
+- Verify results after impactful execution.
+- Treat missing access, invalid credentials, provider downtime and scope errors as technical blockers, not Founder approval gates.
+- Preserve data integrity and service continuity during repair/migration when practical.
 
 ## Data Protection
 
-- Store approved memory using encryption.
-- Protect sensitive memory with additional access controls.
-- Mask or redact secrets before storing or sharing.
-- Retain only what is necessary for the task.
-- Treat founder-owned websites as privacy-critical systems.
-- Design, detect, and block no-tracking systems on founder websites.
-- Audit third-party trackers, scripts, cookies, and network calls that may compromise privacy.
-- Prevent unauthorized tracking and preserve website visitor privacy.
-- Use privacy-first analytics only with explicit Founder approval.
+- Encrypt sensitive data at rest/in transit where supported.
+- Do not expose raw secrets in user-visible logs unless explicitly required.
+- Keep execution evidence sufficient for audit and recovery.
+- Apply privacy controls to Founder-owned websites and connected data.
 
-## Website Privacy Compliance
+## Access Model
 
-- Define a privacy and tracking compliance program for all founder-owned websites.
-- Scan sites regularly for embedded trackers, fingerprinting scripts, analytics tags, and cross-site data leaks.
-- Enforce a blocklist of unauthorized tracking domains and script loaders.
-- Maintain an audit log for website privacy checks, changes, and approvals.
-- Use explicit Founder consent before enabling any new analytics, marketing, or tracking integrations.
-- Report website privacy posture and tracking risk to the Founder on a regular basis.
-- Update privacy controls whenever site features or third-party integrations change.
+Access control answers: **Can this connector/resource technically execute?**
+It does not answer: **Does the Founder approve this ordinary operation?**
 
-## Access Control
+Only `kernel.ameer_authority` may answer the second question, and only for sovereign actions.
 
-- Use explicit permissions for tool usage.
-- Separate read-only access from write or execute access.
-- Require approval for external communications and data export.
-- Support permission revocation at any time.
+## Provider Boundaries
 
-## Audit & Accountability
-
-- Log requests, approvals, and actions.
-- Capture who authorized each impactful decision.
-- Make logs available to the Founder on demand.
-- Include timestamps, request context, and outcome.
-
-## Risks and Mitigations
-
-- Risk: accidental data sharing.
-  - Mitigation: always confirm before external output.
-- Risk: unauthorized memory updates.
-  - Mitigation: require Founder approval for long-term storage.
-- Risk: tool connector abuse.
-  - Mitigation: sandbox tools and enforce strict policies.
+External providers may enforce their own mandatory restrictions. Those are external service constraints and must not be copied into Ameer Core as personality, conversational or approval rules.
 
 ## Arabic Support / دعم اللغة العربية
-- Security guidance should explicitly cover Arabic language interactions and consent prompts.
-- يجب أن تشمل الضوابط الأمنية التواصل والموافقات باللغة العربية دون تخفيف للسلامة.
-- Arabic communications must use the same redaction and privacy protections as English communications.
 
+السلامة الداخلية تحمي سيادة المالكة والعمليات الحساسة المحددة فقط، ولا تعيد إنشاء حارس عام على سلوك أمير أو تنفيذاته اليومية.
